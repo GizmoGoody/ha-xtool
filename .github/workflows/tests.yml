@@ -1,0 +1,66 @@
+name: Tests
+
+# This workflow lives only on the fork's "ci" branch, which is the fork's
+# default branch, so it can be started for any branch:
+#   gh workflow run tests.yml -f branch=<branch>
+#   gh run watch
+# The integration code comes from that branch; the tests and scripts come
+# from ci. Each test module checks whether the branch has its feature and is
+# skipped when it does not, so any branch can run the whole suite.
+# HACS validation stays in upstream's validate.yaml, which runs on every push.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch whose integration code is tested
+        required: true
+        default: dev
+  push:
+    branches: [ci]
+
+run-name: Tests ${{ inputs.branch || github.ref_name }}
+
+permissions:
+  contents: read
+
+jobs:
+  hassfest:
+    name: hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref_name }}
+      - uses: home-assistant/actions/hassfest@master
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref_name }}
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: ci-tools
+      - name: Add the tests from ci
+        run: |
+          cp -r ci-tools/tests ci-tools/pytest.ini .
+          mkdir -p .github && cp -r ci-tools/.github/scripts .github/
+          rm -rf ci-tools
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install test dependencies
+        run: |
+          pip install pytest-homeassistant-custom-component
+          python .github/scripts/component_requirements.py > component-requirements.txt
+          cat component-requirements.txt
+          pip install -r component-requirements.txt
+      - name: Run tests
+        run: pytest --junitxml=junit.xml -q -rs
+      - name: Report failures as annotations
+        if: failure()
+        run: python .github/scripts/annotate_failures.py junit.xml
