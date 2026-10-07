@@ -14,7 +14,17 @@ import pytest
 
 COMPONENT = Path("custom_components/xtool")
 
+
+def _imports_protocols_first() -> bool:
+    text = (COMPONENT / "__init__.py").read_text(encoding="utf-8")
+    protocols = text.find("from .protocols import")
+    coordinator = text.find("from .coordinator import")
+    return -1 < protocols < coordinator
+
+
 FEATURES: dict[str, Callable[[], bool]] = {
+    # The first import of the package succeeds (no circular import)
+    "clean_first_import": _imports_protocols_first,
     # Issue #13: switch and binary sensor icons follow the entity state
     "icon_translations": lambda: (COMPONENT / "icons.json").exists(),
 }

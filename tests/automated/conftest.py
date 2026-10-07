@@ -18,6 +18,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+# Without the import-order fix, the first import of the package fails on a
+# circular import and only a second attempt succeeds. Home Assistant retries
+# the import in the same way, so the tests do too.
+try:
+    import custom_components.xtool  # noqa: F401
+except ImportError:
+    import custom_components.xtool  # noqa: F401
+
 from custom_components.xtool.const import DOMAIN
 from custom_components.xtool.protocols import DEVICE_MODELS
 from custom_components.xtool.protocols.accessories import ACCESSORY_DEFINITIONS
