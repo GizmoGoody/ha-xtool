@@ -1,0 +1,153 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>xTool card: pictures, badges, progress and styles</title>
+<style>
+  body { margin: 0; padding: 16px; background: #111; color: #ddd; font: 13px Roboto, "Segoe UI", sans-serif; }
+  #cards { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+  figure { margin: 0; } figcaption { margin-bottom: 4px; color: #aaa; }
+  pre { white-space: pre-wrap; }
+</style>
+<script src="stand-ins.js"></script>
+<script src="../../custom_components/xtool/frontend/xtool-card.js"></script>
+<script src="checks.js"></script>
+<div id="cards"></div>
+<pre id="report" data-result="running">running</pre>
+<script>
+  const f2 = (status, more = {}) => makeHass({ "sensor.f2_status": status, ...more });
+  const p2 = (status, more = {}) => makeHass({ "sensor.p2_status": status, ...more });
+  const jobFeatures = { features: [{ type: "custom:xtool-job" }, { type: "custom:xtool-peripherals" }] };
+
+  // The state pictures
+  const pictures = {
+    idle: addCard("idle", {}, { hass: f2("idle") }),
+    galvo: addCard("F2 processing", {}, { hass: f2("processing") }),
+    raster: addCard("P2 processing", { entity: "sensor.p2_status" }, { hass: p2("processing") }),
+    paused: addCard("paused", {}, { hass: f2("paused") }),
+    finished: addCard("finished", { state_content: ["state", "job_time"] }, { hass: f2("finished") }),
+    sleeping: addCard("sleeping", {}, { hass: f2("sleeping") }),
+    framing: addCard("framing", {}, { hass: f2("framing") }),
+    error: addCard("error", {}, { hass: f2("error_limit") }),
+    fire: addCard("fire warning", {}, { hass: f2("error_fire_warning") }),
+    off: addCard("off", {}, { hass: f2("off") }),
+  };
+
+  // Badges
+  const badges = {
+    none: addCard("no badge", {}, { hass: f2("idle") }),
+    key: addCard("safety key out", {}, { hass: f2("idle", { "binary_sensor.f2_safety_key": "off" }) }),
+    safetyOff: addCard("a safety check off", {}, { hass: f2("idle", { "switch.f2_moved": "off" }) }),
+    offline: addCard("not connected", {}, { hass: f2("unavailable") }),
+    chosen: addCard("badges turned off", { badges: [] }, { hass: f2("idle", { "binary_sensor.f2_safety_key": "off" }) }),
+    lid: addCard("P2 lid open", { entity: "sensor.p2_status" }, { hass: p2("idle", { "binary_sensor.p2_cover": "on" }) }),
+  };
+
+  // The progress edge
+  const edges = {
+    sweep: addCard("no progress sensor: sweep", {}, { hass: f2("processing") }),
+    top: addCard("progress 42 on top, with percentage", { entity: "sensor.p2_status", progress: { show_percentage: true } }, { hass: p2("processing") }),
+    inset: addCard("inset 10 to 90", { entity: "sensor.p2_status", progress: { start: 10, end: 90 } }, { hass: p2("processing") }),
+    around: addCard("around", { entity: "sensor.p2_status", progress: { edge: "around" } }, { hass: p2("processing") }),
+    left: addCard("left", { entity: "sensor.p2_status", progress: { edge: "left", thickness: 6 } }, { hass: p2("processing") }),
+    none: addCard("edge none", { entity: "sensor.p2_status", progress: { edge: "none" } }, { hass: p2("processing") }),
+    notWhile: addCard("not shown while idle", { entity: "sensor.p2_status" }, { hass: p2("idle") }),
+    thresholds: addCard("thresholds", { entity: "sensor.p2_status", progress: { color: "thresholds" } }, { hass: p2("processing") }),
+  };
+
+  // The xTool styles and features styles
+  const styles = {
+    champagne: addCard("champagne, match", { style: "champagne", ...jobFeatures }, { hass: f2("processing"), height: 220 }),
+    flat: addCard("champagne, flat", { style: "champagne", features_style: "flat", ...jobFeatures }, { hass: f2("processing"), height: 220 }),
+    inset: addCard("graphite, inset", { style: "graphite", features_style: "inset", features: [...jobFeatures.features, { type: "toggle" }] }, { hass: f2("processing"), height: 280 }),
+    plain: addCard("no style", { ...jobFeatures }, { hass: f2("processing"), height: 220 }),
+  };
+
+  // State content attributes
+  const content = addCard("state content", { state_content: ["state", "elapsed", "exhaust", "red_dot"] }, { hass: f2("processing") });
+
+  // Galvo strokes never cross: parse "M x y L x y ..." and test every pair
+  function crossings(d) {
+    const pts = d.replace("M", "").split("L").map((p) => p.trim().split(/\s+/).map(Number));
+    const side = (a, b, c) => (c[0] - a[0]) * (b[1] - a[1]) - (b[0] - a[0]) * (c[1] - a[1]);
+    let n = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      for (let j = i + 2; j < pts.length - 1; j++) {
+        const [p1, p2, p3, p4] = [pts[i], pts[i + 1], pts[j], pts[j + 1]];
+        if ((side(p3, p4, p1) > 0) !== (side(p3, p4, p2) > 0) && (side(p1, p2, p3) > 0) !== (side(p1, p2, p4) > 0)) n++;
+      }
+    }
+    return { n, count: pts.length };
+  }
+
+  runChecks(async () => {
+    await wait(300);
+    // Pictures
+    const svg = Object.fromEntries(Object.entries(pictures).map(([k, card]) => [k, pictureOf(card)]));
+    for (const [k, s] of Object.entries(svg)) check(k, s.startsWith("<svg"), "a state picture replaces the icon");
+    check("idle", svg.idle.includes('r="8.5"') && svg.idle.includes('class="b"'), "the laser dot with a breathing halo");
+    check("F2 processing", svg.galvo.includes("#9b7bff") && svg.galvo.includes('class="h"'), "a violet (UV) trail with a moving head");
+    const galvoD = (svg.galvo.match(/d="(M[^"]+)"/) ?? [])[1] ?? "";
+    const { n, count } = crossings(galvoD);
+    check("F2 processing", n === 0 && count >= 8, `the galvo strokes never cross (${count} points, ${n} crossings)`);
+    check("P2 processing", svg.raster.includes("#ff7043") && svg.raster.includes("M3.5 4 H20.5") && svg.raster.includes('class="h s"'),
+      "an orange-red (CO2) raster, drawn slower");
+    check("paused", svg.paused.includes("M8.5 4.5v15M15.5 4.5v15") && svg.paused.includes('class="e"'), "pause bars burned in, with an ember");
+    check("finished", svg.finished.includes("M3.8 12.8") && svg.finished.includes("#3fbf6a"), "a green check burned in");
+    check("sleeping", (svg.sleeping.match(/class="z/g) ?? []).length === 3, "three drifting Zs");
+    check("framing", svg.framing.includes('class="f"'), "a dash tracing the outline");
+    check("fire warning", svg.fire.includes('class="k"') && svg.fire.includes("#ff3d00"), "a flickering flame");
+    check("off", svg.off.includes("M12 2.5v9"), "the power symbol");
+    check("error", svg.error.includes("M12 2.5 22.5 21H1.5z"), "a warning triangle");
+
+    // Badges
+    const badge = (card) => card.shadowRoot.querySelector(".badge");
+    const on = (card) => badge(card).classList.contains("on");
+    check("no badge", !on(badges.none), "no badge when all is well");
+    check("safety key out", on(badges.key) && badge(badges.key).title === "Safety key removed", "the safety key badge");
+    check("a safety check off", on(badges.safetyOff) && badge(badges.safetyOff).title === "A safety check is off", "the safety check badge");
+    check("not connected", on(badges.offline) && badge(badges.offline).title === "Not connected", "the connection badge");
+    check("badges turned off", !on(badges.chosen), "no badge when none are chosen");
+    check("P2 lid open", on(badges.lid) && badge(badges.lid).title === "Lid open", "the lid badge");
+    check("fire warning", on(pictures.fire) && badge(pictures.fire).title === "Fire warning", "the fire badge comes first");
+    const icon = badges.key.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-icon").getBoundingClientRect();
+    const b = badge(badges.key).getBoundingClientRect();
+    check("safety key out", Math.abs(b.left + b.width / 2 - (icon.left + icon.width * .854)) < 3, "the badge sits on the picture's edge");
+
+    // Progress edge
+    const edge = (card) => card.shadowRoot.getElementById("edge");
+    check("no progress sensor: sweep", edge(edges.sweep).classList.contains("indeterminate"), "the edge sweeps without a progress sensor");
+    check("progress 42 on top", edge(edges.top).style.background.includes("42%") && edge(edges.top).style.top === "0px",
+      "the top edge fills to 42%");
+    check("progress 42 on top", edges.top.shadowRoot.getElementById("pct").textContent === "42%", "the percentage is shown");
+    check("inset 10 to 90", edge(edges.inset).style.background.includes("43.6%"), "the fill runs from 10% to 90% of the edge");
+    check("around", edge(edges.around).classList.contains("around") && edge(edges.around).style.background.includes("conic-gradient"),
+      "the edge runs around the card");
+    check("left", edge(edges.left).style.width === "6px" && edge(edges.left).style.left === "0px", "the left edge, 6 px thick");
+    check("edge none", !edge(edges.none).classList.contains("on"), "no edge");
+    check("not shown while idle", !edge(edges.notWhile).classList.contains("on"), "no edge while idle");
+    check("thresholds", edge(edges.thresholds).style.background.includes("--warning-color"), "42% is in the attention color");
+
+    // Styles
+    const frame = (card) => card.shadowRoot.querySelector(".frame");
+    const windowBox = (card) => card.shadowRoot.getElementById("window");
+    check("champagne, match", frame(styles.champagne).classList.contains("styled") && frame(styles.champagne).classList.contains("champagne"),
+      "the champagne style is drawn");
+    const wh = parseFloat(windowBox(styles.champagne).style.height), fh = frame(styles.champagne).offsetHeight;
+    check("champagne, match", wh > 30 && wh < fh / 2, `the window covers the title only (${Math.round(wh)} of ${fh} px)`);
+    check("champagne, match", styles.champagne.shadowRoot.querySelectorAll(".area").length === 0, "Match draws no areas");
+    const keys = deep(styles.flat, ".key").length;
+    check("champagne, flat", keys > 0 && styles.flat.shadowRoot.querySelectorAll(".area.flat").length === keys,
+      `a flat patch behind each button (${keys})`);
+    check("champagne, flat", styles.flat.shadowRoot.querySelector("hui-tile-card").classList.contains("solid"), "the buttons get a solid backing");
+    check("graphite, inset", deep(styles.inset, "xtool-job, xtool-peripherals").every((el) => el.hasAttribute("xtool-inset")),
+      "the buttons are keys");
+    check("graphite, inset", deep(styles.inset, "ha-control-switch").every((el) => el.hasAttribute("xtool-slide")), "the toggle is a slide");
+    check("graphite, inset", getComputedStyle(styles.inset.shadowRoot.getElementById("stripe")).display === "block", "the silver line is drawn");
+    check("no style", !frame(styles.plain).classList.contains("styled"), "no style: the theme's card");
+
+    // State content
+    const info = content.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-info").textContent;
+    check("state content", /processing · 12:0\d · Exhaust running · Red dot off/.test(info), `elapsed time and parts (${info})`);
+    const finishedInfo = pictures.finished.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-info").textContent;
+    check("finished", finishedInfo === "finished · 18:52", `the last job's time (${finishedInfo})`);
+  });
+</script>

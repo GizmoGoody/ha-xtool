@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>xTool card: editor</title>
+<style>
+  body { margin: 0; padding: 16px; background: #111; color: #ddd; font: 13px Roboto, "Segoe UI", sans-serif; }
+  pre { white-space: pre-wrap; }
+</style>
+<script src="stand-ins.js"></script>
+<script src="../../custom_components/xtool/frontend/xtool-card.js"></script>
+<script src="checks.js"></script>
+<div id="cards"></div>
+<pre id="report" data-result="running">running</pre>
+<script>
+  runChecks(async () => {
+    // A new card from the card picker: the first laser, in its own style
+    const stub = customElements.get("xtool-card").getStubConfig(makeHass());
+    check("new card", stub.entity === "sensor.f2_status" && stub.style === "champagne", "the F2 Ultra UV, in xTool Champagne");
+    check("new card", stub.features.map((f) => f.type).join() === "custom:xtool-job,custom:xtool-peripherals", "with the job and peripherals features");
+    check("new card", window.customCards.some((c) => c.type === "xtool-card"), "offered in the card picker");
+
+    const editor = document.createElement("xtool-card-editor");
+    let fired;
+    editor.addEventListener("config-changed", (ev) => (fired = ev.detail.config));
+    editor.hass = makeHass();
+    editor.setConfig({ type: "custom:xtool-card", entity: "sensor.f2_status", style: "champagne", features: [{ type: "custom:xtool-job" }] });
+    document.getElementById("cards").append(editor);
+    await wait(150);
+
+    check("editor", fired?.features_style === "match", "the features style is written out");
+    const form = editor.shadowRoot.getElementById("form");
+    const names = form.schema.map((s) => s.name);
+    check("editor", ["style", "features_style", "badges", "progress"].every((n) => names.includes(n)), `the xTool options (${names.join(", ")})`);
+    check("editor", form.data.badges.join() === "alarm,connection,safety_key,lid,safety_off", "the default badges are shown");
+
+    const tile = editor.shadowRoot.querySelector("xtool-tile-card-editor");
+    check("editor", !!tile, "the tile card's own editor is inside");
+    check("editor", tile && !/"name":"icon"|"name":"show_entity_picture"/.test(tile.schemaNames), "without the icon options (the card draws the picture)");
+    check("editor", tile?.config && !("style" in tile.config) && tile.config.show_entity_picture === true, "the tile editor gets only tile card options");
+    check("editor", tile?.hass.states["sensor.f2_status"].attributes.elapsed === "12:08", "State content can offer the job attributes");
+
+    // The xTool options change
+    form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { style: "none", badges: ["alarm"], progress: { edge: "bottom" } } } }));
+    check("editor", fired.style === "none" && !("features_style" in fired), "no features style without an xTool style");
+    check("editor", fired.badges.join() === "alarm" && fired.progress.edge === "bottom" && fired.progress.thickness === 4,
+      "badges and the progress edge are saved, with the edge's other options written out");
+    check("editor", !editor.shadowRoot.getElementById("form").schema.some((s) => s.name === "features_style"), "the features style is hidden");
+
+    // The tile card's options change
+    tile.dispatchEvent(new CustomEvent("config-changed", { detail: { config: { type: "tile", entity: "sensor.f2_status", name: "Laser", show_entity_picture: true } } }));
+    check("editor", fired.type === "custom:xtool-card" && fired.name === "Laser" && fired.style === "none" && !("show_entity_picture" in fired),
+      "the tile options are kept with the card's own");
+
+    // A card refuses options it does not know
+    const card = document.createElement("xtool-card");
+    let error = "";
+    try {
+      card.setConfig({ type: "custom:xtool-card", entity: "sensor.f2_status", style: "gold" });
+    } catch (err) {
+      error = err.message;
+    }
+    check("card", error === "Unknown style: gold", "an unknown style is reported");
+  });
+</script>

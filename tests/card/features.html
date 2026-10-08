@@ -1,0 +1,152 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>xTool card: tile features</title>
+<style>
+  body { margin: 0; padding: 16px; background: #111; color: #ddd; font: 13px Roboto, "Segoe UI", sans-serif; }
+  pre { white-space: pre-wrap; }
+</style>
+<script src="stand-ins.js"></script>
+<script src="../../custom_components/xtool/frontend/xtool-card.js"></script>
+<script src="checks.js"></script>
+<div id="cards"></div>
+<pre id="report" data-result="running">running</pre>
+<script>
+  const keysOf = (el) => [...el.shadowRoot.querySelectorAll(".key")];
+  const keyNamed = (el, key) => el.shadowRoot.querySelector(`.key[data-key="${key}"]`);
+  const dialogOf = (el) => el.shadowRoot.querySelector("dialog");
+  const lastCall = (hass) => hass.calls[hass.calls.length - 1];
+
+  runChecks(async () => {
+    // Job: processing
+    let hass = makeHass({ "sensor.f2_status": "processing" });
+    let job = addFeature({ type: "custom:xtool-job" }, { hass });
+    await wait(50);
+    check("job, processing", keysOf(job).map((k) => k.dataset.key).join() === "pause,cancel", "Pause and Cancel");
+    keyNamed(job, "pause").click();
+    check("job, processing", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "button", service: "press", data: { entity_id: "button.f2_pause" } }),
+      "Pause presses the pause button");
+    keyNamed(job, "cancel").click();
+    await wait(20);
+    check("job, processing", dialogOf(job)?.open, "Cancel asks first");
+    dialogOf(job).querySelector(".keep").click();
+    await wait(20);
+    check("job, processing", lastCall(hass).data.entity_id === "button.f2_pause" && !dialogOf(job), "Keep it does not cancel");
+    keyNamed(job, "cancel").click();
+    await wait(20);
+    dialogOf(job).querySelector(".go").click();
+    await wait(20);
+    check("job, processing", lastCall(hass).data.entity_id === "button.f2_cancel", "confirming cancels");
+
+    // Job: idle and paused
+    hass = makeHass({ "sensor.f2_status": "idle" });
+    job = addFeature({ type: "custom:xtool-job" }, { hass });
+    await wait(50);
+    check("job, idle", keyNamed(job, "resume").textContent === "Start" && !keyNamed(job, "resume").disabled && keyNamed(job, "cancel").disabled,
+      "Start, and Cancel off");
+    hass = makeHass({ "sensor.f2_status": "paused" });
+    job = addFeature({ type: "custom:xtool-job", confirm_cancel: false }, { hass });
+    await wait(50);
+    check("job, paused", keyNamed(job, "resume").textContent === "Resume", "Resume");
+    keyNamed(job, "cancel").click();
+    await wait(20);
+    check("job, paused", !dialogOf(job) && lastCall(hass).data.entity_id === "button.f2_cancel", "without asking, when turned off in the options");
+
+    // Peripherals
+    hass = makeHass({ "sensor.f2_status": "idle" });
+    let row = addFeature({ type: "custom:xtool-peripherals" }, { hass });
+    await wait(50);
+    check("peripherals", keysOf(row).map((k) => k.dataset.key).join() === "power,exhaust,fill_light_front,fill_light_back,red_dot",
+      "every part the F2 Ultra UV has, in order");
+    check("peripherals", keyNamed(row, "exhaust").getAttribute("aria-pressed") === "true" && keyNamed(row, "red_dot").getAttribute("aria-pressed") === "false",
+      "on and off shown");
+    keyNamed(row, "exhaust").click();
+    check("peripherals", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "switch", service: "turn_off", data: { entity_id: "switch.f2_exhaust" } }),
+      "a tap turns the exhaust off");
+    keyNamed(row, "fill_light_back").click();
+    check("peripherals", lastCall(hass).domain === "light" && lastCall(hass).service === "turn_on", "a tap turns the back fill light on");
+    keyNamed(row, "power").click();
+    await wait(20);
+    check("peripherals", !dialogOf(row) && lastCall(hass).data.entity_id === "switch.f2_power", "Power turns off without asking while idle");
+    hass = makeHass({ "sensor.f2_status": "processing" });
+    row = addFeature({ type: "custom:xtool-peripherals", controls: ["red_dot", "power"], show_names: true }, { hass });
+    await wait(50);
+    check("peripherals, chosen", keysOf(row).map((k) => k.dataset.key).join() === "red_dot,power" && keyNamed(row, "red_dot").textContent === "Red dot",
+      "the chosen parts, in the chosen order, with names");
+    keyNamed(row, "power").click();
+    await wait(20);
+    check("peripherals, chosen", dialogOf(row)?.open && hass.calls.length === 0, "Power asks first while a job runs");
+    dialogOf(row).querySelector(".keep").click();
+
+    // Safety checks
+    hass = makeHass({ "switch.f2_moved": "off" });
+    row = addFeature({ type: "custom:xtool-safety" }, { hass });
+    await wait(50);
+    check("safety", keysOf(row).map((k) => k.dataset.key).join() === "flame_alarm,enclosure_stop,moved_stop,auto_mode", "the four checks");
+    check("safety", !!keyNamed(row, "moved_stop").querySelector(".warn") && !keyNamed(row, "auto_mode").querySelector(".warn"),
+      "a check that is off shows an amber dot (not auto mode)");
+    keyNamed(row, "moved_stop").click();
+    await wait(20);
+    check("safety", !dialogOf(row) && lastCall(hass).service === "turn_on", "turning a check on does not ask");
+    keyNamed(row, "flame_alarm").click();
+    await wait(20);
+    check("safety", dialogOf(row)?.open && dialogOf(row).textContent.includes("No flame alarm will be triggered"), "turning the flame alarm off asks, with xTool's warning");
+    dialogOf(row).querySelector(".go").click();
+    await wait(20);
+    check("safety", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "switch", service: "turn_off", data: { entity_id: "switch.f2_flame" } }),
+      "confirming turns it off");
+
+    // Settings, including the IF2's buzzer on the accessory device
+    hass = makeHass();
+    row = addFeature({ type: "custom:xtool-settings" }, { hass });
+    await wait(50);
+    check("settings", keysOf(row).map((k) => k.dataset.key).join() === "buzzer,device_sleep,if2_buzzer", "buzzer reminders, device sleep, IF2 buzzer");
+    keyNamed(row, "if2_buzzer").click();
+    check("settings", lastCall(hass).data.entity_id === "switch.if2_buzzer", "the IF2 buzzer is found on the accessory device");
+
+    // Camera
+    hass = makeHass();
+    const camera = addFeature({ type: "custom:xtool-camera" }, { hass });
+    await wait(80);
+    const img = camera.shadowRoot.querySelector(".shot img");
+    check("camera", img.getAttribute("src")?.startsWith("/api/camera_proxy/camera.f2_main?token=a&t="), "the main camera's picture");
+    check("camera", keysOf(camera).map((k) => k.textContent).join() === "Main,Deep", "buttons for both cameras");
+    keyNamed(camera, "camera.f2_deep").click();
+    await wait(50);
+    check("camera", img.getAttribute("src")?.startsWith("/api/camera_proxy/camera.f2_deep?token=b"), "switching shows the deep camera");
+    let opened;
+    camera.addEventListener("hass-more-info", (ev) => (opened = ev.detail.entityId));
+    camera.shadowRoot.querySelector(".shot").click();
+    check("camera", opened === "camera.f2_deep", "a tap opens the camera");
+    const single = addFeature({ type: "custom:xtool-camera", camera: "Deep", show_switch: false }, { hass });
+    await wait(80);
+    check("camera, one", keysOf(single).length === 0 && single.shadowRoot.querySelector(".shot img").getAttribute("src").includes("f2_deep"),
+      "the chosen camera, without buttons");
+
+    // IF2 fan
+    hass = makeHass();
+    let fan = addFeature({ type: "custom:xtool-if2-fan" }, { hass });
+    await wait(50);
+    check("IF2 fan", keysOf(fan).map((k) => k.textContent).join() === "Auto,Off,1,2,3,4", "Auto, Off and gears 1 to 4");
+    check("IF2 fan", keyNamed(fan, "auto").getAttribute("aria-pressed") === "true", "Auto Quiet shows as Auto");
+    keyNamed(fan, "2").click();
+    check("IF2 fan", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "select", service: "select_option", data: { entity_id: "select.if2_fan", option: "2" } }),
+      "a gear is selected");
+    keyNamed(fan, "auto").click();
+    check("IF2 fan", lastCall(hass).data.option === "Auto Regular", "Auto sets Auto Regular by default");
+    fan = addFeature({ type: "custom:xtool-if2-fan", auto: "Auto Quiet" }, { hass });
+    await wait(50);
+    keyNamed(fan, "auto").click();
+    check("IF2 fan", lastCall(hass).data.option === "Auto Quiet", "or Auto Quiet, if chosen");
+
+    // A laser without the parts: nothing to show
+    hass = makeHass();
+    row = addFeature({ type: "custom:xtool-safety" }, { hass, entityId: "sensor.p2_status" });
+    await wait(50);
+    check("P2 safety", keysOf(row).length === 0, "no buttons for checks the laser does not have");
+
+    // The features are offered only for lasers that have their parts
+    const offered = Object.fromEntries(window.customCardFeatures.map((f) => [f.type, f.isSupported(makeHass(), { entity_id: "sensor.p2_status" })]));
+    check("feature picker", offered["xtool-job"] && offered["xtool-peripherals"] && !offered["xtool-safety"] && !offered["xtool-if2-fan"] && !offered["xtool-camera"],
+      `offered for the P2: ${Object.entries(offered).filter(([, v]) => v).map(([k]) => k).join(", ")}`);
+  });
+</script>

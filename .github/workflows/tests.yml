@@ -64,3 +64,27 @@ jobs:
       - name: Report failures as annotations
         if: failure()
         run: python .github/scripts/annotate_failures.py junit.xml
+
+  card:
+    name: Dashboard card
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref_name }}
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: ci-tools
+      - name: Add the tests from ci
+        run: |
+          cp -r ci-tools/tests .
+          rm -rf ci-tools
+      # The card's test pages run in headless Chrome, which the runner includes
+      - name: Run the card test pages
+        run: |
+          if [ ! -f custom_components/xtool/frontend/xtool-card.js ]; then
+            echo "This branch has no dashboard card; skipped"
+            exit 0
+          fi
+          python3 tests/card/run_card_tests.py

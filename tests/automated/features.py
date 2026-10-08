@@ -27,6 +27,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "clean_first_import": _imports_protocols_first,
     # Issue #13: switch and binary sensor icons follow the entity state
     "icon_translations": lambda: (COMPONENT / "icons.json").exists(),
+    # The dashboard card and its tile features
+    "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
 
 
