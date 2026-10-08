@@ -1570,7 +1570,7 @@ class XtoolCard extends HTMLElement {
       if (!determinate) {
         edge.style.background = color;
       } else {
-        const deg = value * 360;
+        const deg = Math.round(value * 36000) / 100;
         edge.style.background = counter
           ? `conic-gradient(from 0deg, ${TRACK} 0deg ${360 - deg}deg, ${color} ${360 - deg}deg 360deg)`
           : `conic-gradient(from 0deg, ${color} 0deg ${deg}deg, ${TRACK} ${deg}deg 360deg)`;
@@ -1585,7 +1585,8 @@ class XtoolCard extends HTMLElement {
         right: `top: 0; bottom: 0; right: 0; width: ${thickness}px;`,
       }[p.edge];
       const direction = BAR_DIRECTION[p.edge][counter ? "counterclockwise" : "clockwise"];
-      const stop = start + (end - start) * (value ?? 0);
+      // Rounded: 100 * 0.42 is 42.00000000000001 in floating point
+      const stop = Math.round((start + (end - start) * (value ?? 0)) * 100) / 100;
       const background = determinate
         ? `linear-gradient(${direction}, ${TRACK} 0%, ${TRACK} ${start}%, ${color} ${start}%, ${color} ${stop}%, ${TRACK} ${stop}%, ${TRACK} 100%)`
         : TRACK;
