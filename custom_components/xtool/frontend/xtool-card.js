@@ -6,7 +6,7 @@
  * - custom:xtool-job          Start or Resume, Pause and Cancel, following the job
  * - custom:xtool-peripherals  power, the exhaust fan, fill lights (on or off), red dot
  *                             and other parts; a fan's icon turns while it runs
- * - custom:xtool-fill-lights  a brightness slider for each dimmable fill light
+ * - custom:xtool-fill-light   one fill light's brightness, like the tile card's light brightness
  * - custom:xtool-safety       the safety checks; turning one off asks first
  * - custom:xtool-settings     buzzer reminders, device sleep, auto mode and the IF2's buzzer
  * - custom:xtool-camera       a camera's picture, with buttons to switch cameras
@@ -479,10 +479,9 @@ const FEATURE_CSS = `
   @keyframes xtool-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
   span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .warn {
-    position: absolute; top: 5px; right: 6px; width: 8px; height: 8px; border-radius: 50%;
-    background: var(--warning-color, #ffa600); box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .35);
-  }
+  /* Filled in its color without being on: a safety check that is off */
+  .key.fill::before { opacity: 1; }
+  .key.fill { color: var(--xtool-on-color, #fff); }
   dialog {
     border: 0; padding: 24px; box-sizing: border-box; width: min(400px, calc(100vw - 32px));
     border-radius: var(--ha-dialog-border-radius, var(--ha-border-radius-3xl, 24px));
@@ -501,6 +500,60 @@ const FEATURE_CSS = `
   ${KEY_CSS}
 `;
 
+/** [r, g, b, a] of a CSS color (no variables). */
+function rgbaOf(color) {
+  colorProbe ??= document.createElement("canvas").getContext("2d");
+  colorProbe.fillStyle = "#000";
+  colorProbe.fillStyle = color;
+  const value = colorProbe.fillStyle;
+  if (value.startsWith("#")) return [...value.slice(1).match(/../g).map((h) => parseInt(h, 16)), 1];
+  const n = (value.match(/[\d.]+/g) ?? [0, 0, 0, 1]).map(Number);
+  return [n[0], n[1], n[2], n[3] ?? 1];
+}
+
+const luminance = ([r, g, b]) => {
+  const [lr, lg, lb] = [r, g, b].map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+};
+const contrast = (a, b) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+const rgbCss = ([r, g, b]) => `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+
+/** A theme color from the page itself: inside this card, some are changed for the xTool styles. */
+function pageColor(...names) {
+  const style = getComputedStyle(document.documentElement);
+  for (const name of names) {
+    const value = style.getPropertyValue(name).trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+/**
+ * The dialog's colors: the theme's dialog surface, made solid if the theme's
+ * is see-through, and text that reads on it (4.5:1 at least).
+ */
+function dialogColors() {
+  const text = rgbaOf(pageColor("--primary-text-color") || "#212121");
+  const darkText = luminance(text) < 0.4;
+  let surface = rgbaOf(pageColor("--ha-dialog-surface-background", "--mdc-theme-surface", "--card-background-color",
+    "--primary-background-color") || (darkText ? "#ffffff" : "#1c1c1c"));
+  if (surface[3] < 1) {
+    const base = darkText ? 255 : 28;
+    surface = [...surface.slice(0, 3).map((c) => c * surface[3] + base * (1 - surface[3])), 1];
+  }
+  const readable = (color, min) => (contrast(color, surface) >= min ? color : null);
+  const main = readable(text, 4.5) ?? (luminance(surface) > 0.4 ? [33, 33, 33, 1] : [255, 255, 255, 1]);
+  const secondary = readable(rgbaOf(pageColor("--secondary-text-color") || rgbCss(main)), 4.5) ?? main;
+  const accent = readable(rgbaOf(pageColor("--primary-color") || "#03a9f4"), 3) ?? main;
+  return { surface: rgbCss(surface), text: rgbCss(main), secondary: rgbCss(secondary), accent: rgbCss(accent) };
+}
+
 /**
  * Ask before an action that cannot be taken back, or that turns a safety
  * check off. Resolves true to go ahead. The dialog is the browser's own, so
@@ -514,6 +567,12 @@ function confirmAction(host, { title, text, action }) {
     dialog.querySelector("p").textContent = text;
     dialog.querySelector(".keep").textContent = "Keep it";
     dialog.querySelector(".go").textContent = action;
+    // The card changes the text colors for its styles: the dialog takes the page's
+    const colors = dialogColors();
+    dialog.style.background = colors.surface;
+    dialog.style.color = colors.text;
+    dialog.querySelector("p").style.color = colors.secondary;
+    dialog.querySelector(".keep").style.color = colors.accent;
     const done = (ok) => {
       if (dialog.open) dialog.close();
       dialog.remove();
@@ -534,8 +593,8 @@ function confirmAction(host, { title, text, action }) {
 
 /**
  * A row of buttons for one feature. Subclasses list the buttons in
- * _buttons(): { key, label, icon, text, color, pressed, disabled, warn,
- * action, spin (seconds per turn of the icon) }.
+ * _buttons(): { key, label, icon, text, color, pressed, disabled, action,
+ * fill (filled in its color though not on), spin (seconds per turn of the icon) }.
  */
 class XtoolFeature extends HTMLElement {
   constructor() {
@@ -613,11 +672,7 @@ class XtoolFeature extends HTMLElement {
       span.textContent = b.text;
       button.append(span);
     }
-    if (b.warn) {
-      const dot = document.createElement("i");
-      dot.className = "warn";
-      button.append(dot);
-    }
+    if (b.fill) button.classList.add("fill");
     button.addEventListener("click", (ev) => {
       ev.stopPropagation();
       b.action?.();
@@ -783,13 +838,25 @@ class XtoolCamera extends XtoolFeature {
       }
       .shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
       .shot .empty { position: absolute; inset: 0; display: grid; place-items: center; color: #aaa; font-size: var(--ha-font-size-s, 12px); }
+      .shot .time {
+        position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 12px 6px; text-align: start;
+        font-size: var(--ha-font-size-s, 12px); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .9);
+        background: linear-gradient(to top, rgba(0, 0, 0, .6), rgba(0, 0, 0, 0));
+      }
+      .shot .time:empty { display: none; }
       .row:empty { display: none; }`;
     this._shot = document.createElement("button");
     this._shot.type = "button";
     this._shot.className = "shot";
-    this._shot.innerHTML = `<img alt=""><span class="empty"></span>`;
+    this._shot.innerHTML = `<img alt=""><span class="empty"></span><span class="time"></span>`;
     this._img = this._shot.querySelector("img");
     this._empty = this._shot.querySelector(".empty");
+    this._time = this._shot.querySelector(".time");
+    // The time shown is when this picture arrived
+    this._img.addEventListener("load", () => {
+      this._pictureAt = new Date();
+      this._showTime();
+    });
     this._shot.addEventListener("click", (ev) => {
       ev.stopPropagation();
       if (this._camera) fire(this, "hass-more-info", { entityId: this._camera });
@@ -869,12 +936,20 @@ class XtoolCamera extends XtoolFeature {
     this._img.src = `${picture}${picture.includes("?") ? "&" : "?"}t=${Date.now()}`;
     this._shot.setAttribute("aria-label", `${this._cameras.find(([id]) => id === this._camera)?.[1] ?? ""} camera: open`);
   }
+
+  // The last updated time along the bottom of the picture (an option)
+  _showTime() {
+    const shown = !!this._config?.show_time && this._pictureAt && !this._img.hidden;
+    this._time.textContent = shown
+      ? `Updated ${this._pictureAt.toLocaleTimeString(this._hass?.locale?.language || undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" })}`
+      : "";
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Feature: fill light brightness, a slider for each dimmable fill light, like
-// the tile card's own light brightness feature (the buttons for turning the
-// lights on and off are in the peripherals feature)
+// Feature: one fill light's brightness, laid out like the tile card's own
+// light brightness feature. Each fill light is a feature of its own; turning
+// the lights on and off is in the peripherals feature.
 // ---------------------------------------------------------------------------
 const FILL_LIGHTS = [
   { role: "fill_light_front", label: "Fill light (front)" },
@@ -882,41 +957,55 @@ const FILL_LIGHTS = [
   { role: "fill_light", label: "Fill light" },
 ];
 
+/** The laser's fill lights that have a brightness: [{ role, label, entityId }]. */
+function dimmableLights(hass, entityId) {
+  return FILL_LIGHTS.map((item) => ({ ...item, entityId: sibling(hass, entityId, item.role) }))
+    .filter(({ entityId: light }) => (hass?.states[light]?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff"));
+}
+
+// The slider's color: the light's own color when it has one, Home Assistant's
+// light color when it is on, and its inactive color when it is off
+const LIGHT_ON = "var(--state-light-active-color, var(--state-active-color, var(--amber-color, #ffc107)))";
+const LIGHT_OFF = "var(--state-light-inactive-color, var(--state-inactive-color, var(--disabled-color, #bdbdbd)))";
+
+// The same variables as the tile card's light brightness feature
 const SLIDER_CSS = `
   :host { display: block; }
-  .sliders { display: flex; flex-direction: column; gap: var(--feature-button-spacing, 12px); }
-  .name { margin: 0 0 4px; font-size: var(--ha-font-size-s, 12px); color: var(--xtool-text, var(--secondary-text-color)); }
-  .slide { display: block; height: var(--feature-height, 42px); border-radius: var(--feature-border-radius, 12px); overflow: hidden; }
+  .slide { display: block; height: var(--feature-height, 42px); border-radius: var(--feature-border-radius, 12px); }
   ha-control-slider {
-    display: block; height: 100%; width: 100%;
-    --control-slider-color: var(--c, var(--feature-color));
+    --control-slider-color: var(--xtool-light-color);
+    --control-slider-background: var(--xtool-light-color);
+    --control-slider-background-opacity: 0.2;
     --control-slider-thickness: var(--feature-height, 42px);
     --control-slider-border-radius: var(--feature-border-radius, 12px);
   }
   /* Until Home Assistant's own slider is loaded: the same look, as a range input */
   input[type="range"] {
     -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 100%; margin: 0; cursor: pointer;
-    background: linear-gradient(to right, var(--c, var(--feature-color)) var(--value, 0%),
-      color-mix(in srgb, var(--c, var(--feature-color)) 20%, transparent) var(--value, 0%));
+    border-radius: var(--feature-border-radius, 12px);
+    background: linear-gradient(to right, var(--xtool-light-color) var(--value, 0%),
+      color-mix(in srgb, var(--xtool-light-color) 20%, transparent) var(--value, 0%));
   }
   input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: 50%; border-radius: 4px; background: #fff; }
   input[type="range"]::-moz-range-thumb { width: 4px; height: 50%; border: 0; border-radius: 4px; background: #fff; }
   input[type="range"]:disabled { cursor: default; opacity: .45; }
 `;
 
-class XtoolFillLights extends HTMLElement {
-  static label = "Fill lights";
+class XtoolFillLight extends HTMLElement {
+  static label = "Fill light brightness";
 
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this.shadowRoot.innerHTML = `<style>${SLIDER_CSS}</style><div class="sliders" role="group" aria-label="Fill lights"></div>`;
-    this._box = this.shadowRoot.querySelector(".sliders");
+    this.shadowRoot.innerHTML = `<style>${SLIDER_CSS}</style><div class="slide"></div>`;
+    this._box = this.shadowRoot.querySelector(".slide");
     keepTaps(this);
   }
 
-  static getStubConfig() {
-    return { type: "custom:xtool-fill-lights" };
+  // A new feature starts with the first fill light (add it again for the next)
+  static getStubConfig(hass, context) {
+    const first = dimmableLights(hass, context?.entity_id)[0];
+    return { type: "custom:xtool-fill-light", light: first?.role ?? "fill_light_front" };
   }
 
   static getConfigElement() {
@@ -926,7 +1015,7 @@ class XtoolFillLights extends HTMLElement {
   setConfig(config) {
     if (!config) throw new Error("Invalid configuration");
     this._config = config;
-    this._structure = undefined;
+    this._kind = undefined;
     this._render();
   }
 
@@ -940,103 +1029,81 @@ class XtoolFillLights extends HTMLElement {
     this._render();
   }
 
-  /** The fill lights that have a brightness, as { item, entityId }. */
-  _lights() {
-    const hass = this._hass, id = this._context?.entity_id;
-    return chosen(hass, id, FILL_LIGHTS, this._config.controls)
-      .map((item) => ({ item, entityId: sibling(hass, id, item.role) }))
-      .filter(({ entityId }) => (hass.states[entityId]?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff"));
-  }
-
   _render() {
     if (!this._hass || !this._config || !this._context) return;
-    const lights = this._lights();
-    const names = this._config.show_names !== false && lights.length > 1;
-    // The sliders are rebuilt only when the lights or the options change; a
-    // new brightness only moves the slider that is not being held
-    const structure = JSON.stringify([lights.map(({ item }) => item.role), names]);
-    if (structure !== this._structure) {
-      this._structure = structure;
-      this._sliders = new Map();
-      this._box.replaceChildren(...lights.map(({ item, entityId }) => this._row(item, entityId, names)));
-      if (!customElements.get("ha-control-slider") && !this._waiting) {
+    const lights = dimmableLights(this._hass, this._context.entity_id);
+    const light = lights.find((l) => l.role === this._config.light) ?? lights[0];
+    const native = !customElements.get("ha-control-slider");
+    // The slider is made again only when the light or the kind of slider changes
+    const kind = `${light?.role}|${native}`;
+    if (kind !== this._kind) {
+      this._kind = kind;
+      this._slider = light ? this._create(light, native) : undefined;
+      this._box.replaceChildren(...(this._slider ? [this._slider] : []));
+      if (native && !this._waiting) {
         // Home Assistant loads its slider with the first light feature it draws
         this._waiting = true;
         customElements.whenDefined("ha-control-slider").then(() => {
           this._waiting = false;
-          this._structure = undefined;
+          this._kind = undefined;
           this._render();
         });
       }
     }
-    for (const { item, entityId } of lights) {
-      const slider = this._sliders.get(item.role);
-      const stateObj = this._hass.states[entityId];
-      const value = stateObj?.attributes.brightness != null ? Math.max(1, Math.round((stateObj.attributes.brightness * 100) / 255)) : 0;
-      slider.disabled = !this._usable(entityId);
-      if (this._held !== item.role) this._show(slider, value);
-    }
+    if (!light || !this._slider) return;
+    const stateObj = this._hass.states[light.entityId];
+    const rgb = stateObj?.attributes.rgb_color;
+    const on = stateObj?.state === "on";
+    this.style.setProperty("--xtool-light-color", on ? (Array.isArray(rgb) ? `rgb(${rgb.join(", ")})` : LIGHT_ON) : LIGHT_OFF);
+    this._slider.disabled = !stateObj || stateObj.state === "unavailable";
+    const value = on && stateObj.attributes.brightness != null
+      ? Math.max(1, Math.round((stateObj.attributes.brightness * 100) / 255)) : 0;
+    // A slider being held keeps where the finger is
+    if (!this._held) this._show(value);
   }
 
-  _usable(entityId) {
-    const stateObj = this._hass.states[entityId];
-    return !!stateObj && stateObj.state !== "unavailable";
-  }
-
-  _row(item, entityId, names) {
-    const wrap = document.createElement("div");
-    if (names) {
-      const name = document.createElement("p");
-      name.className = "name";
-      name.textContent = item.label;
-      wrap.append(name);
-    }
-    const slide = document.createElement("div");
-    slide.className = "slide";
-    const native = !customElements.get("ha-control-slider");
+  _create(light, native) {
     const slider = document.createElement(native ? "input" : "ha-control-slider");
-    slider.setAttribute("aria-label", `${item.label} brightness`);
+    slider.setAttribute("aria-label", `${light.label} brightness`);
     if (native) {
       slider.type = "range";
       slider.min = "1";
       slider.max = "100";
       slider.step = "1";
       slider.addEventListener("input", () => {
-        this._held = item.role;
+        this._held = true;
         slider.style.setProperty("--value", `${slider.value}%`);
       });
-      slider.addEventListener("change", () => this._set(item.role, entityId, Number(slider.value)));
+      slider.addEventListener("change", () => this._set(light, Number(slider.value)));
     } else {
       slider.min = 1;
       slider.max = 100;
       slider.step = 1;
+      slider.label = `${light.label} brightness`;
       slider.setAttribute("mode", "start");
       slider.setAttribute("unit", "%");
-      slider.addEventListener("slider-moved", () => (this._held = item.role));
+      slider.addEventListener("slider-moved", () => (this._held = true));
       slider.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
         const value = ev.detail?.value;
-        if (Number.isFinite(value)) this._set(item.role, entityId, value);
+        if (Number.isFinite(value)) this._set(light, value);
       });
     }
-    slide.append(slider);
-    wrap.append(slide);
-    this._sliders.set(item.role, slider);
-    return wrap;
+    return slider;
   }
 
-  _show(slider, value) {
-    if (slider.localName === "input") {
-      slider.value = String(value);
-      slider.style.setProperty("--value", `${value}%`);
+  _show(value) {
+    if (this._slider.localName === "input") {
+      this._slider.value = String(value);
+      this._slider.style.setProperty("--value", `${value}%`);
     } else {
-      slider.value = value;
+      this._slider.value = value;
     }
   }
 
-  _set(role, entityId, value) {
-    this._held = undefined;
-    this._hass.callService("light", "turn_on", { entity_id: entityId, brightness_pct: Math.max(1, Math.round(value)) });
+  _set(light, value) {
+    this._held = false;
+    this._hass.callService("light", "turn_on", { entity_id: light.entityId, brightness_pct: Math.max(1, Math.round(value)) });
   }
 }
 
@@ -1076,9 +1143,10 @@ class XtoolSafety extends XtoolFeature {
       const state = hass.states[entityId]?.state;
       const on = state === "on";
       return {
-        key: item.role, label: `${item.label}: ${on ? "on" : "off"}`, icon: item.icon,
-        text: this._config.show_names ? item.label : "", color: "green", pressed: on,
-        warn: state === "off", disabled: !this._usable(entityId),
+        key: item.role, label: `${item.label}: ${on ? "on" : state === "off" ? "off" : "unknown"}`, icon: item.icon,
+        // On: green. Off: red, so a safety check that is off stands out
+        text: this._config.show_names ? item.label : "", color: state === "off" ? "red" : "green", pressed: on,
+        fill: state === "off", disabled: !this._usable(entityId),
         action: () => this._toggle(item, entityId, on),
       };
     });
@@ -1158,7 +1226,7 @@ class XtoolIf2Fan extends XtoolFeature {
 const FEATURES = {
   "xtool-job": XtoolJob,
   "xtool-peripherals": XtoolPeripherals,
-  "xtool-fill-lights": XtoolFillLights,
+  "xtool-fill-light": XtoolFillLight,
   "xtool-safety": XtoolSafety,
   "xtool-settings": XtoolSettings,
   "xtool-camera": XtoolCamera,
@@ -1199,17 +1267,18 @@ const FEATURE_FORMS = {
     ],
     data: (c) => ({ controls: c.controls ?? controlOptions(hass, entityId, SAFETY).map((o) => o.value), show_names: !!c.show_names }),
   }),
-  "custom:xtool-fill-lights": (hass, entityId) => ({
-    schema: [
-      {
-        name: "controls", label: "Fill lights",
-        helper: "A slider for each dimmable fill light. Turning the lights on and off is in the peripherals feature.",
-        selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: controlOptions(hass, entityId, FILL_LIGHTS) } },
-      },
-      { name: "show_names", label: "Show names", helper: "Shown when there is more than one slider.", selector: { boolean: {} } },
-    ],
-    data: (c) => ({ controls: c.controls ?? controlOptions(hass, entityId, FILL_LIGHTS).map((o) => o.value), show_names: c.show_names !== false }),
-  }),
+  "custom:xtool-fill-light": (hass, entityId) => {
+    const lights = dimmableLights(hass, entityId);
+    const roles = lights.map((l) => l.role);
+    return {
+      schema: [{
+        name: "light", label: "Fill light",
+        helper: "Add this feature once for each fill light. Turning the lights on and off is in the peripherals feature.",
+        selector: { select: { mode: "dropdown", options: lights.map((l) => ({ value: l.role, label: l.label })) } },
+      }],
+      data: (c) => ({ light: roles.includes(c.light) ? c.light : roles[0] }),
+    };
+  },
   "custom:xtool-settings": (hass, entityId) => ({
     schema: [
       { name: "controls", label: "Settings", selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: controlOptions(hass, entityId, SETTINGS) } } },
@@ -1228,8 +1297,12 @@ const FEATURE_FORMS = {
           selector: { number: { mode: "box", min: 1, max: 60, step: 1 } },
         },
         { name: "show_switch", label: "Buttons to switch cameras", selector: { boolean: {} } },
+        { name: "show_time", label: "Show the last updated time", helper: "Along the bottom of the picture.", selector: { boolean: {} } },
       ],
-      data: (c) => ({ camera: labels.includes(c.camera) ? c.camera : labels[0], refresh: Number(c.refresh) || 2, show_switch: c.show_switch !== false }),
+      data: (c) => ({
+        camera: labels.includes(c.camera) ? c.camera : labels[0], refresh: Number(c.refresh) || 2,
+        show_switch: c.show_switch !== false, show_time: !!c.show_time,
+      }),
     };
   },
   "custom:xtool-if2-fan": () => ({
@@ -1402,13 +1475,15 @@ function tileConfig(config) {
 /**
  * The tile card inside the card: with "Tap the card to show or hide the
  * features", a tap on the card does that instead of its Tap behavior, and
- * the features are left out while they are hidden.
+ * the features below the title are left out while they are hidden.
  */
 function innerTileConfig(config, open) {
   const tile = tileConfig(config);
   if (config.features_toggle) {
     tile.tap_action = { action: "fire-dom-event", xtool_card: "toggle" };
-    if (!open) tile.features = [];
+    // Collapsed, the card keeps what a tile card shows in its title row:
+    // with features position "inline", the first feature, beside the title
+    if (!open) tile.features = config.features_position === "inline" ? (config.features ?? []).slice(0, 1) : [];
   }
   return tile;
 }
@@ -2389,11 +2464,8 @@ if (!customElements.get(CARD_TYPE)) {
     { type: "xtool-job", name: "xTool job", isSupported: has(["resume", "pause", "cancel"]), configurable: true },
     { type: "xtool-peripherals", name: "xTool peripherals", isSupported: has(PERIPHERALS.map((p) => p.role)), configurable: true },
     {
-      type: "xtool-fill-lights", name: "xTool fill light brightness",
-      isSupported: (hass, context) => isXtool(hass, context?.entity_id) && FILL_LIGHTS.some((item) => {
-        const light = sibling(hass, context.entity_id, item.role);
-        return (hass.states[light]?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff");
-      }),
+      type: "xtool-fill-light", name: "xTool fill light brightness",
+      isSupported: (hass, context) => isXtool(hass, context?.entity_id) && dimmableLights(hass, context.entity_id).length > 0,
       configurable: true,
     },
     { type: "xtool-safety", name: "xTool safety checks", isSupported: has(SAFETY.map((s) => s.role)), configurable: true },
