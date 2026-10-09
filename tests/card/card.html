@@ -61,6 +61,12 @@
     plain: addCard("no style", { ...jobFeatures }, { hass: f2("processing"), height: 220 }),
   };
 
+  // Collapsing to the title
+  try { localStorage.clear(); } catch (err) { /* no storage: the card still works */ }
+  const collapsible = addCard("tap shows or hides the features", { style: "graphite", features_toggle: true, ...jobFeatures }, { hass: f2("idle"), height: 220 });
+  const closedAtLoad = addCard("hidden at load", { entity: "sensor.p2_status", features_toggle: true, features_open: false, ...jobFeatures }, { hass: p2("idle"), height: 220 });
+  const offStyled = addCard("off, graphite", { style: "graphite", ...jobFeatures }, { hass: f2("off"), height: 220 });
+
   // State content attributes
   const content = addCard("state content", { state_content: ["state", "elapsed", "exhaust", "red_dot"] }, { hass: f2("processing") });
 
@@ -143,6 +149,35 @@
     check("graphite, inset", deep(styles.inset, "ha-control-switch").every((el) => el.hasAttribute("xtool-slide")), "the toggle is a slide");
     check("graphite, inset", getComputedStyle(styles.inset.shadowRoot.getElementById("stripe")).display === "block", "the silver line is drawn");
     check("no style", !frame(styles.plain).classList.contains("styled"), "no style: the theme's card");
+
+    // Collapsing
+    const inner = (card) => card.shadowRoot.querySelector("hui-tile-card");
+    check("tap shows or hides the features", inner(collapsible).config.tap_action?.action === "fire-dom-event" && inner(collapsible).config.features.length === 2,
+      "a tap on the card toggles the features, which show at first");
+    const tap = () => inner(collapsible).shadowRoot.querySelector("ha-card").dispatchEvent(new CustomEvent("ll-custom", {
+      bubbles: true, composed: true, detail: inner(collapsible).config.tap_action,
+    }));
+    tap();
+    await wait(50);
+    check("tap shows or hides the features", inner(collapsible).config.features.length === 0, "a tap hides them");
+    check("tap shows or hides the features", localStorage.getItem("xtool-card:sensor.f2_status") === "0", "the browser remembers it");
+    tap();
+    await wait(50);
+    check("tap shows or hides the features", inner(collapsible).config.features.length === 2, "another tap shows them again");
+    check("hidden at load", inner(closedAtLoad).config.features.length === 0, "Show the features at load: off");
+    check("champagne, match", !inner(styles.champagne).config.tap_action, "without the option, the Tap behavior is the card's own");
+
+    // When off, only the window darkens
+    const offFrame = frame(offStyled);
+    check("off, graphite", offFrame.classList.contains("off") && getComputedStyle(offStyled.shadowRoot.getElementById("window")).filter.includes("brightness"),
+      "the window darkens");
+    check("off, graphite", getComputedStyle(offStyled.shadowRoot.getElementById("body")).filter === "none" && getComputedStyle(offFrame).opacity === "1",
+      "the body and the card do not");
+    check("off, graphite", !frame(styles.champagne).classList.contains("off"), "a machine that is on is not darkened");
+
+    // No dividers between features side by side
+    check("no style", getComputedStyle(inner(styles.plain)).getPropertyValue("--ha-card-feature-divider").trim() === "none",
+      "the theme's feature divider is turned off");
 
     // State content
     const info = content.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-info").textContent;

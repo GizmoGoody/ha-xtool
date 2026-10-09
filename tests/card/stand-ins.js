@@ -17,8 +17,8 @@ const F2 = [
   ["switch.f2_power", "power_switch", "on"],
   ["switch.f2_exhaust", "smoking_fan", "on"],
   ["binary_sensor.f2_exhaust_running", "smoking_fan_running", "on"],
-  ["light.f2_fill_front", "fill_light_front", "on"],
-  ["light.f2_fill_back", "fill_light_back", "off"],
+  ["light.f2_fill_front", "fill_light_front", "on", { supported_color_modes: ["brightness"], brightness: 128 }],
+  ["light.f2_fill_back", "fill_light_back", "off", { supported_color_modes: ["brightness"] }],
   ["switch.f2_red_dot", "ir_led", "off"],
   ["switch.f2_flame", "flame_alarm_v2", "on"],
   ["switch.f2_gap", "gap_check", "on"],
@@ -36,6 +36,7 @@ const F2 = [
 const IF2 = [
   ["select.if2_fan", "accessory_ductfanv3_mode_speed", "Auto Quiet", { options: ["Auto Regular", "Auto Quiet", "Off", "1", "2", "3", "4"] }],
   ["switch.if2_buzzer", "accessory_ductfanv3_buzzer", "off"],
+  ["sensor.if2_speed", "accessory_ductfanv3_current_speed", "60"],
 ];
 const P2 = [
   ["sensor.p2_status", "status", "idle"],

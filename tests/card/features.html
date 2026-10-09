@@ -77,6 +77,48 @@
     check("peripherals, chosen", dialogOf(row)?.open && hass.calls.length === 0, "Power asks first while a job runs");
     dialogOf(row).querySelector(".keep").click();
 
+    // Dimming a light: a drag across the button sets the brightness; a tap still toggles
+    hass = makeHass();
+    row = addFeature({ type: "custom:xtool-peripherals" }, { hass });
+    await wait(50);
+    const front = keyNamed(row, "fill_light_front");
+    check("dimming", front.classList.contains("dimmable") && front.style.getPropertyValue("--level") === "0.5",
+      "a dimmable light's button shows its brightness (50%)");
+    check("dimming", !keyNamed(row, "exhaust").classList.contains("dimmable"), "a switch is not dimmable");
+    const box = front.getBoundingClientRect();
+    const at = (type, fraction) => front.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, pointerId: 1, clientX: box.left + box.width * fraction, clientY: box.top + box.height / 2,
+    }));
+    at("pointerdown", 0.1);
+    at("pointermove", 0.5);
+    at("pointermove", 0.8);
+    check("dimming", front.classList.contains("dragging") && front.style.getPropertyValue("--level").startsWith("0.8"), "the fill follows the finger");
+    at("pointerup", 0.8);
+    front.click();
+    const dims = hass.calls.filter((c) => c.domain === "light");
+    check("dimming", dims.length === 1 && dims[0].service === "turn_on" && Math.abs(dims[0].data.brightness_pct - 80) <= 1,
+      `the brightness is set where the finger lifts, and the tap that ends the drag does nothing else (${JSON.stringify(dims)})`);
+    front.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    check("dimming", lastCall(hass).data.brightness_pct === 60, "the right arrow key adds 10%");
+    await wait(450);
+    keyNamed(row, "fill_light_front").click();
+    check("dimming", lastCall(hass).service === "turn_off" && lastCall(hass).data.entity_id === "light.f2_fill_front", "a tap still turns it off");
+    row = addFeature({ type: "custom:xtool-peripherals", dim_lights: false }, { hass });
+    await wait(50);
+    check("dimming", !keyNamed(row, "fill_light_front").classList.contains("dimmable"), "dimming can be turned off");
+
+    // Animate fan: the exhaust's icon turns while it runs
+    row = addFeature({ type: "custom:xtool-peripherals" }, { hass: makeHass() });
+    await wait(50);
+    check("animate fan", keyNamed(row, "exhaust").querySelector("ha-icon").classList.contains("spin"), "the running exhaust fan turns");
+    check("animate fan", !keyNamed(row, "red_dot").querySelector("ha-icon").classList.contains("spin"), "other icons do not");
+    row = addFeature({ type: "custom:xtool-peripherals", animate_fan: false }, { hass: makeHass() });
+    await wait(50);
+    check("animate fan", !keyNamed(row, "exhaust").querySelector("ha-icon").classList.contains("spin"), "it can be turned off");
+    row = addFeature({ type: "custom:xtool-peripherals" }, { hass: makeHass({ "switch.f2_exhaust": "off" }) });
+    await wait(50);
+    check("animate fan", !keyNamed(row, "exhaust").querySelector("ha-icon").classList.contains("spin"), "a fan that is off is still");
+
     // Safety checks
     hass = makeHass({ "switch.f2_moved": "off" });
     row = addFeature({ type: "custom:xtool-safety" }, { hass });
@@ -128,6 +170,15 @@
     await wait(50);
     check("IF2 fan", keysOf(fan).map((k) => k.textContent).join() === "Auto,Off,1,2,3,4", "Auto, Off and gears 1 to 4");
     check("IF2 fan", keyNamed(fan, "auto").getAttribute("aria-pressed") === "true", "Auto Quiet shows as Auto");
+    const autoIcon = keyNamed(fan, "auto").querySelector("ha-icon.spin");
+    check("IF2 fan", autoIcon?.style.getPropertyValue("--spin") === "1.6s", "in Auto, the fan turns at the current speed (60%: 1.6 s a turn)");
+    check("IF2 fan", !keyNamed(fan, "2").querySelector("ha-icon"), "only the button that is on shows the fan");
+    const gear4 = addFeature({ type: "custom:xtool-if2-fan" }, { hass: makeHass({ "select.if2_fan": "4" }) });
+    await wait(50);
+    check("IF2 fan", keyNamed(gear4, "4").querySelector("ha-icon.spin")?.style.getPropertyValue("--spin") === "0.6s", "gear 4 turns fastest");
+    const fanOff = addFeature({ type: "custom:xtool-if2-fan" }, { hass: makeHass({ "select.if2_fan": "Off" }) });
+    await wait(50);
+    check("IF2 fan", keyNamed(fanOff, "Off").querySelector("ha-icon")?.icon === "mdi:fan-off", "off shows a still fan-off icon");
     keyNamed(fan, "2").click();
     check("IF2 fan", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "select", service: "select_option", data: { entity_id: "select.if2_fan", option: "2" } }),
       "a gear is selected");
