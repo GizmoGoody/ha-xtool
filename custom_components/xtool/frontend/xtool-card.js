@@ -4,7 +4,8 @@
  * Tile features (they work in any tile card for an xTool entity, and in the
  * xTool card):
  * - custom:xtool-job          Start or Resume, Pause and Cancel, following the job
- * - custom:xtool-peripherals  the exhaust fan, fill lights, red dot and other parts
+ * - custom:xtool-peripherals  power, the exhaust fan, fill lights (drag to dim), red dot
+ *                             and other parts; a fan's icon turns while it runs
  * - custom:xtool-safety       the safety checks; turning one off asks first
  * - custom:xtool-settings     buzzer reminders, device sleep and the IF2's buzzer
  * - custom:xtool-camera       a camera's picture, with buttons to switch cameras
@@ -23,6 +24,8 @@
  * - an optional xTool style: the machine's window behind the title and its
  *   body behind the rest, with the features on the body in the Match, Flat
  *   or Inset style of the SVS and Lampster cards, and
+ * - an option to show or hide the features with a tap on the card, so it
+ *   can collapse to the title,
  * - the job's progress, elapsed time and last job time, and the state of
  *   parts such as the exhaust and the red dot, as attributes the tile card's
  *   "State content" can show (see JOB_ATTRIBUTES).
@@ -73,6 +76,7 @@ const ROLES = {
 const ACCESSORY_ROLES = {
   if2_fan: [["accessory_ductfanv3_mode_speed"], ["select"]],
   if2_buzzer: [["accessory_ductfanv3_buzzer", "accessory_ductfan_buzzer"], ["switch"]],
+  if2_speed: [["accessory_ductfanv3_current_speed"], ["sensor"]],
 };
 // The cameras, in the order the camera feature offers them
 const CAMERAS = [
@@ -456,7 +460,19 @@ const FEATURE_CSS = `
   .key:disabled { cursor: default; opacity: .45; }
   .key:disabled::before { opacity: .12; }
   .key > * { position: relative; }
+  /* A dimmable light: the fill shows its brightness; drag across to change it */
+  .key.dimmable { touch-action: pan-y; }
+  .key.dimmable[aria-pressed="true"]::before {
+    background: linear-gradient(to right,
+      var(--c, var(--feature-color)) calc(var(--level, 1) * 100%),
+      color-mix(in srgb, var(--c, var(--feature-color)) 35%, transparent) calc(var(--level, 1) * 100%));
+  }
+  .key.dragging::before { transition: none; }
   ha-icon { --mdc-icon-size: 22px; }
+  /* A fan's icon turns while it runs, faster at a higher speed */
+  .spin { animation: xtool-spin var(--spin, 1.2s) linear infinite; }
+  @keyframes xtool-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
   span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .warn {
     position: absolute; top: 5px; right: 6px; width: 8px; height: 8px; border-radius: 50%;
@@ -513,7 +529,9 @@ function confirmAction(host, { title, text, action }) {
 
 /**
  * A row of buttons for one feature. Subclasses list the buttons in
- * _buttons(): { key, label, icon, text, color, pressed, disabled, warn, action }.
+ * _buttons(): { key, label, icon, text, color, pressed, disabled, warn,
+ * action, spin (seconds per turn of the icon), level and dim (a dimmable
+ * light: its brightness from 0 to 1, and what to do with a new one) }.
  */
 class XtoolFeature extends HTMLElement {
   constructor() {
@@ -546,6 +564,8 @@ class XtoolFeature extends HTMLElement {
 
   _render() {
     if (!this._hass || !this._config || !this._context) return;
+    // A light being dimmed keeps its button until the finger lifts
+    if (this._dragging) return;
     const buttons = this._buttons();
     const colors = buttons.map((b) => (b.color ? textOn(this, cssColor(b.color)) : ""));
     if (colors.includes(null)) {
@@ -580,6 +600,10 @@ class XtoolFeature extends HTMLElement {
       const icon = document.createElement("ha-icon");
       icon.icon = b.icon;
       icon.setAttribute("icon", b.icon);
+      if (b.spin) {
+        icon.classList.add("spin");
+        icon.style.setProperty("--spin", `${b.spin}s`);
+      }
       button.append(icon);
     }
     if (b.text) {
@@ -592,11 +616,77 @@ class XtoolFeature extends HTMLElement {
       dot.className = "warn";
       button.append(dot);
     }
+    if (b.dim) this._dimmable(button, b);
     button.addEventListener("click", (ev) => {
       ev.stopPropagation();
+      // A drag that dimmed the light is not also a tap
+      if (button.dataset.dragged) {
+        delete button.dataset.dragged;
+        return;
+      }
       b.action?.();
     });
     return button;
+  }
+
+  /**
+   * A dimmable light's button: a tap turns it on or off; a drag across the
+   * button sets the brightness where the finger lifts; the left and right
+   * arrow keys change it in steps of 10%.
+   */
+  _dimmable(button, b) {
+    button.classList.add("dimmable");
+    button.style.setProperty("--level", String(b.level ?? 1));
+    const show = (level) => {
+      button.style.setProperty("--level", String(level));
+      button.setAttribute("aria-pressed", "true");
+      button.setAttribute("aria-label", `${b.label}: ${Math.round(level * 100)}%`);
+    };
+    const levelAt = (x) => {
+      const r = button.getBoundingClientRect();
+      return Math.max(0.01, Math.min(1, (x - r.left) / r.width));
+    };
+    let start, level;
+    button.addEventListener("pointerdown", (ev) => {
+      if (button.disabled) return;
+      start = ev.clientX;
+      level = undefined;
+    });
+    button.addEventListener("pointermove", (ev) => {
+      if (start === undefined) return;
+      if (level === undefined) {
+        if (Math.abs(ev.clientX - start) < 8) return;
+        try {
+          button.setPointerCapture(ev.pointerId);
+        } catch (err) {
+          // Not capturable (the pointer already left): the drag still works over the button
+        }
+        this._dragging = true;
+        button.classList.add("dragging");
+      }
+      level = levelAt(ev.clientX);
+      show(level);
+    });
+    const end = () => {
+      if (start === undefined) return;
+      start = undefined;
+      button.classList.remove("dragging");
+      this._dragging = false;
+      if (level === undefined) return;
+      button.dataset.dragged = "1";
+      setTimeout(() => delete button.dataset.dragged, 400);
+      b.dim(level);
+      this._key = undefined;
+    };
+    button.addEventListener("pointerup", end);
+    button.addEventListener("pointercancel", end);
+    button.addEventListener("keydown", (ev) => {
+      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+      ev.preventDefault();
+      b.level = Math.max(0.01, Math.min(1, Math.round(((b.level ?? 0) + (ev.key === "ArrowRight" ? 0.1 : -0.1)) * 100) / 100));
+      show(b.level);
+      b.dim(b.level);
+    });
   }
 
   _usable(entityId) {
@@ -663,12 +753,12 @@ const PERIPHERALS = [
     // Asked only while a job runs: cutting the power stops it at once
     warning: "A job is running. Turning the power off stops it at once and it cannot be resumed.",
   },
-  { role: "exhaust", label: "Exhaust fan", icon: "mdi:fan", color: "blue" },
+  { role: "exhaust", label: "Exhaust fan", icon: "mdi:fan", color: "blue", fan: true },
   { role: "fill_light_front", label: "Fill light (front)", icon: "mdi:dome-light", color: "amber" },
   { role: "fill_light_back", label: "Fill light (back)", icon: "mdi:dome-light", color: "amber" },
   { role: "fill_light", label: "Fill light", icon: "mdi:dome-light", color: "amber" },
   { role: "red_dot", label: "Red dot", icon: "mdi:laser-pointer", color: "red" },
-  { role: "cooling_fan", label: "Cooling fan", icon: "mdi:fan-chevron-up", color: "cyan" },
+  { role: "cooling_fan", label: "Cooling fan", icon: "mdi:fan-chevron-up", color: "cyan", fan: true },
   { role: "cover_lock", label: "Cover lock", icon: "mdi:lock", color: "indigo" },
 ];
 
@@ -696,10 +786,22 @@ class XtoolToggles extends XtoolFeature {
     const hass = this._hass, id = this._entityId;
     return chosen(hass, id, this.constructor.list, this._config.controls).map((item) => {
       const entityId = sibling(hass, id, item.role);
-      const on = hass.states[entityId]?.state === "on";
+      const stateObj = hass.states[entityId];
+      const on = stateObj?.state === "on";
+      // A light that has a brightness can be dimmed (on by default)
+      const dimmable = domainOf(entityId) === "light" && this._config.dim_lights !== false &&
+        (stateObj?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff");
+      const level = on ? (stateObj.attributes.brightness ?? 255) / 255 : 0;
       return {
-        key: item.role, label: item.label, icon: item.icon, text: this._config.show_names ? item.label : "",
+        key: item.role, label: dimmable && on ? `${item.label}: ${Math.round(level * 100)}%` : item.label,
+        icon: item.icon, text: this._config.show_names ? item.label : "",
         color: item.color, pressed: on, disabled: !this._usable(entityId),
+        // A fan that is on turns (on by default); these fans have no speed
+        spin: item.fan && on && this._config.animate_fan !== false ? 1.2 : undefined,
+        level: dimmable ? Math.round(level * 100) / 100 : undefined,
+        dim: dimmable
+          ? (value) => hass.callService("light", "turn_on", { entity_id: entityId, brightness_pct: Math.max(1, Math.round(value * 100)) })
+          : undefined,
         action: () => this._toggle(item, entityId, on),
       };
     });
@@ -923,18 +1025,41 @@ class XtoolIf2Fan extends XtoolFeature {
     const state = stateObj?.state;
     const disabled = !this._usable(entityId);
     const select = (option) => () => hass.callService("select", "select_option", { entity_id: entityId, option });
+    // The button that is on shows the fan, turning at its speed (on by default)
+    const animate = this._config.animate_fan !== false;
+    const fan = (pressed, option) => {
+      if (!pressed) return {};
+      if (option === "Off") return { icon: "mdi:fan-off" };
+      return { icon: "mdi:fan", spin: animate ? this._turn(option) : undefined };
+    };
     const buttons = [];
     // The IF2 reports Auto Regular and Auto Quiet the same way: one Auto button
     if (options.some((o) => AUTO_OPTIONS.includes(o))) {
       const auto = AUTO_OPTIONS.includes(this._config.auto) ? this._config.auto : "Auto Regular";
-      buttons.push({ key: "auto", label: auto, text: "Auto", color: "blue", pressed: AUTO_OPTIONS.includes(state),
-        disabled, action: select(auto) });
+      const pressed = AUTO_OPTIONS.includes(state);
+      buttons.push({ key: "auto", label: auto, text: "Auto", color: "blue", pressed, disabled, action: select(auto), ...fan(pressed, "auto") });
     }
     for (const option of options.filter((o) => !AUTO_OPTIONS.includes(o))) {
+      const pressed = state === option;
       buttons.push({ key: option, label: option === "Off" ? "Fan off" : `Gear ${option}`, text: option, color: "blue",
-        pressed: state === option, disabled, action: select(option) });
+        pressed, disabled, action: select(option), ...fan(pressed, option) });
     }
     return buttons;
+  }
+
+  /**
+   * Seconds per turn of the fan icon: from 2.4 at gear 1 to 0.6 at gear 4.
+   * In Auto, from the IF2's current speed (a gear, or a 0 to 100 duty cycle).
+   */
+  _turn(option) {
+    let gear = Number(option);
+    if (!Number.isFinite(gear)) {
+      const speedId = sibling(this._hass, this._entityId, "if2_speed");
+      const speed = speedId ? Number(this._hass.states[speedId]?.state) : NaN;
+      gear = !Number.isFinite(speed) ? 2 : speed > 4 ? speed / 25 : speed;
+    }
+    gear = Math.max(1, Math.min(4, gear));
+    return Math.round((2.4 - (gear - 1) * 0.6) * 10) / 10;
   }
 }
 
@@ -963,8 +1088,17 @@ const FEATURE_FORMS = {
     schema: [
       { name: "controls", label: "Controls", selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: controlOptions(hass, entityId, PERIPHERALS) } } },
       { name: "show_names", label: "Show names", selector: { boolean: {} } },
+      {
+        name: "dim_lights", label: "Dim lights",
+        helper: "Drag across a dimmable light's button to set its brightness; a tap still turns it on or off.",
+        selector: { boolean: {} },
+      },
+      { name: "animate_fan", label: "Animate fan", helper: "A fan's icon turns while it runs.", selector: { boolean: {} } },
     ],
-    data: (c) => ({ controls: c.controls ?? controlOptions(hass, entityId, PERIPHERALS).map((o) => o.value), show_names: !!c.show_names }),
+    data: (c) => ({
+      controls: c.controls ?? controlOptions(hass, entityId, PERIPHERALS).map((o) => o.value), show_names: !!c.show_names,
+      dim_lights: c.dim_lights !== false, animate_fan: c.animate_fan !== false,
+    }),
   }),
   "custom:xtool-safety": (hass, entityId) => ({
     schema: [
@@ -1004,8 +1138,12 @@ const FEATURE_FORMS = {
       name: "auto", label: "The Auto button sets",
       helper: "The IF2 reports both auto modes the same way, so one Auto button sets the one you choose.",
       selector: { select: { mode: "dropdown", options: AUTO_OPTIONS } },
+    }, {
+      name: "animate_fan", label: "Animate fan",
+      helper: "The fan icon turns faster at a higher gear; in Auto, at the IF2's current speed.",
+      selector: { boolean: {} },
     }],
-    data: (c) => ({ auto: AUTO_OPTIONS.includes(c.auto) ? c.auto : "Auto Regular" }),
+    data: (c) => ({ auto: AUTO_OPTIONS.includes(c.auto) ? c.auto : "Auto Regular", animate_fan: c.animate_fan !== false }),
   }),
 };
 
@@ -1153,11 +1291,26 @@ const BADGE_PATHS = {
 };
 
 // Options this card adds to the tile card's
-const OWN_KEYS = ["style", "features_style", "badges", "progress"];
+const OWN_KEYS = ["style", "features_style", "badges", "progress", "features_toggle", "features_open"];
 
+/** The tile card's own options (as its editor shows them). */
 function tileConfig(config) {
   const tile = { ...config, type: "tile", show_entity_picture: true };
   for (const key of OWN_KEYS) delete tile[key];
+  return tile;
+}
+
+/**
+ * The tile card inside the card: with "Tap the card to show or hide the
+ * features", a tap on the card does that instead of its Tap behavior, and
+ * the features are left out while they are hidden.
+ */
+function innerTileConfig(config, open) {
+  const tile = tileConfig(config);
+  if (config.features_toggle) {
+    tile.tap_action = { action: "fire-dom-event", xtool_card: "toggle" };
+    if (!open) tile.features = [];
+  }
   return tile;
 }
 
@@ -1179,13 +1332,17 @@ class XtoolCard extends HTMLElement {
            card is not, so its callouts can extend past the card's edge */
         .clip { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
         .clip.over { z-index: 2; }
-        .tile { position: relative; display: block; height: 100%; }
+        /* No divider between features side by side (a theme can set one) */
+        .tile { position: relative; display: block; height: 100%; --ha-card-feature-divider: none; }
 
         /* The xTool style: the body behind everything, the window behind the title */
         #body, #window, #stripe { position: absolute; display: none; }
         .styled #body { display: block; inset: 0; }
         .styled #window { display: block; overflow: hidden; border-radius: max(4px, calc(var(--ha-card-border-radius, 12px) - 5px)); }
         #window::after { content: ""; position: absolute; inset: 0; background: var(--xtool-gloss); }
+        /* A machine that is off: its window darkens; the body does not */
+        #window { transition: filter 400ms ease-in-out; }
+        .off #window { filter: brightness(.55) saturate(.55); }
         .champagne #body {
           background: radial-gradient(rgba(255, 255, 255, .07) .6px, transparent .7px) 0 0 / 3px 3px,
             linear-gradient(160deg, #d7b8a8 0%, #c4a191 45%, #b08e7f 100%);
@@ -1292,6 +1449,12 @@ class XtoolCard extends HTMLElement {
     this._pct = this.shadowRoot.getElementById("pct");
     this._badge = this.shadowRoot.querySelector(".badge");
     this._resize = new ResizeObserver(() => this._layout());
+    // A tap on the card shows or hides the features (see innerTileConfig)
+    this._frame.addEventListener("ll-custom", (ev) => {
+      if (ev.detail?.xtool_card !== "toggle") return;
+      ev.stopPropagation();
+      this._setOpen(!this._open);
+    });
     this._resize.observe(this._frame);
   }
 
@@ -1327,7 +1490,8 @@ class XtoolCard extends HTMLElement {
     const edge = progressOptions(config).edge;
     if (!EDGES.some(([id]) => id === edge)) throw new Error(`Unknown progress edge: ${edge}`);
     this._config = { ...config, style };
-    const tile = tileConfig(this._config);
+    this._open = !config.features_toggle ? true : this._storedOpen() ?? config.features_open !== false;
+    const tile = innerTileConfig(this._config, this._open);
     if (this._tile) {
       this._tile.setConfig(tile);
     } else if (customElements.get("hui-tile-card")) {
@@ -1337,7 +1501,7 @@ class XtoolCard extends HTMLElement {
       window.loadCardHelpers?.().then(async (helpers) => {
         helpers.createCardElement({ type: "tile", entity: tile.entity });
         await customElements.whenDefined("hui-tile-card");
-        if (!this._tile) this._createTile(tileConfig(this._config));
+        if (!this._tile) this._createTile(innerTileConfig(this._config, this._open));
       });
     }
     this._picture = undefined;
@@ -1360,6 +1524,7 @@ class XtoolCard extends HTMLElement {
     this._hass = hass;
     if (!this._config) return;
     this._job = this._jobState(hass);
+    this._frame.classList.toggle("off", this._job.phase === "off");
     if (this._tile) this._tile.hass = this._innerHass(hass);
     this._updateBadge();
     this._updateEdge();
@@ -1399,6 +1564,32 @@ class XtoolCard extends HTMLElement {
   disconnectedCallback() {
     clearInterval(this._timer);
     this._timer = undefined;
+  }
+
+  // Whether the features are shown is remembered in this browser, per laser
+  get _storageKey() {
+    return `xtool-card:${this._config?.entity}`;
+  }
+
+  _storedOpen() {
+    try {
+      const v = window.localStorage.getItem(this._storageKey);
+      return v === null ? undefined : v === "1";
+    } catch (err) {
+      return undefined;
+    }
+  }
+
+  _setOpen(open) {
+    this._open = open;
+    try {
+      window.localStorage.setItem(this._storageKey, open ? "1" : "0");
+    } catch (err) {
+      // Storage can be unavailable (private windows); the card still works
+    }
+    if (this._tile) this._tile.setConfig(innerTileConfig(this._config, open));
+    this._areasKey = undefined;
+    this._layout();
   }
 
   /** The job as the card shows it: phase, progress (0 to 1), start time. */
@@ -1881,6 +2072,8 @@ class XtoolCardEditor extends HTMLElement {
         features_style: v.features_style,
         badges: v.badges ?? [],
         progress: { ...PROGRESS_DEFAULTS, ...(v.progress ?? {}) },
+        features_toggle: !!v.features_toggle,
+        features_open: v.features_open !== false,
       });
     });
   }
@@ -1950,6 +2143,12 @@ class XtoolCardEditor extends HTMLElement {
         selector: select(FEATURES_STYLES),
       }] : []),
       {
+        name: "features_toggle", label: "Tap the card to show or hide the features",
+        helper: "While this is on, a tap on the card does this instead of its Tap behavior (under Interactions). Icon tap behavior still works.",
+        selector: { boolean: {} },
+      },
+      ...(c.features_toggle ? [{ name: "features_open", label: "Show the features at load", selector: { boolean: {} } }] : []),
+      {
         name: "badges", label: "Badges",
         helper: "One badge shows on the picture: the most urgent of those chosen here.",
         selector: { select: { multiple: true, mode: "list", options: BADGES.map(([value, label]) => ({ value, label })) } },
@@ -1985,6 +2184,8 @@ class XtoolCardEditor extends HTMLElement {
       features_style: c.features_style ?? "match",
       badges: Array.isArray(c.badges) ? c.badges : DEFAULT_BADGES,
       progress: progressOptions(c),
+      features_toggle: !!c.features_toggle,
+      features_open: c.features_open !== false,
     };
   }
 
@@ -2008,6 +2209,12 @@ function explicit(config) {
   c.style = STYLES.some(([id]) => id === c.style) ? c.style : "none";
   if (c.style === "none") delete c.features_style;
   else c.features_style = FEATURES_STYLES.some(([id]) => id === c.features_style) ? c.features_style : "match";
+  // Whether the features show at load matters only when a tap shows or hides them
+  if (c.features_toggle) c.features_open = c.features_open !== false;
+  else {
+    delete c.features_toggle;
+    delete c.features_open;
+  }
   return c;
 }
 
