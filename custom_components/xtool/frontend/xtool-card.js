@@ -644,7 +644,7 @@ class XtoolFeature extends HTMLElement {
     };
     const levelAt = (x) => {
       const r = button.getBoundingClientRect();
-      return Math.max(0.01, Math.min(1, (x - r.left) / r.width));
+      return Math.max(0.01, Math.min(1, Math.round(((x - r.left) / r.width) * 100) / 100));
     };
     let start, level;
     button.addEventListener("pointerdown", (ev) => {
