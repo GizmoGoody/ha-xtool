@@ -30,6 +30,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     # The config poll reads Stops when moved the same way as the push
     "stops_when_moved_poll": lambda: 'self._latest["stops_when_moved"] = wm == "HANDLE"'
     not in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
+    # The config read lists the keys it wants (F-series firmware needs that)
+    "config_read_key_list": lambda: "CONFIG_READ_KEYS" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
