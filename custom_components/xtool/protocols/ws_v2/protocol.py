@@ -2273,10 +2273,13 @@ class WSV2Protocol(XtoolProtocol):
                 self._latest[dst] = kv[src]
         # ``workingMode`` enum → ``stops_when_moved`` bool mirror.
         # Polarity: ``NORMAL`` = stationary / enforcement on,
-        # ``HANDLE`` = handheld override / enforcement off.
+        # ``HANDLE`` = handheld override / enforcement off. The same as
+        # the DEVICE_CONFIG push handler and the switch's own writes;
+        # the poll used to read it inverted, so the switch flipped back
+        # at the next config poll after every push.
         if "workingMode" in kv:
             wm = str(kv["workingMode"] or "").upper()
-            self._latest["stops_when_moved"] = wm == "HANDLE"
+            self._latest["stops_when_moved"] = wm == "NORMAL"
 
         # Surface unknown keys at debug level so we can extend the map
         # when new firmware revisions add new persistent settings.
