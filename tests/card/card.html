@@ -71,6 +71,8 @@
   try { localStorage.clear(); } catch (err) { /* no storage: the card still works */ }
   const collapsible = addCard("tap shows or hides the features", { style: "graphite", features_toggle: true, ...jobFeatures }, { hass: f2("idle"), height: 220 });
   const closedAtLoad = addCard("hidden at load", { entity: "sensor.p2_status", features_toggle: true, features_open: false, ...jobFeatures }, { hass: p2("idle"), height: 220 });
+  const closedInline = addCard("hidden at load, inline", { features_toggle: true, features_open: false, features_position: "inline",
+    features: [{ type: "custom:xtool-job" }, { type: "custom:xtool-peripherals" }, { type: "custom:xtool-safety" }] }, { hass: f2("idle"), height: 160 });
   const offStyled = addCard("off, graphite", { style: "graphite", ...jobFeatures }, { hass: f2("off"), height: 220 });
 
   // A feature beside the title (features position: inline), and two columns of features
@@ -178,7 +180,9 @@
     tap();
     await wait(50);
     check("tap shows or hides the features", inner(collapsible).config.features.length === 2, "another tap shows them again");
-    check("hidden at load", inner(closedAtLoad).config.features.length === 0, "Show the features at load: off");
+    check("hidden at load", inner(closedAtLoad).config.features.length === 0, "Show features at load: off");
+    check("hidden at load, inline", inner(closedInline).config.features.map((f) => f.type).join() === "custom:xtool-job",
+      "collapsed, the feature beside the title stays, as on a tile card");
     check("champagne, match", !inner(styles.champagne).config.tap_action, "without the option, the Tap behavior is the card's own");
 
     // When off, only the window darkens

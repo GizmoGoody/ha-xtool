@@ -97,35 +97,44 @@
     const optionNames = options.querySelector("ha-form").schema.map((s) => s.name);
     check("fill lights as buttons", !optionNames.includes("dim_lights") && optionNames.includes("animate_fan"), `the options have no dimming (${optionNames.join(", ")})`);
 
-    // The fill light brightness feature: a slider for each dimmable light, like the tile card's
+    // Fill light brightness: one light per feature, like the tile card's light brightness feature
     hass = makeHass();
-    const lights = addFeature({ type: "custom:xtool-fill-lights" }, { hass });
+    const frontLight = addFeature({ type: "custom:xtool-fill-light", light: "fill_light_front" }, { hass });
+    const backLight = addFeature({ type: "custom:xtool-fill-light", light: "fill_light_back" }, { hass });
     await wait(50);
-    const sliders = [...lights.shadowRoot.querySelectorAll("ha-control-slider")];
-    check("fill light sliders", sliders.length === 2, "a slider for each fill light");
-    check("fill light sliders", [...lights.shadowRoot.querySelectorAll(".name")].map((n) => n.textContent).join() === "Fill light (front),Fill light (back)",
-      "named, because there is more than one");
-    check("fill light sliders", sliders[0].value === 50 && sliders[1].value === 0, "the front light at 50%, the back light off");
-    check("fill light sliders", sliders[0].min === 1 && sliders[0].max === 100, "from 1 to 100 percent");
-    sliders[0].dispatchEvent(new CustomEvent("value-changed", { detail: { value: 80 }, bubbles: true }));
-    check("fill light sliders", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "light", service: "turn_on", data: { entity_id: "light.f2_fill_front", brightness_pct: 80 } }),
+    const frontSlider = frontLight.shadowRoot.querySelector("ha-control-slider");
+    const backSlider = backLight.shadowRoot.querySelector("ha-control-slider");
+    check("fill light", frontLight.shadowRoot.querySelectorAll("ha-control-slider").length === 1 && !frontLight.shadowRoot.querySelector(".name"),
+      "one slider per feature, with no caption (like the tile card's)");
+    check("fill light", frontSlider.value === 50 && backSlider.value === 0, "the front light at 50%, the back light off");
+    check("fill light", frontSlider.min === 1 && frontSlider.max === 100 && frontSlider.label === "Fill light (front) brightness",
+      "from 1 to 100 percent, labeled with the light");
+    check("fill light", frontLight.style.getPropertyValue("--xtool-light-color").includes("--state-light-active-color")
+      && backLight.style.getPropertyValue("--xtool-light-color").includes("--state-light-inactive-color"), "in the light's colors, on and off");
+    frontSlider.dispatchEvent(new CustomEvent("value-changed", { detail: { value: 80 }, bubbles: true }));
+    check("fill light", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "light", service: "turn_on", data: { entity_id: "light.f2_fill_front", brightness_pct: 80 } }),
       "a new value sets the light's brightness");
-    sliders[0].dispatchEvent(new CustomEvent("slider-moved", { detail: { value: 30 }, bubbles: true }));
-    lights.hass = makeHass({ "light.f2_fill_front": { state: "on", attributes: { brightness: 255 } } });
-    check("fill light sliders", sliders[0].value === 50, "a slider that is being held is not moved by an update");
-    sliders[0].dispatchEvent(new CustomEvent("value-changed", { detail: { value: 30 }, bubbles: true }));
-    lights.hass = makeHass({ "light.f2_fill_front": { state: "on", attributes: { brightness: 255 } } });
-    check("fill light sliders", sliders[0].value === 100, "once let go, it follows the light again");
-    const one = addFeature({ type: "custom:xtool-fill-lights", controls: ["fill_light_back"] }, { hass: makeHass() });
+    frontSlider.dispatchEvent(new CustomEvent("slider-moved", { detail: { value: 30 }, bubbles: true }));
+    frontLight.hass = makeHass({ "light.f2_fill_front": { state: "on", attributes: { brightness: 255 } } });
+    check("fill light", frontSlider.value === 50, "a slider that is being held is not moved by an update");
+    frontSlider.dispatchEvent(new CustomEvent("value-changed", { detail: { value: 30 }, bubbles: true }));
+    frontLight.hass = makeHass({ "light.f2_fill_front": { state: "on", attributes: { brightness: 255 } } });
+    check("fill light", frontSlider.value === 100, "once let go, it follows the light again");
+    const stub = customElements.get("xtool-fill-light").getStubConfig(makeHass(), { entity_id: "sensor.f2_status" });
+    check("fill light", stub.light === "fill_light_front", "a new feature starts with the first fill light");
+    const lightOptions = document.createElement("xtool-feature-editor");
+    lightOptions.hass = makeHass();
+    lightOptions.context = { entity_id: "sensor.f2_status" };
+    lightOptions.setConfig({ type: "custom:xtool-fill-light", light: "fill_light_back" });
+    const lightField = lightOptions.querySelector("ha-form");
+    check("fill light", lightField.data.light === "fill_light_back"
+      && lightField.schema[0].selector.select.options.map((o) => o.value).join() === "fill_light_front,fill_light_back", "the editor offers each fill light");
+    const none = addFeature({ type: "custom:xtool-fill-light" }, { hass: makeHass(), entityId: "sensor.p2_status" });
     await wait(50);
-    check("fill light sliders", one.shadowRoot.querySelectorAll("ha-control-slider").length === 1 && one.shadowRoot.querySelectorAll(".name").length === 0,
-      "the chosen light only, without a name");
-    const none = addFeature({ type: "custom:xtool-fill-lights" }, { hass: makeHass(), entityId: "sensor.p2_status" });
+    check("fill light", none.shadowRoot.querySelectorAll("ha-control-slider").length === 0, "none for a laser without fill lights");
+    const unavailable = addFeature({ type: "custom:xtool-fill-light", light: "fill_light_front" }, { hass: makeHass({ "light.f2_fill_front": "unavailable" }) });
     await wait(50);
-    check("fill light sliders", none.shadowRoot.querySelectorAll("ha-control-slider").length === 0, "none for a laser without fill lights");
-    const unavailable = addFeature({ type: "custom:xtool-fill-lights" }, { hass: makeHass({ "light.f2_fill_front": "unavailable" }) });
-    await wait(50);
-    check("fill light sliders", unavailable.shadowRoot.querySelectorAll("ha-control-slider")[0].disabled === true, "an unavailable light's slider is off");
+    check("fill light", unavailable.shadowRoot.querySelector("ha-control-slider").disabled === true, "an unavailable light's slider is off");
 
     // Animate fan: the exhaust's icon turns while it runs
     row = addFeature({ type: "custom:xtool-peripherals" }, { hass: makeHass() });
@@ -145,13 +154,28 @@
     await wait(50);
     check("safety", keysOf(row).map((k) => k.dataset.key).join() === "flame_alarm,enclosure_stop,moved_stop", "the three checks");
     check("safety", !keyNamed(row, "auto_mode"), "auto mode is not a safety check");
-    check("safety", !!keyNamed(row, "moved_stop").querySelector(".warn") && !keyNamed(row, "flame_alarm").querySelector(".warn"),
-      "a check that is off shows an amber dot");
+    const moved = keyNamed(row, "moved_stop"), flame = keyNamed(row, "flame_alarm");
+    check("safety", moved.classList.contains("fill") && moved.style.getPropertyValue("--c") === "var(--red-color)" && moved.getAttribute("aria-pressed") === "false",
+      "a check that is off is red");
+    check("safety", !flame.classList.contains("fill") && flame.style.getPropertyValue("--c") === "var(--green-color)" && flame.getAttribute("aria-pressed") === "true",
+      "a check that is on is green");
+    check("safety", !row.shadowRoot.querySelector(".warn, i"), "no dots");
     keyNamed(row, "moved_stop").click();
     await wait(20);
     check("safety", !dialogOf(row) && lastCall(hass).service === "turn_on", "turning a check on does not ask");
+    // A glass theme: light text, a see-through card background
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty("--primary-text-color", "#ffffff");
+    rootStyle.setProperty("--secondary-text-color", "rgba(255, 255, 255, 0.7)");
+    rootStyle.setProperty("--card-background-color", "rgba(255, 255, 255, 0.08)");
     keyNamed(row, "flame_alarm").click();
     await wait(20);
+    const box = dialogOf(row);
+    check("safety dialog", /^rgb\(\d+, \d+, \d+\)$/.test(box.style.background) && box.style.color === "rgb(255, 255, 255)",
+      `a solid surface with readable text on a glass theme (${box.style.background}, ${box.style.color})`);
+    rootStyle.removeProperty("--primary-text-color");
+    rootStyle.removeProperty("--secondary-text-color");
+    rootStyle.removeProperty("--card-background-color");
     check("safety", dialogOf(row)?.open && dialogOf(row).textContent.includes("No flame alarm will be triggered"), "turning the flame alarm off asks, with xTool's warning");
     dialogOf(row).querySelector(".go").click();
     await wait(20);
@@ -186,6 +210,12 @@
     check("camera", opened === "camera.f2_deep", "a tap opens the camera");
     const single = addFeature({ type: "custom:xtool-camera", camera: "Deep", show_switch: false }, { hass });
     await wait(80);
+    single.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
+    check("camera, one", single.shadowRoot.querySelector(".time").textContent === "", "no time unless chosen");
+    const timed = addFeature({ type: "custom:xtool-camera", show_time: true }, { hass });
+    await wait(80);
+    timed.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
+    check("camera, time", /^Updated \d/.test(timed.shadowRoot.querySelector(".time").textContent), `the last updated time (${timed.shadowRoot.querySelector(".time").textContent})`);
     check("camera, one", keysOf(single).length === 0 && single.shadowRoot.querySelector(".shot img").getAttribute("src").includes("f2_deep"),
       "the chosen camera, without buttons");
 
@@ -222,7 +252,7 @@
 
     // The features are offered only for lasers that have their parts
     const offered = Object.fromEntries(window.customCardFeatures.map((f) => [f.type, f.isSupported(makeHass(), { entity_id: "sensor.p2_status" })]));
-    check("feature picker", offered["xtool-job"] && offered["xtool-peripherals"] && !offered["xtool-fill-lights"] && !offered["xtool-safety"] && !offered["xtool-if2-fan"] && !offered["xtool-camera"],
+    check("feature picker", offered["xtool-job"] && offered["xtool-peripherals"] && !offered["xtool-fill-light"] && !offered["xtool-safety"] && !offered["xtool-if2-fan"] && !offered["xtool-camera"],
       `offered for the P2: ${Object.entries(offered).filter(([, v]) => v).map(([k]) => k).join(", ")}`);
   });
 </script>
