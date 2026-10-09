@@ -9,8 +9,8 @@
  * - custom:xtool-fill-light   one fill light's brightness: the tile card's own light brightness feature
  * - custom:xtool-safety       the safety checks; turning one off asks first
  * - custom:xtool-settings     buzzer reminders, device sleep, auto mode and the IF2's buzzer
- * - custom:xtool-camera       a camera's picture, with buttons to switch cameras
- * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: Auto, Off, gears 1 to 4
+ * - custom:xtool-camera       a camera, shown by Home Assistant's own image element, with buttons to switch
+ * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: the tile card's own select options feature
  * Each finds its entities on the same device as the card's entity (the IF2
  * on the laser's accessory device).
  *
@@ -77,7 +77,6 @@ const ROLES = {
 const ACCESSORY_ROLES = {
   if2_fan: [["accessory_ductfanv3_mode_speed"], ["select"]],
   if2_buzzer: [["accessory_ductfanv3_buzzer", "accessory_ductfan_buzzer"], ["switch"]],
-  if2_speed: [["accessory_ductfanv3_current_speed"], ["sensor"]],
 };
 // The cameras, in the order the camera feature offers them
 const CAMERAS = [
@@ -828,8 +827,14 @@ class XtoolSettings extends XtoolToggles {
 }
 
 // ---------------------------------------------------------------------------
-// Feature: a camera, with a switch between the laser's cameras
+// Feature: a camera, with buttons to switch between the laser's cameras. The
+// picture is Home Assistant's own hui-image, the element its picture cards
+// show a camera with: snapshots it refreshes itself (Auto), or the camera's
+// live stream (Live). Home Assistant loads hui-image with its picture cards;
+// the card asks the card helpers for one, as it does for the tile card.
 // ---------------------------------------------------------------------------
+const CAMERA_VIEWS = [["auto", "Auto"], ["live", "Live"]];
+
 class XtoolCamera extends XtoolFeature {
   static label = "Camera";
 
@@ -838,14 +843,13 @@ class XtoolCamera extends XtoolFeature {
     const style = document.createElement("style");
     style.textContent = `
       .shot {
-        position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; padding: 0; border: 0; cursor: pointer;
+        position: relative; display: block; width: 100%; padding: 0; border: 0; cursor: pointer;
         border-radius: var(--feature-border-radius, 12px); overflow: hidden; background: #111;
         margin-bottom: var(--feature-button-spacing, 12px);
       }
-      .shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
-      .shot .empty { position: absolute; inset: 0; display: grid; place-items: center; color: #aaa; font-size: var(--ha-font-size-s, 12px); }
+      .shot hui-image { display: block; }
       .shot .time {
-        position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 12px 6px; text-align: start;
+        position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 12px 6px; text-align: start; pointer-events: none;
         font-size: var(--ha-font-size-s, 12px); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .9);
         background: linear-gradient(to top, rgba(0, 0, 0, .6), rgba(0, 0, 0, 0));
       }
@@ -854,15 +858,8 @@ class XtoolCamera extends XtoolFeature {
     this._shot = document.createElement("button");
     this._shot.type = "button";
     this._shot.className = "shot";
-    this._shot.innerHTML = `<img alt=""><span class="empty"></span><span class="time"></span>`;
-    this._img = this._shot.querySelector("img");
-    this._empty = this._shot.querySelector(".empty");
+    this._shot.innerHTML = `<span class="time"></span>`;
     this._time = this._shot.querySelector(".time");
-    // The time shown is when this picture arrived
-    this._img.addEventListener("load", () => {
-      this._pictureAt = new Date();
-      this._showTime();
-    });
     this._shot.addEventListener("click", (ev) => {
       ev.stopPropagation();
       if (this._camera) fire(this, "hass-more-info", { entityId: this._camera });
@@ -879,25 +876,27 @@ class XtoolCamera extends XtoolFeature {
     return document.createElement("xtool-feature-editor");
   }
 
-  connectedCallback() {
-    this._restart();
+  set hass(hass) {
+    super.hass = hass;
+    this._showCamera();
   }
 
-  disconnectedCallback() {
-    clearInterval(this._timer);
-    this._timer = undefined;
+  setConfig(config) {
+    super.setConfig(config);
+    this._showCamera();
   }
 
-  get _cameras() {
-    return camerasOf(this._hass, this._entityId);
+  get _view() {
+    return this._config?.camera_view === "live" ? "live" : "auto";
   }
 
   _buttons() {
-    const cameras = this._cameras;
+    const cameras = camerasOf(this._hass, this._entityId);
     const current = this._currentCamera(cameras);
     if (current !== this._camera) {
       this._camera = current;
-      this._refresh();
+      this._pictureAt = undefined;
+      this._showCamera();
     }
     if (this._config.show_switch === false || cameras.length < 2) return [];
     return cameras.map(([entityId, label]) => ({
@@ -918,41 +917,58 @@ class XtoolCamera extends XtoolFeature {
     return configured ?? ids[0];
   }
 
-  // A new snapshot every few seconds while the card is on screen
-  _restart() {
-    clearInterval(this._timer);
-    const seconds = Math.max(1, Number(this._config?.refresh) || 2);
-    this._timer = setInterval(() => this._refresh(), seconds * 1000);
-    this._refresh();
-  }
-
-  setConfig(config) {
-    super.setConfig(config);
-    if (this.isConnected) this._restart();
-  }
-
-  _refresh() {
-    if (!this._hass) return;
-    const stateObj = this._camera ? this._hass.states[this._camera] : undefined;
-    const picture = stateObj?.attributes.entity_picture;
-    const live = picture && stateObj.state !== "unavailable";
-    this._empty.textContent = live ? "" : "No camera picture";
-    this._img.hidden = !live;
-    // No picture: no time
+  _showCamera() {
+    if (!this._hass || !this._config || !this._camera) return;
+    if (!customElements.get("hui-image")) {
+      // Loaded with Home Assistant's picture cards: ask the card helpers for one
+      if (!this._loading) {
+        this._loading = true;
+        const camera = this._camera;
+        window.loadCardHelpers?.()
+          .then((helpers) => helpers.createCardElement({ type: "picture-entity", entity: camera, camera_image: camera }))
+          .then(() => customElements.whenDefined("hui-image"))
+          .then(() => {
+            this._loading = false;
+            this._showCamera();
+          });
+      }
+      return;
+    }
+    if (!this._image) {
+      this._image = document.createElement("hui-image");
+      this._shot.prepend(this._image);
+    }
+    Object.assign(this._image, {
+      hass: this._hass, entity: this._camera, cameraImage: this._camera, cameraView: this._view, fitMode: "cover",
+    });
+    this._shot.setAttribute("aria-label", `${camerasOf(this._hass, this._entityId).find(([id]) => id === this._camera)?.[1] ?? ""} camera: open`);
+    this._watchPictures();
     this._showTime();
-    if (!live || document.hidden) return;
-    this._img.src = `${picture}${picture.includes("?") ? "&" : "?"}t=${Date.now()}`;
-    this._shot.setAttribute("aria-label", `${this._cameras.find(([id]) => id === this._camera)?.[1] ?? ""} camera: open`);
+  }
+
+  // The time shown is when the latest picture arrived in Home Assistant's image
+  _watchPictures() {
+    const root = this._image?.shadowRoot;
+    if (!root) {
+      Promise.resolve(this._image?.updateComplete).then(() => this._image?.shadowRoot && this._watchPictures());
+      return;
+    }
+    if (this._watched === root) return;
+    this._watched = root;
+    root.addEventListener("load", () => {
+      this._pictureAt = new Date();
+      this._showTime();
+    }, true);
   }
 
   /**
-   * The last updated time along the bottom of the picture (an option): Home
-   * Assistant's timestamp display, the element the tile card shows times
-   * with, in the tile card's time formats. Features render only inside a
-   * tile card, which loads that element.
+   * The last updated time along the bottom of the picture (an option, for
+   * the Auto view): Home Assistant's timestamp display, the element the tile
+   * card shows times with, in the tile card's time formats. Features render
+   * only inside a tile card, which loads that element.
    */
   _showTime() {
-    const shown = !!this._config?.show_time && this._pictureAt && !this._img.hidden;
+    const shown = !!this._config?.show_time && this._view === "auto" && this._pictureAt;
     if (!shown) {
       this._time.replaceChildren();
       return;
@@ -1109,12 +1125,25 @@ class XtoolSafety extends XtoolFeature {
 }
 
 // ---------------------------------------------------------------------------
-// Feature: the SafetyPro IF2 inline fan
+// Feature: the SafetyPro IF2 inline fan. It is Home Assistant's own select
+// options feature, as buttons, for the IF2's fan select (on the laser's
+// accessory device), shown through hui-card-feature like the fill light.
 // ---------------------------------------------------------------------------
-const AUTO_OPTIONS = ["Auto Regular", "Auto Quiet"];
+const SELECT_ON = "var(--state-select-active-color, var(--state-active-color, var(--primary-color, #03a9f4)))";
 
-class XtoolIf2Fan extends XtoolFeature {
+class XtoolIf2Fan extends HTMLElement {
   static label = "SafetyPro IF2 fan";
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this.shadowRoot.innerHTML = `<style>
+      :host { display: block; }
+      .slide { display: block; border-radius: var(--feature-border-radius, 12px); }
+    </style><div class="slide"></div>`;
+    this._box = this.shadowRoot.querySelector(".slide");
+    keepTaps(this);
+  }
 
   static getStubConfig() {
     return { type: "custom:xtool-if2-fan" };
@@ -1124,49 +1153,44 @@ class XtoolIf2Fan extends XtoolFeature {
     return document.createElement("xtool-feature-editor");
   }
 
-  _buttons() {
-    const hass = this._hass;
-    const entityId = if2Fan(hass, this._entityId);
-    const stateObj = entityId ? hass.states[entityId] : undefined;
-    const options = stateObj?.attributes.options ?? [];
-    const state = stateObj?.state;
-    const disabled = !this._usable(entityId);
-    const select = (option) => () => hass.callService("select", "select_option", { entity_id: entityId, option });
-    // The button that is on shows the fan, turning at its speed (on by default)
-    const animate = this._config.animate_fan !== false;
-    const fan = (pressed, option) => {
-      if (!pressed) return {};
-      if (option === "Off") return { icon: "mdi:fan-off" };
-      return { icon: "mdi:fan", spin: animate ? this._turn(option) : undefined };
-    };
-    const buttons = [];
-    // The IF2 reports Auto Regular and Auto Quiet the same way: one Auto button
-    if (options.some((o) => AUTO_OPTIONS.includes(o))) {
-      const auto = AUTO_OPTIONS.includes(this._config.auto) ? this._config.auto : "Auto Regular";
-      const pressed = AUTO_OPTIONS.includes(state);
-      buttons.push({ key: "auto", label: auto, text: "Auto", color: "blue", pressed, disabled, action: select(auto), ...fan(pressed, "auto") });
-    }
-    for (const option of options.filter((o) => !AUTO_OPTIONS.includes(o))) {
-      const pressed = state === option;
-      buttons.push({ key: option, label: option === "Off" ? "Fan off" : `Gear ${option}`, text: option, color: "blue",
-        pressed, disabled, action: select(option), ...fan(pressed, option) });
-    }
-    return buttons;
+  setConfig(config) {
+    if (!config) throw new Error("Invalid configuration");
+    this._config = config;
+    this._render();
   }
 
-  /**
-   * Seconds per turn of the fan icon: from 2.4 at gear 1 to 0.6 at gear 4.
-   * In Auto, from the IF2's current speed (a gear, or a 0 to 100 duty cycle).
-   */
-  _turn(option) {
-    let gear = Number(option);
-    if (!Number.isFinite(gear)) {
-      const speedId = sibling(this._hass, this._entityId, "if2_speed");
-      const speed = speedId ? Number(this._hass.states[speedId]?.state) : NaN;
-      gear = !Number.isFinite(speed) ? 2 : speed > 4 ? speed / 25 : speed;
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  set context(context) {
+    this._context = context;
+    this._render();
+  }
+
+  _render() {
+    if (!this._hass || !this._config || !this._context) return;
+    const fan = if2Fan(this._hass, this._context.entity_id);
+    if (!fan) {
+      this._box.replaceChildren();
+      this._feature = undefined;
+      return;
     }
-    gear = Math.max(1, Math.min(4, gear));
-    return Math.round((2.4 - (gear - 1) * 0.6) * 10) / 10;
+    if (!this._feature) {
+      this._feature = document.createElement("hui-card-feature");
+      this._box.replaceChildren(this._feature);
+    }
+    const options = Array.isArray(this._config.options) ? this._config.options : undefined;
+    const key = JSON.stringify(options ?? null);
+    if (key !== this._optionsKey) {
+      this._optionsKey = key;
+      this._feature.feature = { type: "select-options", style: "buttons", ...(options ? { options } : {}) };
+    }
+    this.style.setProperty("--feature-color", SELECT_ON);
+    this._feature.color = SELECT_ON;
+    if (this._feature.context?.entity_id !== fan) this._feature.context = { entity_id: fan };
+    this._feature.hass = this._hass;
   }
 }
 
@@ -1239,33 +1263,33 @@ const FEATURE_FORMS = {
       schema: [
         { name: "camera", label: "Camera", selector: { select: { mode: "dropdown", options: labels } } },
         {
-          name: "refresh", label: "New picture every (seconds)",
-          helper: "The laser sends about one picture a second at most.",
-          selector: { number: { mode: "box", min: 1, max: 60, step: 1 } },
+          name: "camera_view", label: "Camera view",
+          helper: "As in Home Assistant's picture cards. Auto: snapshots, refreshed by Home Assistant. Live: the camera's stream.",
+          selector: select(CAMERA_VIEWS),
         },
         { name: "show_switch", label: "Buttons to switch cameras", selector: { boolean: {} } },
-        { name: "show_time", label: "Show the last updated time", helper: "Along the bottom of the picture.", selector: { boolean: {} } },
+        { name: "show_time", label: "Show the last updated time", helper: "Along the bottom of the picture, in the Auto view.", selector: { boolean: {} } },
         { name: "time_format", label: "Time format", selector: select(TIME_FORMATS) },
       ],
       data: (c) => ({
-        camera: labels.includes(c.camera) ? c.camera : labels[0], refresh: Number(c.refresh) || 2,
+        camera: labels.includes(c.camera) ? c.camera : labels[0], camera_view: c.camera_view === "live" ? "live" : "auto",
         show_switch: c.show_switch !== false, show_time: !!c.show_time,
         time_format: TIME_FORMATS.some(([id]) => id === c.time_format) ? c.time_format : "auto",
       }),
     };
   },
-  "custom:xtool-if2-fan": () => ({
-    schema: [{
-      name: "auto", label: "The Auto button sets",
-      helper: "The IF2 reports both auto modes the same way, so one Auto button sets the one you choose.",
-      selector: { select: { mode: "dropdown", options: AUTO_OPTIONS } },
-    }, {
-      name: "animate_fan", label: "Animate fan",
-      helper: "The fan icon turns faster at a higher gear; in Auto, at the IF2's current speed.",
-      selector: { boolean: {} },
-    }],
-    data: (c) => ({ auto: AUTO_OPTIONS.includes(c.auto) ? c.auto : "Auto Regular", animate_fan: c.animate_fan !== false }),
-  }),
+  "custom:xtool-if2-fan": (hass, entityId) => {
+    const fan = if2Fan(hass, entityId);
+    const options = fan ? hass.states[fan]?.attributes.options ?? [] : [];
+    return {
+      schema: [{
+        name: "options", label: "Choices",
+        helper: "Which of the fan's choices show as buttons, and in what order.",
+        selector: { select: { multiple: true, reorder: true, mode: "dropdown", options } },
+      }],
+      data: (c) => ({ options: Array.isArray(c.options) ? c.options : options }),
+    };
+  },
 };
 
 class XtoolFeatureEditor extends HTMLElement {
