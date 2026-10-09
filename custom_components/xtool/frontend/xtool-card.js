@@ -6,7 +6,7 @@
  * - custom:xtool-job          Start or Resume, Pause and Cancel, following the job
  * - custom:xtool-peripherals  power, the exhaust fan, fill lights (on or off), red dot
  *                             and other parts; a fan's icon turns while it runs
- * - custom:xtool-fill-light   one fill light's brightness, like the tile card's light brightness
+ * - custom:xtool-fill-light   one fill light's brightness: the tile card's own light brightness feature
  * - custom:xtool-safety       the safety checks; turning one off asks first
  * - custom:xtool-settings     buzzer reminders, device sleep, auto mode and the IF2's buzzer
  * - custom:xtool-camera       a camera's picture, with buttons to switch cameras
@@ -392,32 +392,11 @@ function statePicture(phase, color, { galvo = false, seed = 1, backing = false, 
 
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-// A time's formats, the same as the tile card's Time format: [id, label].
-// Auto is Home Assistant's default for a time (relative).
+// The tile card's Time format choices: [id, label]. Auto leaves the format
+// to Home Assistant's timestamp display.
 const TIME_FORMATS = [
   ["auto", "Auto"], ["relative", "Relative"], ["total", "Total"], ["date", "Date"], ["time", "Time"], ["datetime", "Date and time"],
 ];
-
-/**
- * A time in one of TIME_FORMATS, in the user's language and Home
- * Assistant's 12 or 24 hour setting (Profile > Time format). Used only until
- * Home Assistant's own timestamp display is loaded.
- */
-function formatTime(when, format, hass) {
-  const locale = hass?.locale;
-  const language = locale?.language || undefined;
-  const hour12 = locale?.time_format === "12" ? true : locale?.time_format === "24" ? false : undefined;
-  if (format === "total") return formatDuration((Date.now() - when.getTime()) / 1000);
-  if (!format || format === "auto" || format === "relative") {
-    const seconds = Math.round((when.getTime() - Date.now()) / 1000);
-    const units = [["day", 86400], ["hour", 3600], ["minute", 60], ["second", 1]];
-    const [unit, size] = units.find(([, s]) => Math.abs(seconds) >= s) ?? ["second", 1];
-    return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(Math.round(seconds / size), unit);
-  }
-  if (format === "date") return when.toLocaleDateString(language, { dateStyle: "medium" });
-  if (format === "datetime") return when.toLocaleString(language, { dateStyle: "medium", timeStyle: "medium", hour12 });
-  return when.toLocaleTimeString(language, { hour: "numeric", minute: "2-digit", second: "2-digit", hour12 });
-}
 
 /** Seconds as 1:02:03 or 12:08. */
 function formatDuration(seconds) {
@@ -959,7 +938,7 @@ class XtoolCamera extends XtoolFeature {
     const live = picture && stateObj.state !== "unavailable";
     this._empty.textContent = live ? "" : "No camera picture";
     this._img.hidden = !live;
-    // A relative time ("5 seconds ago") moves on between pictures
+    // No picture: no time
     this._showTime();
     if (!live || document.hidden) return;
     this._img.src = `${picture}${picture.includes("?") ? "&" : "?"}t=${Date.now()}`;
@@ -967,10 +946,10 @@ class XtoolCamera extends XtoolFeature {
   }
 
   /**
-   * The last updated time along the bottom of the picture (an option), shown
-   * by Home Assistant's own timestamp display, the one the tile card uses,
-   * in the tile card's time formats. Until that is loaded, the card writes
-   * the time itself in the same formats.
+   * The last updated time along the bottom of the picture (an option): Home
+   * Assistant's timestamp display, the element the tile card shows times
+   * with, in the tile card's time formats. Features render only inside a
+   * tile card, which loads that element.
    */
   _showTime() {
     const shown = !!this._config?.show_time && this._pictureAt && !this._img.hidden;
@@ -979,27 +958,20 @@ class XtoolCamera extends XtoolFeature {
       return;
     }
     const chosen = this._config.time_format;
-    const format = TIME_FORMATS.some(([id]) => id === chosen) && chosen !== "auto" ? chosen : undefined;
-    if (customElements.get("hui-timestamp-display")) {
-      this._stamp ??= document.createElement("hui-timestamp-display");
-      this._stamp.hass = this._hass;
-      this._stamp.ts = this._pictureAt;
-      this._stamp.format = format;
-      if (this._stamp.parentNode !== this._time) this._time.replaceChildren("Updated ", this._stamp);
-      return;
-    }
-    this._time.textContent = `Updated ${formatTime(this._pictureAt, format, this._hass)}`;
-    if (!this._waitingStamp) {
-      this._waitingStamp = true;
-      customElements.whenDefined("hui-timestamp-display").then(() => this._showTime());
-    }
+    this._stamp ??= document.createElement("hui-timestamp-display");
+    this._stamp.hass = this._hass;
+    this._stamp.ts = this._pictureAt;
+    this._stamp.format = TIME_FORMATS.some(([id]) => id === chosen) && chosen !== "auto" ? chosen : undefined;
+    if (this._stamp.parentNode !== this._time) this._time.replaceChildren("Updated ", this._stamp);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Feature: one fill light's brightness, laid out like the tile card's own
-// light brightness feature. Each fill light is a feature of its own; turning
-// the lights on and off is in the peripherals feature.
+// Feature: one fill light's brightness. It is Home Assistant's own light
+// brightness feature, shown for the chosen fill light through
+// hui-card-feature, the element the tile card shows every feature with
+// (features render only inside a tile card, which loads it). Turning the
+// lights on and off is in the peripherals feature.
 // ---------------------------------------------------------------------------
 const FILL_LIGHTS = [
   { role: "fill_light_front", label: "Fill light (front)" },
@@ -1013,33 +985,10 @@ function dimmableLights(hass, entityId) {
     .filter(({ entityId: light }) => (hass?.states[light]?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff"));
 }
 
-// The slider's color: the light's own color when it has one, Home Assistant's
-// light color when it is on, and its inactive color when it is off
+// The feature color the tile card gives a light: its own color when it has
+// one, Home Assistant's light colors otherwise
 const LIGHT_ON = "var(--state-light-active-color, var(--state-active-color, var(--amber-color, #ffc107)))";
 const LIGHT_OFF = "var(--state-light-inactive-color, var(--state-inactive-color, var(--disabled-color, #bdbdbd)))";
-
-// The same variables as the tile card's light brightness feature
-const SLIDER_CSS = `
-  :host { display: block; }
-  .slide { display: block; height: var(--feature-height, 42px); border-radius: var(--feature-border-radius, 12px); }
-  ha-control-slider {
-    --control-slider-color: var(--xtool-light-color);
-    --control-slider-background: var(--xtool-light-color);
-    --control-slider-background-opacity: 0.2;
-    --control-slider-thickness: var(--feature-height, 42px);
-    --control-slider-border-radius: var(--feature-border-radius, 12px);
-  }
-  /* Until Home Assistant's own slider is loaded: the same look, as a range input */
-  input[type="range"] {
-    -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 100%; margin: 0; cursor: pointer;
-    border-radius: var(--feature-border-radius, 12px);
-    background: linear-gradient(to right, var(--xtool-light-color) var(--value, 0%),
-      color-mix(in srgb, var(--xtool-light-color) 20%, transparent) var(--value, 0%));
-  }
-  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: 50%; border-radius: 4px; background: #fff; }
-  input[type="range"]::-moz-range-thumb { width: 4px; height: 50%; border: 0; border-radius: 4px; background: #fff; }
-  input[type="range"]:disabled { cursor: default; opacity: .45; }
-`;
 
 class XtoolFillLight extends HTMLElement {
   static label = "Fill light brightness";
@@ -1047,7 +996,10 @@ class XtoolFillLight extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this.shadowRoot.innerHTML = `<style>${SLIDER_CSS}</style><div class="slide"></div>`;
+    this.shadowRoot.innerHTML = `<style>
+      :host { display: block; }
+      .slide { display: block; border-radius: var(--feature-border-radius, 12px); }
+    </style><div class="slide"></div>`;
     this._box = this.shadowRoot.querySelector(".slide");
     keepTaps(this);
   }
@@ -1065,7 +1017,6 @@ class XtoolFillLight extends HTMLElement {
   setConfig(config) {
     if (!config) throw new Error("Invalid configuration");
     this._config = config;
-    this._kind = undefined;
     this._render();
   }
 
@@ -1083,77 +1034,23 @@ class XtoolFillLight extends HTMLElement {
     if (!this._hass || !this._config || !this._context) return;
     const lights = dimmableLights(this._hass, this._context.entity_id);
     const light = lights.find((l) => l.role === this._config.light) ?? lights[0];
-    const native = !customElements.get("ha-control-slider");
-    // The slider is made again only when the light or the kind of slider changes
-    const kind = `${light?.role}|${native}`;
-    if (kind !== this._kind) {
-      this._kind = kind;
-      this._slider = light ? this._create(light, native) : undefined;
-      this._box.replaceChildren(...(this._slider ? [this._slider] : []));
-      if (native && !this._waiting) {
-        // Home Assistant loads its slider with the first light feature it draws
-        this._waiting = true;
-        customElements.whenDefined("ha-control-slider").then(() => {
-          this._waiting = false;
-          this._kind = undefined;
-          this._render();
-        });
-      }
+    if (!light) {
+      this._box.replaceChildren();
+      this._feature = undefined;
+      return;
     }
-    if (!light || !this._slider) return;
+    if (!this._feature) {
+      this._feature = document.createElement("hui-card-feature");
+      this._feature.feature = { type: "light-brightness" };
+      this._box.replaceChildren(this._feature);
+    }
     const stateObj = this._hass.states[light.entityId];
     const rgb = stateObj?.attributes.rgb_color;
-    const on = stateObj?.state === "on";
-    this.style.setProperty("--xtool-light-color", on ? (Array.isArray(rgb) ? `rgb(${rgb.join(", ")})` : LIGHT_ON) : LIGHT_OFF);
-    this._slider.disabled = !stateObj || stateObj.state === "unavailable";
-    const value = on && stateObj.attributes.brightness != null
-      ? Math.max(1, Math.round((stateObj.attributes.brightness * 100) / 255)) : 0;
-    // A slider being held keeps where the finger is
-    if (!this._held) this._show(value);
-  }
-
-  _create(light, native) {
-    const slider = document.createElement(native ? "input" : "ha-control-slider");
-    slider.setAttribute("aria-label", `${light.label} brightness`);
-    if (native) {
-      slider.type = "range";
-      slider.min = "1";
-      slider.max = "100";
-      slider.step = "1";
-      slider.addEventListener("input", () => {
-        this._held = true;
-        slider.style.setProperty("--value", `${slider.value}%`);
-      });
-      slider.addEventListener("change", () => this._set(light, Number(slider.value)));
-    } else {
-      slider.min = 1;
-      slider.max = 100;
-      slider.step = 1;
-      slider.label = `${light.label} brightness`;
-      slider.setAttribute("mode", "start");
-      slider.setAttribute("unit", "%");
-      slider.addEventListener("slider-moved", () => (this._held = true));
-      slider.addEventListener("value-changed", (ev) => {
-        ev.stopPropagation();
-        const value = ev.detail?.value;
-        if (Number.isFinite(value)) this._set(light, value);
-      });
-    }
-    return slider;
-  }
-
-  _show(value) {
-    if (this._slider.localName === "input") {
-      this._slider.value = String(value);
-      this._slider.style.setProperty("--value", `${value}%`);
-    } else {
-      this._slider.value = value;
-    }
-  }
-
-  _set(light, value) {
-    this._held = false;
-    this._hass.callService("light", "turn_on", { entity_id: light.entityId, brightness_pct: Math.max(1, Math.round(value)) });
+    const color = stateObj?.state === "on" ? (Array.isArray(rgb) ? `rgb(${rgb.join(", ")})` : LIGHT_ON) : LIGHT_OFF;
+    this.style.setProperty("--feature-color", color);
+    this._feature.color = color;
+    if (this._feature.context?.entity_id !== light.entityId) this._feature.context = { entity_id: light.entityId };
+    this._feature.hass = this._hass;
   }
 }
 
