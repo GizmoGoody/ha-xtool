@@ -265,10 +265,10 @@ Transient-event entities — fire once on edge transitions (rather than holding 
 The integration adds an **xTool Laser** card to the dashboard card picker. It needs no separate install: the card is added to the dashboard resources when the integration loads. It is Home Assistant's tile card with additions, so every tile card option works the same way.
 
 - **State picture** in place of the icon: an engraving trail while the laser works (random strokes on galvo machines such as the F-series, a raster on the others), burned-in pause bars when paused, a burned-in check when finished, drifting Zs when asleep, and so on. Animations stop when the device asks for reduced motion.
-- **Badge** on the picture for the most urgent of: alarm or fire warning, not connected, safety key removed, lid open, a safety check off, firmware update (choose which in the editor).
+- **Badge** on the picture: the first that applies of alarm or fire warning, not connected, safety key removed, lid open, a safety check off and firmware update. You choose which are shown and put them in priority order in the editor.
 - **Progress edge** along the top, bottom, left or right of the card, or around it. It fills from the laser's progress sensor; models without one (such as the F2 Ultra UV) show a sweep while a job runs.
 - **xTool style** (optional): *xTool Champagne* (orange window, champagne aluminum body) or *xTool Graphite* (dark tinted window, charcoal body). The features sit on the body in the **Match**, **Flat** or **Console** style.
-- **Collapsible**: with *Tap the card to show or hide the features*, a tap on the card collapses it to the title and back. The choice is remembered in each browser.
+- **Collapsible**: with *Tap the card to show or hide the features*, a tap on the card collapses it to the title and back. The choice is remembered in each browser. The card's height follows its content.
 - **When the laser is off**, only its window darkens; the body keeps its finish, and controls that cannot be used are dimmed.
 - **State content**: the card adds `progress`, `elapsed`, `job_time` and the state of parts such as `exhaust`, `red_dot`, `power` and `safety_key`, which the tile card's *State content* can show.
 
@@ -277,9 +277,10 @@ Tile features (they also work in a plain tile card for an xTool entity):
 | Feature | Controls |
 |---|---|
 | xTool job | Start or Resume, Pause, Cancel (asks before cancelling) |
-| xTool peripherals | Power (smart plug), exhaust fan, fill lights, red dot, cooling fan, cover lock. Drag across a dimmable light to set its brightness. A fan's icon turns while it runs (*Animate fan*) |
-| xTool safety checks | Flame alarm, stops when enclosure opened, stops when moved, auto mode. Turning one off always asks first |
-| xTool settings | Buzzer reminders, device sleep, IF2 buzzer |
+| xTool peripherals | Power (smart plug), exhaust fan, fill lights (on or off), red dot, cooling fan, cover lock. A fan's icon turns while it runs (*Animate fan*) |
+| xTool fill light brightness | A brightness slider for each dimmable fill light, like the tile card's own light brightness feature |
+| xTool safety checks | Flame alarm, stops when enclosure opened, stops when moved. Turning one off always asks first |
+| xTool settings | Buzzer reminders, device sleep, auto mode, IF2 buzzer |
 | xTool camera | A camera's picture (tap to open it), with buttons to switch cameras |
 | xTool SafetyPro IF2 fan | Auto, Off, gears 1 to 4. The fan icon turns faster at a higher speed (*Animate fan*) |
 

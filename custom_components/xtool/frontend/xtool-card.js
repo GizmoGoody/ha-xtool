@@ -4,10 +4,11 @@
  * Tile features (they work in any tile card for an xTool entity, and in the
  * xTool card):
  * - custom:xtool-job          Start or Resume, Pause and Cancel, following the job
- * - custom:xtool-peripherals  power, the exhaust fan, fill lights (drag to dim), red dot
+ * - custom:xtool-peripherals  power, the exhaust fan, fill lights (on or off), red dot
  *                             and other parts; a fan's icon turns while it runs
+ * - custom:xtool-fill-lights  a brightness slider for each dimmable fill light
  * - custom:xtool-safety       the safety checks; turning one off asks first
- * - custom:xtool-settings     buzzer reminders, device sleep and the IF2's buzzer
+ * - custom:xtool-settings     buzzer reminders, device sleep, auto mode and the IF2's buzzer
  * - custom:xtool-camera       a camera's picture, with buttons to switch cameras
  * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: Auto, Off, gears 1 to 4
  * Each finds its entities on the same device as the card's entity (the IF2
@@ -472,14 +473,6 @@ const FEATURE_CSS = `
   .key:disabled { cursor: default; opacity: .45; }
   .key:disabled::before { opacity: .12; }
   .key > * { position: relative; }
-  /* A dimmable light: the fill shows its brightness; drag across to change it */
-  .key.dimmable { touch-action: pan-y; }
-  .key.dimmable[aria-pressed="true"]::before {
-    background: linear-gradient(to right,
-      var(--c, var(--feature-color)) calc(var(--level, 1) * 100%),
-      color-mix(in srgb, var(--c, var(--feature-color)) 35%, transparent) calc(var(--level, 1) * 100%));
-  }
-  .key.dragging::before { transition: none; }
   ha-icon { --mdc-icon-size: 22px; }
   /* A fan's icon turns while it runs, faster at a higher speed */
   .spin { animation: xtool-spin var(--spin, 1.2s) linear infinite; }
@@ -542,8 +535,7 @@ function confirmAction(host, { title, text, action }) {
 /**
  * A row of buttons for one feature. Subclasses list the buttons in
  * _buttons(): { key, label, icon, text, color, pressed, disabled, warn,
- * action, spin (seconds per turn of the icon), level and dim (a dimmable
- * light: its brightness from 0 to 1, and what to do with a new one) }.
+ * action, spin (seconds per turn of the icon) }.
  */
 class XtoolFeature extends HTMLElement {
   constructor() {
@@ -576,8 +568,6 @@ class XtoolFeature extends HTMLElement {
 
   _render() {
     if (!this._hass || !this._config || !this._context) return;
-    // A light being dimmed keeps its button until the finger lifts
-    if (this._dragging) return;
     const buttons = this._buttons();
     const colors = buttons.map((b) => (b.color ? textOn(this, cssColor(b.color)) : ""));
     if (colors.includes(null)) {
@@ -628,77 +618,11 @@ class XtoolFeature extends HTMLElement {
       dot.className = "warn";
       button.append(dot);
     }
-    if (b.dim) this._dimmable(button, b);
     button.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      // A drag that dimmed the light is not also a tap
-      if (button.dataset.dragged) {
-        delete button.dataset.dragged;
-        return;
-      }
       b.action?.();
     });
     return button;
-  }
-
-  /**
-   * A dimmable light's button: a tap turns it on or off; a drag across the
-   * button sets the brightness where the finger lifts; the left and right
-   * arrow keys change it in steps of 10%.
-   */
-  _dimmable(button, b) {
-    button.classList.add("dimmable");
-    button.style.setProperty("--level", String(b.level ?? 1));
-    const show = (level) => {
-      button.style.setProperty("--level", String(level));
-      button.setAttribute("aria-pressed", "true");
-      button.setAttribute("aria-label", `${b.label}: ${Math.round(level * 100)}%`);
-    };
-    const levelAt = (x) => {
-      const r = button.getBoundingClientRect();
-      return Math.max(0.01, Math.min(1, Math.round(((x - r.left) / r.width) * 100) / 100));
-    };
-    let start, level;
-    button.addEventListener("pointerdown", (ev) => {
-      if (button.disabled) return;
-      start = ev.clientX;
-      level = undefined;
-    });
-    button.addEventListener("pointermove", (ev) => {
-      if (start === undefined) return;
-      if (level === undefined) {
-        if (Math.abs(ev.clientX - start) < 8) return;
-        try {
-          button.setPointerCapture(ev.pointerId);
-        } catch (err) {
-          // Not capturable (the pointer already left): the drag still works over the button
-        }
-        this._dragging = true;
-        button.classList.add("dragging");
-      }
-      level = levelAt(ev.clientX);
-      show(level);
-    });
-    const end = () => {
-      if (start === undefined) return;
-      start = undefined;
-      button.classList.remove("dragging");
-      this._dragging = false;
-      if (level === undefined) return;
-      button.dataset.dragged = "1";
-      setTimeout(() => delete button.dataset.dragged, 400);
-      b.dim(level);
-      this._key = undefined;
-    };
-    button.addEventListener("pointerup", end);
-    button.addEventListener("pointercancel", end);
-    button.addEventListener("keydown", (ev) => {
-      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
-      ev.preventDefault();
-      b.level = Math.max(0.01, Math.min(1, Math.round(((b.level ?? 0) + (ev.key === "ArrowRight" ? 0.1 : -0.1)) * 100) / 100));
-      show(b.level);
-      b.dim(b.level);
-    });
   }
 
   _usable(entityId) {
@@ -781,10 +705,12 @@ function chosen(hass, entityId, list, roles) {
   return roles.map((role) => present.find((item) => item.role === role)).filter(Boolean);
 }
 
-// The machine's and the IF2's own settings
+// The machine's and the IF2's own settings (auto mode is a setting: it decides
+// who may start a job, and is not one of the safety checks)
 const SETTINGS = [
   { role: "buzzer", label: "Buzzer reminders", icon: "mdi:volume-high", color: "teal" },
   { role: "device_sleep", label: "Device sleep", icon: "mdi:power-sleep", color: "indigo" },
+  { role: "auto_mode", label: "Auto mode (access control)", icon: "mdi:key-variant", color: "deep-purple" },
   { role: "if2_buzzer", label: "IF2 buzzer", icon: "mdi:bell-ring", color: "teal" },
 ];
 
@@ -798,22 +724,12 @@ class XtoolToggles extends XtoolFeature {
     const hass = this._hass, id = this._entityId;
     return chosen(hass, id, this.constructor.list, this._config.controls).map((item) => {
       const entityId = sibling(hass, id, item.role);
-      const stateObj = hass.states[entityId];
-      const on = stateObj?.state === "on";
-      // A light that has a brightness can be dimmed (on by default)
-      const dimmable = domainOf(entityId) === "light" && this._config.dim_lights !== false &&
-        (stateObj?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff");
-      const level = on ? (stateObj.attributes.brightness ?? 255) / 255 : 0;
+      const on = hass.states[entityId]?.state === "on";
       return {
-        key: item.role, label: dimmable && on ? `${item.label}: ${Math.round(level * 100)}%` : item.label,
-        icon: item.icon, text: this._config.show_names ? item.label : "",
+        key: item.role, label: item.label, icon: item.icon, text: this._config.show_names ? item.label : "",
         color: item.color, pressed: on, disabled: !this._usable(entityId),
         // A fan that is on turns (on by default); these fans have no speed
         spin: item.fan && on && this._config.animate_fan !== false ? 1.2 : undefined,
-        level: dimmable ? Math.round(level * 100) / 100 : undefined,
-        dim: dimmable
-          ? (value) => hass.callService("light", "turn_on", { entity_id: entityId, brightness_pct: Math.max(1, Math.round(value * 100)) })
-          : undefined,
         action: () => this._toggle(item, entityId, on),
       };
     });
@@ -956,6 +872,175 @@ class XtoolCamera extends XtoolFeature {
 }
 
 // ---------------------------------------------------------------------------
+// Feature: fill light brightness, a slider for each dimmable fill light, like
+// the tile card's own light brightness feature (the buttons for turning the
+// lights on and off are in the peripherals feature)
+// ---------------------------------------------------------------------------
+const FILL_LIGHTS = [
+  { role: "fill_light_front", label: "Fill light (front)" },
+  { role: "fill_light_back", label: "Fill light (back)" },
+  { role: "fill_light", label: "Fill light" },
+];
+
+const SLIDER_CSS = `
+  :host { display: block; }
+  .sliders { display: flex; flex-direction: column; gap: var(--feature-button-spacing, 12px); }
+  .name { margin: 0 0 4px; font-size: var(--ha-font-size-s, 12px); color: var(--xtool-text, var(--secondary-text-color)); }
+  .slide { display: block; height: var(--feature-height, 42px); border-radius: var(--feature-border-radius, 12px); overflow: hidden; }
+  ha-control-slider {
+    display: block; height: 100%; width: 100%;
+    --control-slider-color: var(--c, var(--feature-color));
+    --control-slider-thickness: var(--feature-height, 42px);
+    --control-slider-border-radius: var(--feature-border-radius, 12px);
+  }
+  /* Until Home Assistant's own slider is loaded: the same look, as a range input */
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 100%; margin: 0; cursor: pointer;
+    background: linear-gradient(to right, var(--c, var(--feature-color)) var(--value, 0%),
+      color-mix(in srgb, var(--c, var(--feature-color)) 20%, transparent) var(--value, 0%));
+  }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: 50%; border-radius: 4px; background: #fff; }
+  input[type="range"]::-moz-range-thumb { width: 4px; height: 50%; border: 0; border-radius: 4px; background: #fff; }
+  input[type="range"]:disabled { cursor: default; opacity: .45; }
+`;
+
+class XtoolFillLights extends HTMLElement {
+  static label = "Fill lights";
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this.shadowRoot.innerHTML = `<style>${SLIDER_CSS}</style><div class="sliders" role="group" aria-label="Fill lights"></div>`;
+    this._box = this.shadowRoot.querySelector(".sliders");
+    keepTaps(this);
+  }
+
+  static getStubConfig() {
+    return { type: "custom:xtool-fill-lights" };
+  }
+
+  static getConfigElement() {
+    return document.createElement("xtool-feature-editor");
+  }
+
+  setConfig(config) {
+    if (!config) throw new Error("Invalid configuration");
+    this._config = config;
+    this._structure = undefined;
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  set context(context) {
+    this._context = context;
+    this._render();
+  }
+
+  /** The fill lights that have a brightness, as { item, entityId }. */
+  _lights() {
+    const hass = this._hass, id = this._context?.entity_id;
+    return chosen(hass, id, FILL_LIGHTS, this._config.controls)
+      .map((item) => ({ item, entityId: sibling(hass, id, item.role) }))
+      .filter(({ entityId }) => (hass.states[entityId]?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff"));
+  }
+
+  _render() {
+    if (!this._hass || !this._config || !this._context) return;
+    const lights = this._lights();
+    const names = this._config.show_names !== false && lights.length > 1;
+    // The sliders are rebuilt only when the lights or the options change; a
+    // new brightness only moves the slider that is not being held
+    const structure = JSON.stringify([lights.map(({ item }) => item.role), names]);
+    if (structure !== this._structure) {
+      this._structure = structure;
+      this._sliders = new Map();
+      this._box.replaceChildren(...lights.map(({ item, entityId }) => this._row(item, entityId, names)));
+      if (!customElements.get("ha-control-slider") && !this._waiting) {
+        // Home Assistant loads its slider with the first light feature it draws
+        this._waiting = true;
+        customElements.whenDefined("ha-control-slider").then(() => {
+          this._waiting = false;
+          this._structure = undefined;
+          this._render();
+        });
+      }
+    }
+    for (const { item, entityId } of lights) {
+      const slider = this._sliders.get(item.role);
+      const stateObj = this._hass.states[entityId];
+      const value = stateObj?.attributes.brightness != null ? Math.max(1, Math.round((stateObj.attributes.brightness * 100) / 255)) : 0;
+      slider.disabled = !this._usable(entityId);
+      if (this._held !== item.role) this._show(slider, value);
+    }
+  }
+
+  _usable(entityId) {
+    const stateObj = this._hass.states[entityId];
+    return !!stateObj && stateObj.state !== "unavailable";
+  }
+
+  _row(item, entityId, names) {
+    const wrap = document.createElement("div");
+    if (names) {
+      const name = document.createElement("p");
+      name.className = "name";
+      name.textContent = item.label;
+      wrap.append(name);
+    }
+    const slide = document.createElement("div");
+    slide.className = "slide";
+    const native = !customElements.get("ha-control-slider");
+    const slider = document.createElement(native ? "input" : "ha-control-slider");
+    slider.setAttribute("aria-label", `${item.label} brightness`);
+    if (native) {
+      slider.type = "range";
+      slider.min = "1";
+      slider.max = "100";
+      slider.step = "1";
+      slider.addEventListener("input", () => {
+        this._held = item.role;
+        slider.style.setProperty("--value", `${slider.value}%`);
+      });
+      slider.addEventListener("change", () => this._set(item.role, entityId, Number(slider.value)));
+    } else {
+      slider.min = 1;
+      slider.max = 100;
+      slider.step = 1;
+      slider.setAttribute("mode", "start");
+      slider.setAttribute("unit", "%");
+      slider.addEventListener("slider-moved", () => (this._held = item.role));
+      slider.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        const value = ev.detail?.value;
+        if (Number.isFinite(value)) this._set(item.role, entityId, value);
+      });
+    }
+    slide.append(slider);
+    wrap.append(slide);
+    this._sliders.set(item.role, slider);
+    return wrap;
+  }
+
+  _show(slider, value) {
+    if (slider.localName === "input") {
+      slider.value = String(value);
+      slider.style.setProperty("--value", `${value}%`);
+    } else {
+      slider.value = value;
+    }
+  }
+
+  _set(role, entityId, value) {
+    this._held = undefined;
+    this._hass.callService("light", "turn_on", { entity_id: entityId, brightness_pct: Math.max(1, Math.round(value)) });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Feature: safety checks
 // ---------------------------------------------------------------------------
 const SAFETY = [
@@ -970,11 +1055,6 @@ const SAFETY = [
   {
     role: "moved_stop", label: "Stops when moved", icon: "mdi:vibrate",
     warning: "The laser keeps working if the machine is moved or tilted during a job.",
-  },
-  {
-    role: "auto_mode", label: "Auto mode (access control)", icon: "mdi:key-variant",
-    warning: "The machine no longer requires the safety key to start a job.",
-    optional: true,
   },
 ];
 
@@ -998,7 +1078,7 @@ class XtoolSafety extends XtoolFeature {
       return {
         key: item.role, label: `${item.label}: ${on ? "on" : "off"}`, icon: item.icon,
         text: this._config.show_names ? item.label : "", color: "green", pressed: on,
-        warn: state === "off" && !item.optional, disabled: !this._usable(entityId),
+        warn: state === "off", disabled: !this._usable(entityId),
         action: () => this._toggle(item, entityId, on),
       };
     });
@@ -1078,6 +1158,7 @@ class XtoolIf2Fan extends XtoolFeature {
 const FEATURES = {
   "xtool-job": XtoolJob,
   "xtool-peripherals": XtoolPeripherals,
+  "xtool-fill-lights": XtoolFillLights,
   "xtool-safety": XtoolSafety,
   "xtool-settings": XtoolSettings,
   "xtool-camera": XtoolCamera,
@@ -1100,16 +1181,11 @@ const FEATURE_FORMS = {
     schema: [
       { name: "controls", label: "Controls", selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: controlOptions(hass, entityId, PERIPHERALS) } } },
       { name: "show_names", label: "Show names", selector: { boolean: {} } },
-      {
-        name: "dim_lights", label: "Dim lights",
-        helper: "Drag across a dimmable light's button to set its brightness; a tap still turns it on or off.",
-        selector: { boolean: {} },
-      },
       { name: "animate_fan", label: "Animate fan", helper: "A fan's icon turns while it runs.", selector: { boolean: {} } },
     ],
     data: (c) => ({
       controls: c.controls ?? controlOptions(hass, entityId, PERIPHERALS).map((o) => o.value), show_names: !!c.show_names,
-      dim_lights: c.dim_lights !== false, animate_fan: c.animate_fan !== false,
+      animate_fan: c.animate_fan !== false,
     }),
   }),
   "custom:xtool-safety": (hass, entityId) => ({
@@ -1122,6 +1198,17 @@ const FEATURE_FORMS = {
       { name: "show_names", label: "Show names", selector: { boolean: {} } },
     ],
     data: (c) => ({ controls: c.controls ?? controlOptions(hass, entityId, SAFETY).map((o) => o.value), show_names: !!c.show_names }),
+  }),
+  "custom:xtool-fill-lights": (hass, entityId) => ({
+    schema: [
+      {
+        name: "controls", label: "Fill lights",
+        helper: "A slider for each dimmable fill light. Turning the lights on and off is in the peripherals feature.",
+        selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: controlOptions(hass, entityId, FILL_LIGHTS) } },
+      },
+      { name: "show_names", label: "Show names", helper: "Shown when there is more than one slider.", selector: { boolean: {} } },
+    ],
+    data: (c) => ({ controls: c.controls ?? controlOptions(hass, entityId, FILL_LIGHTS).map((o) => o.value), show_names: c.show_names !== false }),
   }),
   "custom:xtool-settings": (hass, entityId) => ({
     schema: [
@@ -1559,13 +1646,21 @@ class XtoolCard extends HTMLElement {
   }
 
   getCardSize() {
-    if (this._tile?.getCardSize) return this._tile.getCardSize();
-    return 1 + (this._config?.features?.length ?? 0);
+    // A camera picture is about five rows tall; every other feature is one
+    const features = this._config?.features ?? [];
+    const rows = features.reduce((sum, f) => sum + (f?.type === "custom:xtool-camera" ? 5 : 1), 0);
+    return 1 + (this._open === false ? 0 : rows);
   }
 
+  // The height follows the content: features such as the camera are taller
+  // than the rows the tile card allows for, and would run off the card
   getGridOptions() {
-    if (this._tile?.getGridOptions) return this._tile.getGridOptions();
-    return { columns: 6, rows: 1 + (this._config?.features?.length ?? 0), min_columns: 6, min_rows: 1 };
+    const { columns, min_columns, max_columns } = this._tile?.getGridOptions?.() ?? {};
+    return {
+      columns: columns ?? 6, rows: "auto",
+      ...(min_columns !== undefined ? { min_columns } : {}),
+      ...(max_columns !== undefined ? { max_columns } : {}),
+    };
   }
 
   connectedCallback() {
@@ -1686,28 +1781,38 @@ class XtoolCard extends HTMLElement {
     }
   }
 
-  /** The most urgent badge the card shows, or undefined. */
+  /**
+   * The badge the card shows, or undefined: the first of the chosen badges,
+   * in the order chosen (the order in the editor is the priority), that applies.
+   */
   _badgeNow() {
     const hass = this._hass, id = this._config.entity;
-    const shown = Array.isArray(this._config.badges) ? this._config.badges : DEFAULT_BADGES;
+    const chosenBadges = Array.isArray(this._config.badges) ? this._config.badges : DEFAULT_BADGES;
     const stateOf = (role) => {
       const entityId = sibling(hass, id, role);
       return entityId ? hass.states[entityId]?.state : undefined;
     };
     const phase = this._job.phase;
     const status = statusOf(hass, id);
-    const candidates = [
-      ["alarm", phase === "fire", "fire", "var(--error-color, #db4437)", "Fire warning"],
-      ["alarm", stateOf("alarm") === "on" || phase === "error", "alarm", "var(--error-color, #db4437)", "Alarm"],
-      ["connection", !status || hass.states[status]?.state === "unavailable", "connection", "#616161", "Not connected"],
-      ["safety_key", stateOf("safety_key") === "off", "safety_key", "var(--warning-color, #ffa600)", "Safety key removed"],
-      ["lid", stateOf("cover_open") === "on", "lid", "var(--warning-color, #ffa600)", "Lid open"],
-      ["safety_off", ["flame_alarm", "enclosure_stop", "moved_stop"].some((role) => stateOf(role) === "off"),
-        "safety_off", "var(--warning-color, #ffa600)", "A safety check is off"],
-      ["firmware", stateOf("firmware") === "on", "firmware", "var(--info-color, #039be5)", "Firmware update available"],
-    ];
-    const hit = candidates.find(([option, active]) => active && shown.includes(option));
-    return hit ? { path: BADGE_PATHS[hit[2]], color: hit[3], label: hit[4] } : undefined;
+    const error = "var(--error-color, #db4437)", warning = "var(--warning-color, #ffa600)";
+    // Each option: what applies now, as [applies, symbol, color, label], most urgent first
+    const options = {
+      alarm: [
+        [phase === "fire", "fire", error, "Fire warning"],
+        [stateOf("alarm") === "on" || phase === "error", "alarm", error, "Alarm"],
+      ],
+      connection: [[!status || hass.states[status]?.state === "unavailable", "connection", "#616161", "Not connected"]],
+      safety_key: [[stateOf("safety_key") === "off", "safety_key", warning, "Safety key removed"]],
+      lid: [[stateOf("cover_open") === "on", "lid", warning, "Lid open"]],
+      safety_off: [[["flame_alarm", "enclosure_stop", "moved_stop"].some((role) => stateOf(role) === "off"),
+        "safety_off", warning, "A safety check is off"]],
+      firmware: [[stateOf("firmware") === "on", "firmware", "var(--info-color, #039be5)", "Firmware update available"]],
+    };
+    for (const option of chosenBadges) {
+      const hit = (options[option] ?? []).find(([applies]) => applies);
+      if (hit) return { path: BADGE_PATHS[hit[1]], color: hit[2], label: hit[3] };
+    }
+    return undefined;
   }
 
   _updateBadge() {
@@ -1826,6 +1931,7 @@ class XtoolCard extends HTMLElement {
       this._tile.classList.toggle("solid", !!tone && (this._config.features_style ?? "match") !== "match");
       this._styleWindowText();
     }
+    this._removeDividers();
     this._drawWindow();
     this._drawAreas();
     if (this._badge.classList.contains("on")) this._placeBadge();
@@ -1875,17 +1981,25 @@ class XtoolCard extends HTMLElement {
     if (!TONE[this._config.style]) return;
     const W = this._frame.offsetWidth, H = this._frame.offsetHeight;
     if (!W || !H) return;
-    const margin = 5;
+    // The window's edge is 4 px in; the controls in the header have 10 px
+    // of the tile card's padding, less 3 px for a Console channel around them
+    const margin = 4;
     let bottom = H - margin;
     const root = this._tile?.shadowRoot;
     const info = root && findDeep(root, "ha-tile-info");
     const infoBox = info && this._box(info);
     if (infoBox) {
-      const below = findAllDeep(root, "hui-card-features").map((el) => this._box(el))
-        .filter((b) => b && b.y >= infoBox.y + infoBox.h - 1);
-      if (below.length) bottom = Math.min(...below.map((b) => b.y)) - 6;
+      const groups = findAllDeep(root, "hui-card-features").map((el) => this._box(el)).filter(Boolean);
+      const infoBottom = infoBox.y + infoBox.h;
+      // A feature beside the title (features position: inline) is in the header
+      const beside = groups.filter((b) => b.y < infoBottom - 1);
+      const below = groups.filter((b) => b.y >= infoBottom - 1);
+      const headerBottom = Math.max(infoBottom, ...beside.map((b) => b.y + b.h));
+      if (below.length) bottom = Math.max(Math.min(...below.map((b) => b.y)) - 6, headerBottom + 6);
     }
-    Object.assign(this._window.style, { left: `${margin}px`, top: `${margin}px`, width: `${W - 2 * margin}px`, height: `${Math.max(0, bottom - margin)}px` });
+    Object.assign(this._window.style, {
+      left: `${margin}px`, top: `${margin}px`, width: `${W - 2 * margin}px`, height: `${Math.max(0, bottom - margin)}px`,
+    });
     Object.assign(this._stripe.style, { left: `${margin + 4}px`, width: `${W - 2 * margin - 8}px`, top: `${bottom + 2}px` });
     // No body below the window (no features below the title): no line
     this._stripe.style.visibility = bottom >= H - margin ? "hidden" : "";
@@ -1904,7 +2018,7 @@ class XtoolCard extends HTMLElement {
       this._watchAdded(wrap.shadowRoot);
       const inner = wrap.shadowRoot ?? wrap;
       const ours = findDeep(inner, FEATURE_TAGS.join(", "));
-      const keys = ours ? [...(ours.shadowRoot?.querySelectorAll(".key, .shot") ?? [])] : [];
+      const keys = ours ? [...(ours.shadowRoot?.querySelectorAll(".key, .shot, .slide") ?? [])] : [];
       const element = [...inner.children].find((c) => c.tagName !== "STYLE");
       for (const el of keys.length ? keys : [element]) {
         const b = el && this._box(el);
@@ -1918,6 +2032,30 @@ class XtoolCard extends HTMLElement {
   }
 
   // Console: this card's buttons become keys, and Home Assistant's toggle a slide
+  /**
+   * Home Assistant draws a vertical divider before each feature in a second
+   * column. Taken out here, from inside the tile card's feature groups; if
+   * Home Assistant renames that part, the dividers simply stay.
+   */
+  _removeDividers() {
+    const root = this._tile?.shadowRoot;
+    if (!root) return;
+    if (!XtoolCard._plainSheet) {
+      XtoolCard._plainSheet = new CSSStyleSheet();
+      XtoolCard._plainSheet.replaceSync(".divided { border-inline-start: none !important; margin-inline-start: 0 !important; padding-inline-start: 0 !important; }");
+    }
+    try {
+      for (const group of findAllDeep(root, "hui-card-features")) {
+        const shadow = group.shadowRoot;
+        if (shadow && !shadow.adoptedStyleSheets.includes(XtoolCard._plainSheet)) {
+          shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, XtoolCard._plainSheet];
+        }
+      }
+    } catch (err) {
+      console.warn("xTool card: could not remove the feature dividers", err);
+    }
+  }
+
   _styleControls(keys) {
     const root = this._tile?.shadowRoot;
     if (!root) return;
@@ -1976,6 +2114,7 @@ class XtoolCard extends HTMLElement {
         this._settling = false;
         return;
       }
+      this._removeDividers();
       this._drawWindow();
       this._drawAreas();
       if (this._badge.classList.contains("on")) this._placeBadge();
@@ -2159,11 +2298,11 @@ class XtoolCardEditor extends HTMLElement {
         helper: "While this is on, a tap on the card does this instead of its Tap behavior (under Interactions). Icon tap behavior still works.",
         selector: { boolean: {} },
       },
-      ...(c.features_toggle ? [{ name: "features_open", label: "Show the features at load", selector: { boolean: {} } }] : []),
+      ...(c.features_toggle ? [{ name: "features_open", label: "Show features at load", selector: { boolean: {} } }] : []),
       {
-        name: "badges", label: "Badges",
-        helper: "One badge shows on the picture: the most urgent of those chosen here.",
-        selector: { select: { multiple: true, mode: "list", options: BADGES.map(([value, label]) => ({ value, label })) } },
+        name: "badges", label: "Badges (in priority order)",
+        helper: "Listed in priority order: the first one that applies shows on the picture. Drag to change the order.",
+        selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: BADGES.map(([value, label]) => ({ value, label })) } },
       },
       {
         type: "expandable", name: "progress", title: "Progress edge",
@@ -2249,6 +2388,14 @@ if (!customElements.get(CARD_TYPE)) {
   window.customCardFeatures.push(
     { type: "xtool-job", name: "xTool job", isSupported: has(["resume", "pause", "cancel"]), configurable: true },
     { type: "xtool-peripherals", name: "xTool peripherals", isSupported: has(PERIPHERALS.map((p) => p.role)), configurable: true },
+    {
+      type: "xtool-fill-lights", name: "xTool fill light brightness",
+      isSupported: (hass, context) => isXtool(hass, context?.entity_id) && FILL_LIGHTS.some((item) => {
+        const light = sibling(hass, context.entity_id, item.role);
+        return (hass.states[light]?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff");
+      }),
+      configurable: true,
+    },
     { type: "xtool-safety", name: "xTool safety checks", isSupported: has(SAFETY.map((s) => s.role)), configurable: true },
     { type: "xtool-settings", name: "xTool settings", isSupported: has(SETTINGS.map((s) => s.role)), configurable: true },
     {
