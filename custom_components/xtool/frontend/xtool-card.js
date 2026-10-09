@@ -392,6 +392,28 @@ function statePicture(phase, color, { galvo = false, seed = 1, backing = false, 
 
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
+// A time's formats, as the tile card offers them for a time: [id, label]
+const TIME_FORMATS = [["relative", "Relative"], ["time", "Time"], ["datetime", "Date and time"], ["date", "Date"]];
+
+/**
+ * A time in one of TIME_FORMATS, in the user's language and Home
+ * Assistant's 12 or 24 hour setting (Profile > Time format).
+ */
+function formatTime(when, format, hass) {
+  const locale = hass?.locale;
+  const language = locale?.language || undefined;
+  const hour12 = locale?.time_format === "12" ? true : locale?.time_format === "24" ? false : undefined;
+  if (format === "relative") {
+    const seconds = Math.round((when.getTime() - Date.now()) / 1000);
+    const units = [["day", 86400], ["hour", 3600], ["minute", 60], ["second", 1]];
+    const [unit, size] = units.find(([, s]) => Math.abs(seconds) >= s) ?? ["second", 1];
+    return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(Math.round(seconds / size), unit);
+  }
+  if (format === "date") return when.toLocaleDateString(language, { dateStyle: "medium" });
+  if (format === "datetime") return when.toLocaleString(language, { dateStyle: "medium", timeStyle: "medium", hour12 });
+  return when.toLocaleTimeString(language, { hour: "numeric", minute: "2-digit", second: "2-digit", hour12 });
+}
+
 /** Seconds as 1:02:03 or 12:08. */
 function formatDuration(seconds) {
   const s = Math.max(0, Math.floor(seconds));
@@ -932,17 +954,18 @@ class XtoolCamera extends XtoolFeature {
     const live = picture && stateObj.state !== "unavailable";
     this._empty.textContent = live ? "" : "No camera picture";
     this._img.hidden = !live;
+    // A relative time ("5 seconds ago") moves on between pictures
+    this._showTime();
     if (!live || document.hidden) return;
     this._img.src = `${picture}${picture.includes("?") ? "&" : "?"}t=${Date.now()}`;
     this._shot.setAttribute("aria-label", `${this._cameras.find(([id]) => id === this._camera)?.[1] ?? ""} camera: open`);
   }
 
-  // The last updated time along the bottom of the picture (an option)
+  // The last updated time along the bottom of the picture (an option), in
+  // the formats the tile card offers for a time
   _showTime() {
     const shown = !!this._config?.show_time && this._pictureAt && !this._img.hidden;
-    this._time.textContent = shown
-      ? `Updated ${this._pictureAt.toLocaleTimeString(this._hass?.locale?.language || undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" })}`
-      : "";
+    this._time.textContent = shown ? `Updated ${formatTime(this._pictureAt, this._config.time_format, this._hass)}` : "";
   }
 }
 
@@ -1298,10 +1321,12 @@ const FEATURE_FORMS = {
         },
         { name: "show_switch", label: "Buttons to switch cameras", selector: { boolean: {} } },
         { name: "show_time", label: "Show the last updated time", helper: "Along the bottom of the picture.", selector: { boolean: {} } },
+        { name: "time_format", label: "Time format", selector: select(TIME_FORMATS) },
       ],
       data: (c) => ({
         camera: labels.includes(c.camera) ? c.camera : labels[0], refresh: Number(c.refresh) || 2,
         show_switch: c.show_switch !== false, show_time: !!c.show_time,
+        time_format: TIME_FORMATS.some(([id]) => id === c.time_format) ? c.time_format : "time",
       }),
     };
   },
