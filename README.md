@@ -281,7 +281,7 @@ Tile features (they also work in a plain tile card for an xTool entity):
 | xTool fill light brightness | One fill light's brightness slider, laid out like the tile card's own light brightness feature. Add it once for each light |
 | xTool safety checks | Flame alarm, stops when enclosure opened, stops when moved. A check that is on is green, one that is off is red. Turning one off always asks first |
 | xTool settings | Buzzer reminders, device sleep, auto mode, IF2 buzzer |
-| xTool camera | A camera's picture (tap to open it), with buttons to switch cameras and, as an option, the time the picture was last updated (relative, time, date and time, or date, as in a tile card) |
+| xTool camera | A camera's picture (tap to open it), with buttons to switch cameras and, as an option, the time the picture was last updated (in the tile card's time formats: auto, relative, total, date, time, or date and time) |
 | xTool SafetyPro IF2 fan | Auto, Off, gears 1 to 4. The fan icon turns faster at a higher speed (*Animate fan*) |
 
 Each feature shows only the controls the laser has.
