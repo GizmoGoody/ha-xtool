@@ -278,29 +278,41 @@ function galvoPath(seed) {
     const k = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
     return Math.hypot(p[0] - a[0] - k * dx, p[1] - a[1] - k * dy);
   };
-  const points = [[6 + rand() * 4, 7 + rand() * 3]];
-  let angle = rand() * Math.PI * 2;
-  for (let i = 0; i < 22; i++) {
-    const last = points[points.length - 1];
-    let placed = false;
-    for (let tries = 0; tries < 40 && !placed; tries++) {
-      const turn = angle + (rand() - 0.5) * 2.8;
-      const length = 2.4 + rand() * 3.4;
-      const next = [last[0] + Math.cos(turn) * length, last[1] + Math.sin(turn) * length];
-      if (Math.hypot(next[0] - 12, next[1] - 12) > 9.2) continue;
-      const mid = [(last[0] + next[0]) / 2, (last[1] + next[1]) / 2];
-      let clear = true;
-      for (let j = 0; j < points.length - 2 && clear; j++) {
-        const a = points[j], b = points[j + 1];
-        if (crosses(last, next, a, b) || distance(next, a, b) < 1.6 || distance(mid, a, b) < 1.6) clear = false;
+  // One walk: from near the edge, heading for the middle at first
+  const walk = () => {
+    const start = rand() * Math.PI * 2;
+    const points = [[12 + Math.cos(start) * 6, 12 + Math.sin(start) * 6]];
+    let angle = start + Math.PI + (rand() - 0.5);
+    for (let i = 0; i < 22; i++) {
+      const last = points[points.length - 1];
+      let placed = false;
+      for (let tries = 0; tries < 40 && !placed; tries++) {
+        const turn = angle + (rand() - 0.5) * 2.8;
+        const length = 2.4 + rand() * 3.4;
+        const next = [last[0] + Math.cos(turn) * length, last[1] + Math.sin(turn) * length];
+        if (Math.hypot(next[0] - 12, next[1] - 12) > 9.2) continue;
+        const mid = [(last[0] + next[0]) / 2, (last[1] + next[1]) / 2];
+        let clear = true;
+        for (let j = 0; j < points.length - 2 && clear; j++) {
+          const a = points[j], b = points[j + 1];
+          if (crosses(last, next, a, b) || distance(next, a, b) < 1.6 || distance(mid, a, b) < 1.6) clear = false;
+        }
+        if (clear) {
+          points.push(next);
+          angle = turn;
+          placed = true;
+        }
       }
-      if (clear) {
-        points.push(next);
-        angle = turn;
-        placed = true;
-      }
+      if (!placed) break;
     }
-    if (!placed) break;
+    return points;
+  };
+  // A walk can box itself in early: walk again (the same job always draws
+  // the same path) and keep the longest
+  let points = [];
+  for (let attempt = 0; attempt < 30 && points.length < 16; attempt++) {
+    const next = walk();
+    if (next.length > points.length) points = next;
   }
   return `M${points.map(([x, y]) => `${x.toFixed(2)} ${y.toFixed(2)}`).join(" L")}`;
 }
