@@ -45,7 +45,7 @@
   const edges = {
     sweep: addCard("no progress sensor: sweep", {}, { hass: f2("processing") }),
     top: addCard("progress 42 on top, with percentage", { entity: "sensor.p2_status", progress: { show_percentage: true } }, { hass: p2("processing") }),
-    inset: addCard("inset 10 to 90", { entity: "sensor.p2_status", progress: { start: 10, end: 90 } }, { hass: p2("processing") }),
+    partial: addCard("from 10 to 90", { entity: "sensor.p2_status", progress: { start: 10, end: 90 } }, { hass: p2("processing") }),
     around: addCard("around", { entity: "sensor.p2_status", progress: { edge: "around" } }, { hass: p2("processing") }),
     left: addCard("left", { entity: "sensor.p2_status", progress: { edge: "left", thickness: 6 } }, { hass: p2("processing") }),
     none: addCard("edge none", { entity: "sensor.p2_status", progress: { edge: "none" } }, { hass: p2("processing") }),
@@ -57,7 +57,7 @@
   const styles = {
     champagne: addCard("champagne, match", { style: "champagne", ...jobFeatures }, { hass: f2("processing"), height: 220 }),
     flat: addCard("champagne, flat", { style: "champagne", features_style: "flat", ...jobFeatures }, { hass: f2("processing"), height: 220 }),
-    inset: addCard("graphite, inset", { style: "graphite", features_style: "inset", features: [...jobFeatures.features, { type: "toggle" }] }, { hass: f2("processing"), height: 280 }),
+    console: addCard("graphite, console", { style: "graphite", features_style: "console", features: [...jobFeatures.features, { type: "toggle" }] }, { hass: f2("processing"), height: 280 }),
     plain: addCard("no style", { ...jobFeatures }, { hass: f2("processing"), height: 220 }),
   };
 
@@ -124,7 +124,7 @@
     check("progress 42 on top", edge(edges.top).style.background.includes("42%") && edge(edges.top).style.top === "0px",
       "the top edge fills to 42%");
     check("progress 42 on top", edges.top.shadowRoot.getElementById("pct").textContent === "42%", "the percentage is shown");
-    check("inset 10 to 90", edge(edges.inset).style.background.includes("43.6%"), "the fill runs from 10% to 90% of the edge");
+    check("from 10 to 90", edge(edges.partial).style.background.includes("43.6%"), "the fill runs from 10% to 90% of the edge");
     check("around", edge(edges.around).classList.contains("around") && edge(edges.around).style.background.includes("conic-gradient"),
       "the edge runs around the card");
     check("left", edge(edges.left).style.width === "6px" && edge(edges.left).style.left === "0px", "the left edge, 6 px thick");
@@ -144,10 +144,10 @@
     check("champagne, flat", keys > 0 && styles.flat.shadowRoot.querySelectorAll(".area.flat").length === keys,
       `a flat patch behind each button (${keys})`);
     check("champagne, flat", styles.flat.shadowRoot.querySelector("hui-tile-card").classList.contains("solid"), "the buttons get a solid backing");
-    check("graphite, inset", deep(styles.inset, "xtool-job, xtool-peripherals").every((el) => el.hasAttribute("xtool-inset")),
+    check("graphite, console", deep(styles.console, "xtool-job, xtool-peripherals").every((el) => el.hasAttribute("xtool-console")),
       "the buttons are keys");
-    check("graphite, inset", deep(styles.inset, "ha-control-switch").every((el) => el.hasAttribute("xtool-slide")), "the toggle is a slide");
-    check("graphite, inset", getComputedStyle(styles.inset.shadowRoot.getElementById("stripe")).display === "block", "the silver line is drawn");
+    check("graphite, console", deep(styles.console, "ha-control-switch").every((el) => el.hasAttribute("xtool-slide")), "the toggle is a slide");
+    check("graphite, console", getComputedStyle(styles.console.shadowRoot.getElementById("stripe")).display === "block", "the silver line is drawn");
     check("no style", !frame(styles.plain).classList.contains("styled"), "no style: the theme's card");
 
     // Collapsing
