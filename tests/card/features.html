@@ -183,66 +183,77 @@
     keyNamed(row, "if2_buzzer").click();
     check("settings", lastCall(hass).data.entity_id === "switch.if2_buzzer", "the IF2 buzzer is found on the accessory device");
 
-    // Camera
+    // Camera: Home Assistant's own image element, with buttons to switch cameras
     hass = makeHass();
     const camera = addFeature({ type: "custom:xtool-camera" }, { hass });
     await wait(80);
-    const img = camera.shadowRoot.querySelector(".shot img");
-    check("camera", img.getAttribute("src")?.startsWith("/api/camera_proxy/camera.f2_main?token=a&t="), "the main camera's picture");
+    const image = camera.shadowRoot.querySelector(".shot hui-image");
+    check("camera", image?.cameraImage === "camera.f2_main" && image.entity === "camera.f2_main" && image.cameraView === "auto" && image.hass === hass,
+      "Home Assistant's image element shows the main camera, in the Auto view");
+    check("camera", !camera.shadowRoot.querySelector(".shot > img"), "no picture of the card's own");
     check("camera", keysOf(camera).map((k) => k.textContent).join() === "Main,Deep", "buttons for both cameras");
     keyNamed(camera, "camera.f2_deep").click();
     await wait(50);
-    check("camera", img.getAttribute("src")?.startsWith("/api/camera_proxy/camera.f2_deep?token=b"), "switching shows the deep camera");
+    check("camera", image.cameraImage === "camera.f2_deep", "switching shows the deep camera");
     let opened;
     camera.addEventListener("hass-more-info", (ev) => (opened = ev.detail.entityId));
     camera.shadowRoot.querySelector(".shot").click();
     check("camera", opened === "camera.f2_deep", "a tap opens the camera");
-    const single = addFeature({ type: "custom:xtool-camera", camera: "Deep", show_switch: false }, { hass });
+    const live = addFeature({ type: "custom:xtool-camera", camera: "Deep", camera_view: "live", show_switch: false }, { hass });
     await wait(80);
-    single.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
-    check("camera, one", single.shadowRoot.querySelector(".time").textContent === "", "no time unless chosen");
+    check("camera, live", live.shadowRoot.querySelector("hui-image").cameraView === "live" && live.shadowRoot.querySelector("hui-image").cameraImage === "camera.f2_deep"
+      && keysOf(live).length === 0, "the chosen camera, live, without buttons");
+
+    // The updated time: when Home Assistant's image shows a new picture
+    const imageLoad = (feature) => feature.shadowRoot.querySelector("hui-image").shadowRoot.querySelector("img").dispatchEvent(new Event("load"));
+    imageLoad(camera);
+    check("camera, time", camera.shadowRoot.querySelector(".time").textContent === "", "no time unless chosen");
     for (const [format, expected] of [["total", "total"], ["datetime", "datetime"], ["auto", undefined], [undefined, undefined]]) {
       const stamped = addFeature({ type: "custom:xtool-camera", show_time: true, ...(format ? { time_format: format } : {}) }, { hass });
       await wait(60);
-      stamped.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
+      check("camera, time", !stamped.shadowRoot.querySelector(".time hui-timestamp-display"), `no time before a picture arrives (${format ?? "not set"})`);
+      imageLoad(stamped);
       const element = stamped.shadowRoot.querySelector(".time hui-timestamp-display");
       check("camera, time", !!element && element.ts instanceof Date && element.format === expected && element.hass === hass
         && stamped.shadowRoot.querySelector(".time").textContent === "Updated ", `Home Assistant's timestamp display, format ${format ?? "not set"}`);
     }
-    const timeOptions = document.createElement("xtool-feature-editor");
-    timeOptions.hass = hass;
-    timeOptions.context = { entity_id: "sensor.f2_status" };
-    timeOptions.setConfig({ type: "custom:xtool-camera", show_time: true });
-    const formatField = timeOptions.querySelector("ha-form").schema.find((s) => s.name === "time_format");
-    check("camera, time", formatField.selector.select.options.map((o) => o.label).join() === "Auto,Relative,Total,Date,Time,Date and time"
-      && timeOptions.querySelector("ha-form").data.time_format === "auto", "the tile card's time formats, Auto by default");
-    check("camera, one", keysOf(single).length === 0 && single.shadowRoot.querySelector(".shot img").getAttribute("src").includes("f2_deep"),
-      "the chosen camera, without buttons");
+    const liveTime = addFeature({ type: "custom:xtool-camera", camera_view: "live", show_time: true }, { hass });
+    await wait(60);
+    imageLoad(liveTime);
+    check("camera, time", liveTime.shadowRoot.querySelector(".time").textContent === "", "no updated time on a live stream");
+    const cameraOptions = document.createElement("xtool-feature-editor");
+    cameraOptions.hass = hass;
+    cameraOptions.context = { entity_id: "sensor.f2_status" };
+    cameraOptions.setConfig({ type: "custom:xtool-camera", show_time: true });
+    const cameraForm = cameraOptions.querySelector("ha-form");
+    check("camera, options", cameraForm.schema.find((s) => s.name === "time_format").selector.select.options.map((o) => o.label).join() === "Auto,Relative,Total,Date,Time,Date and time"
+      && cameraForm.data.time_format === "auto", "the tile card's time formats, Auto by default");
+    check("camera, options", cameraForm.schema.find((s) => s.name === "camera_view").selector.select.options.map((o) => o.label).join() === "Auto,Live"
+      && cameraForm.data.camera_view === "auto" && !cameraForm.schema.some((s) => s.name === "refresh"), "Auto or Live, as in the picture cards; no refresh option");
 
-    // IF2 fan
+    // IF2 fan: Home Assistant's own select options feature, as buttons
     hass = makeHass();
     let fan = addFeature({ type: "custom:xtool-if2-fan" }, { hass });
     await wait(50);
-    check("IF2 fan", keysOf(fan).map((k) => k.textContent).join() === "Auto,Off,1,2,3,4", "Auto, Off and gears 1 to 4");
-    check("IF2 fan", keyNamed(fan, "auto").getAttribute("aria-pressed") === "true", "Auto Quiet shows as Auto");
-    const autoIcon = keyNamed(fan, "auto").querySelector("ha-icon.spin");
-    check("IF2 fan", autoIcon?.style.getPropertyValue("--spin") === "1.6s", "in Auto, the fan turns at the current speed (60%: 1.6 s a turn)");
-    check("IF2 fan", !keyNamed(fan, "2").querySelector("ha-icon"), "only the button that is on shows the fan");
-    const gear4 = addFeature({ type: "custom:xtool-if2-fan" }, { hass: makeHass({ "select.if2_fan": "4" }) });
+    let fanFeature = fan.shadowRoot.querySelector("hui-card-feature");
+    check("IF2 fan", fanFeature?.context.entity_id === "select.if2_fan" && fanFeature.feature.type === "select-options" && fanFeature.feature.style === "buttons"
+      && !("options" in fanFeature.feature), "Home Assistant's select options feature, as buttons, for the IF2's fan, with every choice");
+    check("IF2 fan", !!fanFeature.shadowRoot.querySelector("hui-select-options-card-feature")?.hass && !fan.shadowRoot.querySelector(".key"),
+      "drawn by Home Assistant; no buttons of the card's own");
+    fan = addFeature({ type: "custom:xtool-if2-fan", options: ["Auto Quiet", "Off", "4"] }, { hass });
     await wait(50);
-    check("IF2 fan", keyNamed(gear4, "4").querySelector("ha-icon.spin")?.style.getPropertyValue("--spin") === "0.6s", "gear 4 turns fastest");
-    const fanOff = addFeature({ type: "custom:xtool-if2-fan" }, { hass: makeHass({ "select.if2_fan": "Off" }) });
+    fanFeature = fan.shadowRoot.querySelector("hui-card-feature");
+    check("IF2 fan", fanFeature.feature.options.join() === "Auto Quiet,Off,4", "only the chosen choices, in order");
+    const fanOptions = document.createElement("xtool-feature-editor");
+    fanOptions.hass = hass;
+    fanOptions.context = { entity_id: "sensor.f2_status" };
+    fanOptions.setConfig({ type: "custom:xtool-if2-fan" });
+    const fanForm = fanOptions.querySelector("ha-form");
+    check("IF2 fan", fanForm.schema[0].selector.select.reorder === true && fanForm.data.options.join() === "Auto Regular,Auto Quiet,Off,1,2,3,4",
+      "the editor offers the fan's choices, all by default");
+    const noFan = addFeature({ type: "custom:xtool-if2-fan" }, { hass, entityId: "sensor.p2_status" });
     await wait(50);
-    check("IF2 fan", keyNamed(fanOff, "Off").querySelector("ha-icon")?.icon === "mdi:fan-off", "off shows a still fan-off icon");
-    keyNamed(fan, "2").click();
-    check("IF2 fan", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "select", service: "select_option", data: { entity_id: "select.if2_fan", option: "2" } }),
-      "a gear is selected");
-    keyNamed(fan, "auto").click();
-    check("IF2 fan", lastCall(hass).data.option === "Auto Regular", "Auto sets Auto Regular by default");
-    fan = addFeature({ type: "custom:xtool-if2-fan", auto: "Auto Quiet" }, { hass });
-    await wait(50);
-    keyNamed(fan, "auto").click();
-    check("IF2 fan", lastCall(hass).data.option === "Auto Quiet", "or Auto Quiet, if chosen");
+    check("IF2 fan", !noFan.shadowRoot.querySelector("hui-card-feature"), "nothing for a laser without an IF2");
 
     // A laser without the parts: nothing to show
     hass = makeHass();

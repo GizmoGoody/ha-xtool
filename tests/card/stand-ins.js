@@ -92,6 +92,20 @@ document.documentElement.style.cssText = [
 // hui-timestamp-display: Home Assistant's timestamp display (the tile card loads it)
 customElements.define("hui-timestamp-display", class extends HTMLElement {});
 
+// hui-image: Home Assistant's image element (its picture cards load it); a
+// page can leave it out (window.noHuiImage) to check that the card loads it
+window.defineHuiImage = () => customElements.define("hui-image", class extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" }).innerHTML = '<div><img alt=""></div>';
+    this.updateComplete = Promise.resolve();
+  }
+});
+if (!window.noHuiImage) window.defineHuiImage();
+
+// hui-select-options-card-feature: Home Assistant's select options feature
+customElements.define("hui-select-options-card-feature", class extends HTMLElement {});
+
 // hui-light-brightness-card-feature: Home Assistant's light brightness feature
 customElements.define("hui-light-brightness-card-feature", class extends HTMLElement {
   connectedCallback() {
@@ -312,6 +326,12 @@ customElements.define("hui-tile-card-editor", class extends HTMLElement {
 customElements.define("ha-form", class extends HTMLElement {});
 customElements.define("ha-expansion-panel", class extends HTMLElement {});
 
+window.cardHelperCalls = [];
 window.loadCardHelpers = async () => ({
-  createCardElement: (config) => document.createElement(config.type === "tile" ? "hui-tile-card" : "div"),
+  createCardElement: (config) => {
+    window.cardHelperCalls.push(config);
+    // A picture card brings hui-image with it, as in Home Assistant
+    if (config.type === "picture-entity" && !customElements.get("hui-image")) setTimeout(() => window.defineHuiImage(), 10);
+    return document.createElement(config.type === "tile" ? "hui-tile-card" : "div");
+  },
 });

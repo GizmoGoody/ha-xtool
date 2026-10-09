@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>xTool card: the camera loads Home Assistant's image element</title>
+<style>
+  body { margin: 0; padding: 16px; background: #111; color: #ddd; font: 13px Roboto, "Segoe UI", sans-serif; }
+  pre { white-space: pre-wrap; }
+</style>
+<script>window.noHuiImage = true;</script>
+<script src="stand-ins.js"></script>
+<script src="../../custom_components/xtool/frontend/xtool-card.js"></script>
+<script src="checks.js"></script>
+<div id="cards"></div>
+<pre id="report" data-result="running">running</pre>
+<script>
+  runChecks(async () => {
+    const camera = addFeature({ type: "custom:xtool-camera" }, { hass: makeHass() });
+    await wait(150);
+    const asked = window.cardHelperCalls.find((c) => c.type === "picture-entity");
+    check("camera loading", asked?.entity === "camera.f2_main", "the card asks the card helpers for a picture card, which loads Home Assistant's image element");
+    check("camera loading", camera.shadowRoot.querySelector(".shot hui-image")?.cameraImage === "camera.f2_main", "then shows the camera with it");
+  });
+</script>
