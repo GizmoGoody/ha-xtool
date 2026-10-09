@@ -27,6 +27,9 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "clean_first_import": _imports_protocols_first,
     # Issue #13: switch and binary sensor icons follow the entity state
     "icon_translations": lambda: (COMPONENT / "icons.json").exists(),
+    # The config poll reads Stops when moved the same way as the push
+    "stops_when_moved_poll": lambda: 'self._latest["stops_when_moved"] = wm == "HANDLE"'
+    not in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
