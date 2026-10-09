@@ -392,18 +392,23 @@ function statePicture(phase, color, { galvo = false, seed = 1, backing = false, 
 
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-// A time's formats, as the tile card offers them for a time: [id, label]
-const TIME_FORMATS = [["relative", "Relative"], ["time", "Time"], ["datetime", "Date and time"], ["date", "Date"]];
+// A time's formats, the same as the tile card's Time format: [id, label].
+// Auto is Home Assistant's default for a time (relative).
+const TIME_FORMATS = [
+  ["auto", "Auto"], ["relative", "Relative"], ["total", "Total"], ["date", "Date"], ["time", "Time"], ["datetime", "Date and time"],
+];
 
 /**
  * A time in one of TIME_FORMATS, in the user's language and Home
- * Assistant's 12 or 24 hour setting (Profile > Time format).
+ * Assistant's 12 or 24 hour setting (Profile > Time format). Used only until
+ * Home Assistant's own timestamp display is loaded.
  */
 function formatTime(when, format, hass) {
   const locale = hass?.locale;
   const language = locale?.language || undefined;
   const hour12 = locale?.time_format === "12" ? true : locale?.time_format === "24" ? false : undefined;
-  if (format === "relative") {
+  if (format === "total") return formatDuration((Date.now() - when.getTime()) / 1000);
+  if (!format || format === "auto" || format === "relative") {
     const seconds = Math.round((when.getTime() - Date.now()) / 1000);
     const units = [["day", 86400], ["hour", 3600], ["minute", 60], ["second", 1]];
     const [unit, size] = units.find(([, s]) => Math.abs(seconds) >= s) ?? ["second", 1];
@@ -961,11 +966,33 @@ class XtoolCamera extends XtoolFeature {
     this._shot.setAttribute("aria-label", `${this._cameras.find(([id]) => id === this._camera)?.[1] ?? ""} camera: open`);
   }
 
-  // The last updated time along the bottom of the picture (an option), in
-  // the formats the tile card offers for a time
+  /**
+   * The last updated time along the bottom of the picture (an option), shown
+   * by Home Assistant's own timestamp display, the one the tile card uses,
+   * in the tile card's time formats. Until that is loaded, the card writes
+   * the time itself in the same formats.
+   */
   _showTime() {
     const shown = !!this._config?.show_time && this._pictureAt && !this._img.hidden;
-    this._time.textContent = shown ? `Updated ${formatTime(this._pictureAt, this._config.time_format, this._hass)}` : "";
+    if (!shown) {
+      this._time.replaceChildren();
+      return;
+    }
+    const chosen = this._config.time_format;
+    const format = TIME_FORMATS.some(([id]) => id === chosen) && chosen !== "auto" ? chosen : undefined;
+    if (customElements.get("hui-timestamp-display")) {
+      this._stamp ??= document.createElement("hui-timestamp-display");
+      this._stamp.hass = this._hass;
+      this._stamp.ts = this._pictureAt;
+      this._stamp.format = format;
+      if (this._stamp.parentNode !== this._time) this._time.replaceChildren("Updated ", this._stamp);
+      return;
+    }
+    this._time.textContent = `Updated ${formatTime(this._pictureAt, format, this._hass)}`;
+    if (!this._waitingStamp) {
+      this._waitingStamp = true;
+      customElements.whenDefined("hui-timestamp-display").then(() => this._showTime());
+    }
   }
 }
 
@@ -1326,7 +1353,7 @@ const FEATURE_FORMS = {
       data: (c) => ({
         camera: labels.includes(c.camera) ? c.camera : labels[0], refresh: Number(c.refresh) || 2,
         show_switch: c.show_switch !== false, show_time: !!c.show_time,
-        time_format: TIME_FORMATS.some(([id]) => id === c.time_format) ? c.time_format : "time",
+        time_format: TIME_FORMATS.some(([id]) => id === c.time_format) ? c.time_format : "auto",
       }),
     };
   },
