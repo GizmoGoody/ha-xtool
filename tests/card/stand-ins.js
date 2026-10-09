@@ -92,7 +92,8 @@ document.documentElement.style.cssText = [
 // ha-icon: shows its icon name
 customElements.define("ha-icon", class extends HTMLElement {
   connectedCallback() {
-    this.style.cssText = "display:inline-block;width:22px;height:22px";
+    // Only its own size: like Home Assistant's, it keeps what the card sets (such as --spin)
+    Object.assign(this.style, { display: "inline-block", width: "22px", height: "22px" });
   }
 });
 
