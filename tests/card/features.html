@@ -216,6 +216,19 @@
     await wait(80);
     timed.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
     check("camera, time", /^Updated \d/.test(timed.shadowRoot.querySelector(".time").textContent), `the last updated time (${timed.shadowRoot.querySelector(".time").textContent})`);
+    for (const [format, pattern] of [["relative", /^Updated now$|^Updated \d+ seconds? ago$/], ["datetime", /^Updated .*20\d\d.*\d:\d\d:\d\d/], ["date", /^Updated .*20\d\d$/]]) {
+      const formatted = addFeature({ type: "custom:xtool-camera", show_time: true, time_format: format }, { hass: makeHass() });
+      await wait(60);
+      formatted.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
+      const text = formatted.shadowRoot.querySelector(".time").textContent;
+      check("camera, time", pattern.test(text), `${format}: ${text}`);
+    }
+    const hass12 = makeHass();
+    hass12.locale = { language: "en", time_format: "12" };
+    const twelve = addFeature({ type: "custom:xtool-camera", show_time: true }, { hass: hass12 });
+    await wait(60);
+    twelve.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
+    check("camera, time", /[AP]M$/.test(twelve.shadowRoot.querySelector(".time").textContent), "the 12 hour setting is followed");
     check("camera, one", keysOf(single).length === 0 && single.shadowRoot.querySelector(".shot img").getAttribute("src").includes("f2_deep"),
       "the chosen camera, without buttons");
 
