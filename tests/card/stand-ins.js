@@ -89,13 +89,15 @@ document.documentElement.style.cssText = [
   "--blue-color: #2196f3", "--cyan-color: #00bcd4", "--indigo-color: #3f51b5", "--teal-color: #009688",
 ].join(";");
 
-// ha-control-slider: Home Assistant's slider (a page can load it late, with defineSlider)
-window.defineSlider = () => customElements.define("ha-control-slider", class extends HTMLElement {
+// hui-timestamp-display: Home Assistant's timestamp display (the tile card loads it)
+customElements.define("hui-timestamp-display", class extends HTMLElement {});
+
+// hui-light-brightness-card-feature: Home Assistant's light brightness feature
+customElements.define("hui-light-brightness-card-feature", class extends HTMLElement {
   connectedCallback() {
     this.style.cssText = "display:block;height:42px";
   }
 });
-if (!window.noHaSlider) window.defineSlider();
 
 // ha-icon: shows its icon name
 customElements.define("ha-icon", class extends HTMLElement {
@@ -118,29 +120,66 @@ customElements.define("ha-control-switch", class extends HTMLElement {
   }
 });
 
-// hui-card-feature: one feature. A custom feature is created from its type,
-// as Home Assistant does, and given hass, the context and its configuration
+// hui-card-feature: one feature, with Home Assistant's properties (feature,
+// context, hass, color). The feature's element is made from its type, as
+// Home Assistant does, and given hass, the context, the color and its configuration
 customElements.define("hui-card-feature", class extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
   }
 
+  // The tile card stand-in sets everything at once
   set setup({ config, hass, entityId }) {
-    if (config.type === "toggle") {
-      this.shadowRoot.innerHTML = "<ha-control-switch></ha-control-switch>";
-      return;
-    }
-    const element = document.createElement(config.type.replace("custom:", ""));
-    element.setConfig(config);
-    element.hass = hass;
-    element.context = { entity_id: entityId };
-    this.element = element;
-    this.shadowRoot.replaceChildren(element);
+    this.feature = config;
+    this.context = { entity_id: entityId };
+    this.hass = hass;
+  }
+
+  set feature(feature) {
+    this._feature = feature;
+    this._render();
+  }
+
+  get feature() {
+    return this._feature;
+  }
+
+  set context(context) {
+    this._context = context;
+    if (this.element) this.element.context = context;
+    this._render();
+  }
+
+  get context() {
+    return this._context;
   }
 
   set hass(hass) {
+    this._hass = hass;
     if (this.element) this.element.hass = hass;
+    this._render();
+  }
+
+  get hass() {
+    return this._hass;
+  }
+
+  _render() {
+    if (this.element || !this._feature || !this._context || !this._hass) return;
+    if (this._feature.type === "toggle") {
+      this.shadowRoot.innerHTML = "<ha-control-switch></ha-control-switch>";
+      this.element = this.shadowRoot.firstElementChild;
+      return;
+    }
+    const type = this._feature.type;
+    const element = document.createElement(type.startsWith("custom:") ? type.slice(7) : `hui-${type}-card-feature`);
+    element.setConfig?.(this._feature);
+    element.hass = this._hass;
+    element.context = this._context;
+    element.color = this.color;
+    this.element = element;
+    this.shadowRoot.replaceChildren(element);
   }
 });
 

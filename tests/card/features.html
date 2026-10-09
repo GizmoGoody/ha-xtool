@@ -97,29 +97,21 @@
     const optionNames = options.querySelector("ha-form").schema.map((s) => s.name);
     check("fill lights as buttons", !optionNames.includes("dim_lights") && optionNames.includes("animate_fan"), `the options have no dimming (${optionNames.join(", ")})`);
 
-    // Fill light brightness: one light per feature, like the tile card's light brightness feature
+    // Fill light brightness: Home Assistant's own light brightness feature, for the chosen fill light
     hass = makeHass();
     const frontLight = addFeature({ type: "custom:xtool-fill-light", light: "fill_light_front" }, { hass });
     const backLight = addFeature({ type: "custom:xtool-fill-light", light: "fill_light_back" }, { hass });
     await wait(50);
-    const frontSlider = frontLight.shadowRoot.querySelector("ha-control-slider");
-    const backSlider = backLight.shadowRoot.querySelector("ha-control-slider");
-    check("fill light", frontLight.shadowRoot.querySelectorAll("ha-control-slider").length === 1 && !frontLight.shadowRoot.querySelector(".name"),
-      "one slider per feature, with no caption (like the tile card's)");
-    check("fill light", frontSlider.value === 50 && backSlider.value === 0, "the front light at 50%, the back light off");
-    check("fill light", frontSlider.min === 1 && frontSlider.max === 100 && frontSlider.label === "Fill light (front) brightness",
-      "from 1 to 100 percent, labeled with the light");
-    check("fill light", frontLight.style.getPropertyValue("--xtool-light-color").includes("--state-light-active-color")
-      && backLight.style.getPropertyValue("--xtool-light-color").includes("--state-light-inactive-color"), "in the light's colors, on and off");
-    frontSlider.dispatchEvent(new CustomEvent("value-changed", { detail: { value: 80 }, bubbles: true }));
-    check("fill light", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "light", service: "turn_on", data: { entity_id: "light.f2_fill_front", brightness_pct: 80 } }),
-      "a new value sets the light's brightness");
-    frontSlider.dispatchEvent(new CustomEvent("slider-moved", { detail: { value: 30 }, bubbles: true }));
-    frontLight.hass = makeHass({ "light.f2_fill_front": { state: "on", attributes: { brightness: 255 } } });
-    check("fill light", frontSlider.value === 50, "a slider that is being held is not moved by an update");
-    frontSlider.dispatchEvent(new CustomEvent("value-changed", { detail: { value: 30 }, bubbles: true }));
-    frontLight.hass = makeHass({ "light.f2_fill_front": { state: "on", attributes: { brightness: 255 } } });
-    check("fill light", frontSlider.value === 100, "once let go, it follows the light again");
+    const frontFeature = frontLight.shadowRoot.querySelector("hui-card-feature");
+    const backFeature = backLight.shadowRoot.querySelector("hui-card-feature");
+    check("fill light", frontFeature?.feature.type === "light-brightness" && frontFeature.context.entity_id === "light.f2_fill_front"
+      && backFeature?.context.entity_id === "light.f2_fill_back", "Home Assistant's light brightness feature, for the chosen light");
+    check("fill light", !!frontFeature.shadowRoot.querySelector("hui-light-brightness-card-feature")?.hass, "drawn by Home Assistant, with hass");
+    check("fill light", !frontLight.shadowRoot.querySelector("input, ha-control-slider"), "no slider of the card's own");
+    check("fill light", frontLight.style.getPropertyValue("--feature-color").includes("--state-light-active-color") && frontFeature.color === frontLight.style.getPropertyValue("--feature-color")
+      && backLight.style.getPropertyValue("--feature-color").includes("--state-light-inactive-color"), "in the light's colors, on and off");
+    frontLight.hass = makeHass({ "light.f2_fill_front": { state: "on", attributes: { rgb_color: [255, 0, 0] } } });
+    check("fill light", frontLight.style.getPropertyValue("--feature-color") === "rgb(255, 0, 0)", "a light's own color, when it has one");
     const stub = customElements.get("xtool-fill-light").getStubConfig(makeHass(), { entity_id: "sensor.f2_status" });
     check("fill light", stub.light === "fill_light_front", "a new feature starts with the first fill light");
     const lightOptions = document.createElement("xtool-feature-editor");
@@ -131,10 +123,7 @@
       && lightField.schema[0].selector.select.options.map((o) => o.value).join() === "fill_light_front,fill_light_back", "the editor offers each fill light");
     const none = addFeature({ type: "custom:xtool-fill-light" }, { hass: makeHass(), entityId: "sensor.p2_status" });
     await wait(50);
-    check("fill light", none.shadowRoot.querySelectorAll("ha-control-slider").length === 0, "none for a laser without fill lights");
-    const unavailable = addFeature({ type: "custom:xtool-fill-light", light: "fill_light_front" }, { hass: makeHass({ "light.f2_fill_front": "unavailable" }) });
-    await wait(50);
-    check("fill light", unavailable.shadowRoot.querySelector("ha-control-slider").disabled === true, "an unavailable light's slider is off");
+    check("fill light", !none.shadowRoot.querySelector("hui-card-feature"), "none for a laser without fill lights");
 
     // Animate fan: the exhaust's icon turns while it runs
     row = addFeature({ type: "custom:xtool-peripherals" }, { hass: makeHass() });
@@ -212,37 +201,23 @@
     await wait(80);
     single.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
     check("camera, one", single.shadowRoot.querySelector(".time").textContent === "", "no time unless chosen");
-    const timed = addFeature({ type: "custom:xtool-camera", show_time: true }, { hass });
-    await wait(80);
-    timed.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
-    check("camera, time", /^Updated (now|\d+ seconds? ago)$/.test(timed.shadowRoot.querySelector(".time").textContent),
-      `the last updated time, relative by default as in Home Assistant (${timed.shadowRoot.querySelector(".time").textContent})`);
-    for (const [format, pattern] of [["relative", /^Updated now$|^Updated \d+ seconds? ago$/], ["total", /^Updated 0:0\d$/], ["time", /^Updated \d{1,2}:\d\d:\d\d/], ["datetime", /^Updated .*20\d\d.*\d:\d\d:\d\d/], ["date", /^Updated .*20\d\d$/]]) {
-      const formatted = addFeature({ type: "custom:xtool-camera", show_time: true, time_format: format }, { hass: makeHass() });
-      await wait(60);
-      formatted.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
-      const text = formatted.shadowRoot.querySelector(".time").textContent;
-      check("camera, time", pattern.test(text), `${format}: ${text}`);
-    }
-    const hass12 = makeHass();
-    hass12.locale = { language: "en", time_format: "12" };
-    const twelve = addFeature({ type: "custom:xtool-camera", show_time: true, time_format: "time" }, { hass: hass12 });
-    await wait(60);
-    twelve.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
-    check("camera, time", /[AP]M$/.test(twelve.shadowRoot.querySelector(".time").textContent), "the 12 hour setting is followed");
-    check("camera, one", keysOf(single).length === 0 && single.shadowRoot.querySelector(".shot img").getAttribute("src").includes("f2_deep"),
-      "the chosen camera, without buttons");
-
-    // Once Home Assistant's timestamp display is loaded, the camera uses it, in the chosen format
-    customElements.define("hui-timestamp-display", class extends HTMLElement {});
-    for (const [format, expected] of [["total", "total"], ["auto", undefined], [undefined, undefined]]) {
-      const stamped = addFeature({ type: "custom:xtool-camera", show_time: true, ...(format ? { time_format: format } : {}) }, { hass: makeHass() });
+    for (const [format, expected] of [["total", "total"], ["datetime", "datetime"], ["auto", undefined], [undefined, undefined]]) {
+      const stamped = addFeature({ type: "custom:xtool-camera", show_time: true, ...(format ? { time_format: format } : {}) }, { hass });
       await wait(60);
       stamped.shadowRoot.querySelector(".shot img").dispatchEvent(new Event("load"));
       const element = stamped.shadowRoot.querySelector(".time hui-timestamp-display");
-      check("camera, timestamp display", !!element && element.ts instanceof Date && element.format === expected && element.hass,
-        `Home Assistant's timestamp display, format ${format ?? "not set"}`);
+      check("camera, time", !!element && element.ts instanceof Date && element.format === expected && element.hass === hass
+        && stamped.shadowRoot.querySelector(".time").textContent === "Updated ", `Home Assistant's timestamp display, format ${format ?? "not set"}`);
     }
+    const timeOptions = document.createElement("xtool-feature-editor");
+    timeOptions.hass = hass;
+    timeOptions.context = { entity_id: "sensor.f2_status" };
+    timeOptions.setConfig({ type: "custom:xtool-camera", show_time: true });
+    const formatField = timeOptions.querySelector("ha-form").schema.find((s) => s.name === "time_format");
+    check("camera, time", formatField.selector.select.options.map((o) => o.label).join() === "Auto,Relative,Total,Date,Time,Date and time"
+      && timeOptions.querySelector("ha-form").data.time_format === "auto", "the tile card's time formats, Auto by default");
+    check("camera, one", keysOf(single).length === 0 && single.shadowRoot.querySelector(".shot img").getAttribute("src").includes("f2_deep"),
+      "the chosen camera, without buttons");
 
     // IF2 fan
     hass = makeHass();
