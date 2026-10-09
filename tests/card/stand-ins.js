@@ -89,6 +89,14 @@ document.documentElement.style.cssText = [
   "--blue-color: #2196f3", "--cyan-color: #00bcd4", "--indigo-color: #3f51b5", "--teal-color: #009688",
 ].join(";");
 
+// ha-control-slider: Home Assistant's slider (a page can load it late, with defineSlider)
+window.defineSlider = () => customElements.define("ha-control-slider", class extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = "display:block;height:42px";
+  }
+});
+if (!window.noHaSlider) window.defineSlider();
+
 // ha-icon: shows its icon name
 customElements.define("ha-icon", class extends HTMLElement {
   connectedCallback() {
@@ -140,14 +148,19 @@ customElements.define("hui-card-feature", class extends HTMLElement {
 customElements.define("hui-card-features", class extends HTMLElement {
   constructor() {
     super();
+    // Like Home Assistant's: a second column, with a divider before each feature in it
     this.attachShadow({ mode: "open" }).innerHTML = `<style>
       :host { display: flex; flex-direction: column; gap: 12px; width: 100%; --feature-height: 42px; --feature-border-radius: 12px; }
+      :host([columns="2"]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+      .divided { box-sizing: border-box; border-inline-start: 1px solid #f0f; }
     </style>`;
   }
 
-  set setup({ features, hass, entityId }) {
-    this.items = features.map((config) => {
+  set setup({ features, hass, entityId, columns }) {
+    if (columns > 1) this.setAttribute("columns", String(columns));
+    this.items = features.map((config, index) => {
       const item = document.createElement("hui-card-feature");
+      if (columns > 1 && index % columns > 0) item.className = "divided";
       item.setup = { config, hass, entityId };
       return item;
     });
@@ -200,12 +213,20 @@ customElements.define("hui-tile-card", class extends HTMLElement {
         ha-tile-icon { display: block; width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex: none; }
         img { width: 36px; height: 36px; display: block; }
         ha-tile-info { flex: 1; color: var(--primary-text-color, #fff); }
+        .top hui-card-features { flex: 1.2; }
       </style><ha-card><div class="top"><ha-tile-icon></ha-tile-icon><ha-tile-info></ha-tile-info></div></ha-card>`;
+      // Like the tile card: features below, or with "inline" the first one beside the title
       const features = this.config.features ?? [];
-      if (features.length) {
-        this.group = document.createElement("hui-card-features");
-        this.group.setup = { features, hass: this._hass, entityId: this.config.entity };
-        this.shadowRoot.querySelector("ha-card").append(this.group);
+      const inline = this.config.features_position === "inline" && features.length > 1;
+      const beside = inline ? features.slice(0, 1) : [];
+      const below = inline ? features.slice(1) : features;
+      this.groups = [];
+      for (const [list, place] of [[beside, this.shadowRoot.querySelector(".top")], [below, this.shadowRoot.querySelector("ha-card")]]) {
+        if (!list.length) continue;
+        const group = document.createElement("hui-card-features");
+        group.setup = { features: list, hass: this._hass, entityId: this.config.entity, columns: place.localName === "ha-card" && list.length > 1 ? 2 : 1 };
+        place.append(group);
+        this.groups.push(group);
       }
     }
     this.shadowRoot.querySelector("ha-tile-icon").innerHTML = picture ? `<img src="${picture}">` : "icon";
@@ -213,7 +234,7 @@ customElements.define("hui-tile-card", class extends HTMLElement {
     const content = [].concat(this.config.state_content ?? ["state"]);
     this.shadowRoot.querySelector("ha-tile-info").textContent =
       content.map((name) => (name === "state" ? stateObj.state : stateObj.attributes[name])).filter(Boolean).join(" · ");
-    if (this.group) this.group.hass = this._hass;
+    for (const group of this.groups ?? []) group.hass = this._hass;
   }
 
   getGridOptions() {

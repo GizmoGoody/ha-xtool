@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>xTool card: fill light sliders before Home Assistant's slider is loaded</title>
+<style>
+  body { margin: 0; padding: 16px; background: #111; color: #ddd; font: 13px Roboto, "Segoe UI", sans-serif; }
+  pre { white-space: pre-wrap; }
+</style>
+<script>window.noHaSlider = true;</script>
+<script src="stand-ins.js"></script>
+<script src="../../custom_components/xtool/frontend/xtool-card.js"></script>
+<script src="checks.js"></script>
+<div id="cards"></div>
+<pre id="report" data-result="running">running</pre>
+<script>
+  runChecks(async () => {
+    const hass = makeHass();
+    const lights = addFeature({ type: "custom:xtool-fill-lights" }, { hass });
+    await wait(50);
+    const inputs = [...lights.shadowRoot.querySelectorAll('input[type="range"]')];
+    check("fallback sliders", inputs.length === 2 && !lights.shadowRoot.querySelector("ha-control-slider"), "range inputs, while Home Assistant's slider is not loaded");
+    check("fallback sliders", inputs[0].value === "50" && inputs[0].style.getPropertyValue("--value") === "50%" && inputs[1].value === "0", "showing each light's brightness");
+    inputs[0].value = "70";
+    inputs[0].dispatchEvent(new Event("input"));
+    inputs[0].dispatchEvent(new Event("change"));
+    check("fallback sliders", JSON.stringify(hass.calls[0]) === JSON.stringify({ domain: "light", service: "turn_on", data: { entity_id: "light.f2_fill_front", brightness_pct: 70 } }),
+      "a change sets the brightness");
+
+    // Home Assistant's slider is loaded later (with the first light feature it draws)
+    defineSlider();
+    await wait(100);
+    check("fallback sliders", lights.shadowRoot.querySelectorAll("ha-control-slider").length === 2 && !lights.shadowRoot.querySelector("input"),
+      "the card switches to Home Assistant's slider once it is loaded");
+  });
+</script>

@@ -31,6 +31,11 @@
     const names = form.schema.map((s) => s.name);
     check("editor", ["style", "features_style", "badges", "progress"].every((n) => names.includes(n)), `the xTool options (${names.join(", ")})`);
     check("editor", form.data.badges.join() === "alarm,connection,safety_key,lid,safety_off", "the default badges are shown");
+    const badgeField = form.schema.find((s) => s.name === "badges");
+    check("editor", badgeField.selector.select.reorder === true && badgeField.selector.select.multiple === true, "the badges can be put in order");
+    check("editor", badgeField.label.includes("priority order") && badgeField.helper.includes("priority order"), "and are labeled as in priority order");
+    form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { style: "champagne", badges: ["lid", "alarm", "safety_key"] } } }));
+    check("editor", fired.badges.join() === "lid,alarm,safety_key", "the order chosen is the order saved");
 
     const tile = editor.shadowRoot.querySelector("xtool-tile-card-editor");
     check("editor", !!tile, "the tile card's own editor is inside");
@@ -48,7 +53,7 @@
     // Tap to show or hide the features
     form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { style: "none", features_toggle: true, features_open: false } } }));
     check("editor", fired.features_toggle === true && fired.features_open === false, "the collapse options are saved");
-    check("editor", editor.shadowRoot.getElementById("form").schema.some((s) => s.name === "features_open"), "Show the features at load is offered");
+    check("editor", editor.shadowRoot.getElementById("form").schema.find((s) => s.name === "features_open")?.label === "Show features at load", "Show features at load is offered");
     form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { style: "none", features_toggle: false } } }));
     check("editor", !("features_toggle" in fired) && !("features_open" in fired), "turned off, the options are removed");
 

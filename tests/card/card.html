@@ -39,6 +39,12 @@
     offline: addCard("not connected", {}, { hass: f2("unavailable") }),
     chosen: addCard("badges turned off", { badges: [] }, { hass: f2("idle", { "binary_sensor.f2_safety_key": "off" }) }),
     lid: addCard("P2 lid open", { entity: "sensor.p2_status" }, { hass: p2("idle", { "binary_sensor.p2_cover": "on" }) }),
+    alarmFirst: addCard("alarm, then safety key", { badges: ["alarm", "safety_key"] },
+      { hass: f2("idle", { "binary_sensor.f2_alarm": "on", "binary_sensor.f2_safety_key": "off" }) }),
+    keyFirst: addCard("safety key, then alarm", { badges: ["safety_key", "alarm"] },
+      { hass: f2("idle", { "binary_sensor.f2_alarm": "on", "binary_sensor.f2_safety_key": "off" }) }),
+    firstApplies: addCard("lid first, but closed", { badges: ["lid", "safety_key"] },
+      { hass: f2("idle", { "binary_sensor.f2_safety_key": "off" }) }),
   };
 
   // The progress edge
@@ -66,6 +72,11 @@
   const collapsible = addCard("tap shows or hides the features", { style: "graphite", features_toggle: true, ...jobFeatures }, { hass: f2("idle"), height: 220 });
   const closedAtLoad = addCard("hidden at load", { entity: "sensor.p2_status", features_toggle: true, features_open: false, ...jobFeatures }, { hass: p2("idle"), height: 220 });
   const offStyled = addCard("off, graphite", { style: "graphite", ...jobFeatures }, { hass: f2("off"), height: 220 });
+
+  // A feature beside the title (features position: inline), and two columns of features
+  const inlineCard = addCard("inline job, champagne", { style: "champagne", features_style: "console", features_position: "inline",
+    features: [{ type: "custom:xtool-job" }, { type: "custom:xtool-peripherals" }, { type: "custom:xtool-safety" }] }, { hass: f2("idle"), height: 280 });
+  const camera = addCard("camera", { features: [{ type: "custom:xtool-camera" }, { type: "custom:xtool-if2-fan" }] }, { hass: f2("idle"), height: 120 });
 
   // State content attributes
   const content = addCard("state content", { state_content: ["state", "elapsed", "exhaust", "red_dot"] }, { hass: f2("processing") });
@@ -113,6 +124,9 @@
     check("not connected", on(badges.offline) && badge(badges.offline).title === "Not connected", "the connection badge");
     check("badges turned off", !on(badges.chosen), "no badge when none are chosen");
     check("P2 lid open", on(badges.lid) && badge(badges.lid).title === "Lid open", "the lid badge");
+    check("badge order", badge(badges.alarmFirst).title === "Alarm", "alarm listed first: the alarm shows");
+    check("badge order", badge(badges.keyFirst).title === "Safety key removed", "safety key listed first: the safety key shows, though the alarm is also on");
+    check("badge order", badge(badges.firstApplies).title === "Safety key removed", "the first listed that applies shows");
     check("fire warning", on(pictures.fire) && badge(pictures.fire).title === "Fire warning", "the fire badge comes first");
     const icon = badges.key.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-icon").getBoundingClientRect();
     const b = badge(badges.key).getBoundingClientRect();
@@ -178,6 +192,25 @@
     // No dividers between features side by side
     check("no style", getComputedStyle(inner(styles.plain)).getPropertyValue("--ha-card-feature-divider").trim() === "none",
       "the theme's feature divider is turned off");
+
+    // The window covers the header row, with room for the controls beside the title
+    const tileRoot = inner(inlineCard).shadowRoot;
+    const win = inlineCard.shadowRoot.getElementById("window").getBoundingClientRect();
+    const beside = tileRoot.querySelector(".top hui-card-features").getBoundingClientRect();
+    const below = tileRoot.querySelector("ha-card > hui-card-features").getBoundingClientRect();
+    check("inline job", win.bottom >= beside.bottom + 5 && win.top <= beside.top - 3, `the window holds the feature beside the title (window ${Math.round(win.top)} to ${Math.round(win.bottom)}, feature ${Math.round(beside.top)} to ${Math.round(beside.bottom)})`);
+    check("inline job", win.bottom <= below.top, "the features below sit on the body");
+    check("inline job", win.right - beside.right >= 5, `room at the right (${Math.round(win.right - beside.right)} px)`);
+
+    // No divider before a feature in a second column
+    const group = tileRoot.querySelector("ha-card > hui-card-features");
+    const second = group.shadowRoot.querySelector(".divided");
+    check("inline job", !!second && getComputedStyle(second).borderInlineStartStyle === "none", "the divider is gone from the second column");
+    check("inline job", group.shadowRoot.adoptedStyleSheets.length === 1, "removed from the feature group, once");
+
+    // The card's height follows its content
+    check("grid", inlineCard.getGridOptions().rows === "auto" && inlineCard.getGridOptions().columns === 6, "rows: auto, with the tile card's columns");
+    check("grid", camera.getCardSize() === 7, `the camera counts as five rows (${camera.getCardSize()})`);
 
     // State content
     const info = content.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-info").textContent;
