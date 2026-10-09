@@ -23,7 +23,7 @@
  * - a progress edge along one side of the card, or around it,
  * - an optional xTool style: the machine's window behind the title and its
  *   body behind the rest, with the features on the body in the Match, Flat
- *   or Inset style of the SVS and Lampster cards, and
+ *   or Console style, and
  * - an option to show or hide the features with a tap on the card, so it
  *   can collapse to the title,
  * - the job's progress, elapsed time and last job time, and the state of
@@ -424,15 +424,15 @@ function keepTaps(el) {
   }
 }
 
-// Inset (the xtool-inset attribute): the buttons become keys that press in
+// Console (the xtool-console attribute): the buttons become keys that press in
 const KEY_CSS = `
-  :host([xtool-inset]) .key {
+  :host([xtool-console]) .key {
     background-image: linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,0) 45%, rgba(0,0,0,.18));
     box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -2px 2px rgba(0,0,0,.3), 0 2px 3px rgba(0,0,0,.5);
     transition: transform 120ms ease-in-out, box-shadow 120ms ease-in-out;
   }
-  :host([xtool-inset]) .key:active,
-  :host([xtool-inset]) .key[aria-pressed="true"] {
+  :host([xtool-console]) .key:active,
+  :host([xtool-console]) .key[aria-pressed="true"] {
     transform: translateY(1px) scale(.96);
     background-image: linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,0) 55%, rgba(255,255,255,.08));
     box-shadow: inset 0 2px 4px rgba(0,0,0,.55), inset 0 -1px 0 rgba(255,255,255,.2);
@@ -441,7 +441,7 @@ const KEY_CSS = `
 
 // A row of buttons, each tinted in its color, the ones that are on filled.
 // On the xTool card, Match dims the style under each button (a scrim) and
-// Flat and Inset give each button a solid backing.
+// Flat and Console give each button a solid backing.
 const FEATURE_CSS = `
   :host { display: block; }
   .row { display: flex; gap: var(--feature-button-spacing, 12px); height: var(--feature-height, 42px); }
@@ -1186,7 +1186,7 @@ class XtoolFeatureEditor extends HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// Inset styling for Home Assistant's own toggle feature: a slide with a
+// Console styling for Home Assistant's own toggle feature: a slide with a
 // beveled tab. This styles parts inside Home Assistant's controls; if an
 // update renames them, they keep their usual look.
 // ---------------------------------------------------------------------------
@@ -1252,7 +1252,7 @@ const STYLES = [["none", "None (the theme's card)"], ["champagne", "xTool Champa
 const TONE = { champagne: "light", graphite: "dark" };
 const FLAT = { champagne: "#c4a191", graphite: "#2d3136" };
 // The same keys and values as the SVS and Lampster cards
-const FEATURES_STYLES = [["match", "Match style"], ["flat", "Flat"], ["inset", "Inset"]];
+const FEATURES_STYLES = [["match", "Match style"], ["flat", "Flat"], ["console", "Console"]];
 const BADGES = [
   ["alarm", "Alarm or fire warning"],
   ["connection", "Not connected"],
@@ -1383,11 +1383,11 @@ class XtoolCard extends HTMLElement {
         }
         .tile.dark.solid { --xtool-feature-backing: #1e1f22; }
         .tile.light.solid { --xtool-feature-backing: #eceef1; }
-        /* Flat: a patch of the body's base color behind each control; Inset: a channel */
+        /* Flat: a patch of the body's base color behind each control; Console: a channel */
         #areas { position: absolute; inset: 0; }
         .area { position: absolute; box-sizing: border-box; }
         .area.flat { background: var(--flat); box-shadow: 0 0 3px 1px var(--flat); }
-        .area.inset {
+        .area.console {
           background: linear-gradient(180deg, rgba(0, 0, 0, .22), rgba(0, 0, 0, .08));
           box-shadow:
             inset 0 2px 3px rgba(0, 0, 0, .55), inset 0 1px 1px rgba(0, 0, 0, .4),
@@ -1863,8 +1863,8 @@ class XtoolCard extends HTMLElement {
     if (!TONE[this._config.style]) return;
     const W = this._frame.offsetWidth, H = this._frame.offsetHeight;
     if (!W || !H) return;
-    const inset = 5;
-    let bottom = H - inset;
+    const margin = 5;
+    let bottom = H - margin;
     const root = this._tile?.shadowRoot;
     const info = root && findDeep(root, "ha-tile-info");
     const infoBox = info && this._box(info);
@@ -1873,10 +1873,10 @@ class XtoolCard extends HTMLElement {
         .filter((b) => b && b.y >= infoBox.y + infoBox.h - 1);
       if (below.length) bottom = Math.min(...below.map((b) => b.y)) - 6;
     }
-    Object.assign(this._window.style, { left: `${inset}px`, top: `${inset}px`, width: `${W - 2 * inset}px`, height: `${Math.max(0, bottom - inset)}px` });
-    Object.assign(this._stripe.style, { left: `${inset + 4}px`, width: `${W - 2 * inset - 8}px`, top: `${bottom + 2}px` });
+    Object.assign(this._window.style, { left: `${margin}px`, top: `${margin}px`, width: `${W - 2 * margin}px`, height: `${Math.max(0, bottom - margin)}px` });
+    Object.assign(this._stripe.style, { left: `${margin + 4}px`, width: `${W - 2 * margin - 8}px`, top: `${bottom + 2}px` });
     // No body below the window (no features below the title): no line
-    this._stripe.style.visibility = bottom >= H - inset ? "hidden" : "";
+    this._stripe.style.visibility = bottom >= H - margin ? "hidden" : "";
   }
 
   /**
@@ -1905,13 +1905,13 @@ class XtoolCard extends HTMLElement {
     return areas;
   }
 
-  // Inset: this card's buttons become keys, and Home Assistant's toggle a slide
-  _styleControls(inset) {
+  // Console: this card's buttons become keys, and Home Assistant's toggle a slide
+  _styleControls(keys) {
     const root = this._tile?.shadowRoot;
     if (!root) return;
     try {
-      for (const el of findAllDeep(root, FEATURE_TAGS.join(", "))) el.toggleAttribute("xtool-inset", inset);
-      for (const el of findAllDeep(root, "ha-control-switch")) styleHaControl(el, inset);
+      for (const el of findAllDeep(root, FEATURE_TAGS.join(", "))) el.toggleAttribute("xtool-console", keys);
+      for (const el of findAllDeep(root, "ha-control-switch")) styleHaControl(el, keys);
     } catch (err) {
       console.warn("xTool card: could not style the controls", err);
     }
@@ -1932,12 +1932,12 @@ class XtoolCard extends HTMLElement {
 
   _drawAreas() {
     const style = TONE[this._config?.style] ? this._config.features_style ?? "match" : "match";
-    this._styleControls(style === "inset");
+    this._styleControls(style === "console");
     if (style === "match") {
       this._areas.replaceChildren();
       this._areasKey = undefined;
     } else {
-      const pad = style === "inset" ? 3 : 2;
+      const pad = style === "console" ? 3 : 2;
       const areas = this._featureAreas().map((b) => ({
         x: b.x - pad, y: b.y - pad, w: b.w + 2 * pad, h: b.h + 2 * pad,
         radius: Math.min(b.radius + pad, (b.h + 2 * pad) / 2),
@@ -2139,7 +2139,7 @@ class XtoolCardEditor extends HTMLElement {
       },
       ...(styled ? [{
         name: "features_style", label: "Features style",
-        helper: "Match style: the controls sit on the body. Flat: on a patch of the body's base color. Inset: in a channel pressed into the body.",
+        helper: "Match style: the controls sit on the body. Flat: on a patch of the body's base color. Console: in a channel pressed into the body.",
         selector: select(FEATURES_STYLES),
       }] : []),
       {
