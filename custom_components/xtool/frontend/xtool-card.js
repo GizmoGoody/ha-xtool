@@ -192,6 +192,9 @@ const HA_COLORS = [
   "light-grey", "grey", "dark-grey", "blue-grey", "black", "white", "disabled",
 ];
 const cssColor = (color) => (HA_COLORS.includes(color) ? `var(--${color}-color)` : color);
+// The fill lights are daylight white, not the yellow Home Assistant gives a
+// light without a color of its own
+const DAYLIGHT = "rgb(214, 228, 255)";
 
 // The working color by laser, and the color of every other state
 const LASER_COLORS = { uv: "#9b7bff", co2: "#ff7043", diode: "#42a5f5" };
@@ -670,9 +673,9 @@ const PERIPHERALS = [
     warning: "A job is running. Turning the power off stops it at once and it cannot be resumed.",
   },
   { role: "exhaust", label: "Exhaust fan", icon: "mdi:fan", color: "blue", fan: true },
-  { role: "fill_light_front", label: "Fill light (front)", icon: "mdi:dome-light", color: "amber" },
-  { role: "fill_light_back", label: "Fill light (back)", icon: "mdi:dome-light", color: "amber" },
-  { role: "fill_light", label: "Fill light", icon: "mdi:dome-light", color: "amber" },
+  { role: "fill_light_front", label: "Fill light (front)", icon: "mdi:dome-light", color: DAYLIGHT },
+  { role: "fill_light_back", label: "Fill light (back)", icon: "mdi:dome-light", color: DAYLIGHT },
+  { role: "fill_light", label: "Fill light", icon: "mdi:dome-light", color: DAYLIGHT },
   { role: "red_dot", label: "Red dot", icon: "mdi:laser-pointer", color: "red" },
   { role: "cooling_fan", label: "Cooling fan", icon: "mdi:fan-chevron-up", color: "cyan", fan: true },
   { role: "cover_lock", label: "Cover lock", icon: "mdi:lock", color: "indigo" },
@@ -925,9 +928,9 @@ function dimmableLights(hass, entityId) {
     .filter(({ entityId: light }) => (hass?.states[light]?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff"));
 }
 
-// The feature color the tile card gives a light: its own color when it has
-// one, Home Assistant's light colors otherwise
-const LIGHT_ON = "var(--state-light-active-color, var(--state-active-color, var(--amber-color, #ffc107)))";
+// The feature color: a light's own color when it has one, daylight
+// otherwise; Home Assistant's color for a light that is off
+const LIGHT_ON = DAYLIGHT;
 const LIGHT_OFF = "var(--state-light-inactive-color, var(--state-inactive-color, var(--disabled-color, #bdbdbd)))";
 
 class XtoolFillLight extends HTMLElement {
