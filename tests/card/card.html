@@ -62,6 +62,8 @@
   // The xTool styles and features styles
   const styles = {
     champagne: addCard("champagne, match", { style: "champagne", ...jobFeatures }, { hass: f2("processing"), height: 220 }),
+    samePattern: addCard("champagne, pattern 4242", { style: "champagne", pattern: 4242, ...jobFeatures }, { hass: f2("processing"), height: 220 }),
+    otherPattern: addCard("champagne, pattern 17", { style: "champagne", pattern: 17, ...jobFeatures }, { hass: f2("processing"), height: 220 }),
     flat: addCard("champagne, flat", { style: "champagne", features_style: "flat", ...jobFeatures }, { hass: f2("processing"), height: 220 }),
     console: addCard("graphite, console", { style: "graphite", features_style: "console", features: [...jobFeatures.features, { type: "toggle" }] }, { hass: f2("processing"), height: 280 }),
     plain: addCard("no style", { ...jobFeatures }, { hass: f2("processing"), height: 220 }),
@@ -160,6 +162,10 @@
     const wh = parseFloat(windowBox(styles.champagne).style.height), fh = frame(styles.champagne).offsetHeight;
     check("champagne, match", wh > 30 && wh < fh / 2, `the window covers the title only (${Math.round(wh)} of ${fh} px)`);
     check("champagne, match", styles.champagne.shadowRoot.querySelectorAll(".area").length === 0, "Match draws no areas");
+    const gloss = (card) => windowBox(card).style.getPropertyValue("--xtool-gloss");
+    check("reflections", (gloss(styles.champagne).match(/linear-gradient/g) ?? []).length >= 3, "the window has a sheen and reflections");
+    check("reflections", gloss(styles.champagne) === gloss(styles.samePattern), "the default pattern is 4242: the same reflections");
+    check("reflections", gloss(styles.otherPattern) !== gloss(styles.champagne), "another pattern gives other reflections");
     const keys = deep(styles.flat, ".key").length;
     check("champagne, flat", keys > 0 && styles.flat.shadowRoot.querySelectorAll(".area.flat").length === keys,
       `a flat patch behind each button (${keys})`);

@@ -28,8 +28,19 @@
 
     check("editor", fired?.features_style === "match", "the features style is written out");
     const form = editor.shadowRoot.getElementById("form");
-    const names = form.schema.map((s) => s.name);
+    const styleForm = editor.shadowRoot.getElementById("style");
+    const names = [...styleForm.schema, ...form.schema].map((s) => s.name);
     check("editor", ["style", "features_style", "badges", "progress"].every((n) => names.includes(n)), `the xTool options (${names.join(", ")})`);
+    check("editor", styleForm.data.style === "champagne", "the style is shown");
+
+    // Randomize reflections: a new pattern for the window's reflections
+    const randomize = editor.shadowRoot.getElementById("randomize");
+    check("reflections", fired.pattern === 4242, "a styled card saves the default pattern");
+    check("reflections", randomize?.textContent === "Randomize reflections" && editor.shadowRoot.getElementById("row").style.display === "",
+      "Randomize reflections is offered with a style");
+    randomize.click();
+    check("reflections", Number.isInteger(fired.pattern) && fired.pattern >= 1 && fired.style === "champagne" && fired.features_style === "match",
+      `a click saves a new pattern (${fired.pattern}) and keeps the other options`);
     check("editor", form.data.badges.join() === "alarm,connection,safety_key,lid,safety_off", "the default badges are shown");
     const badgeField = form.schema.find((s) => s.name === "badges");
     check("editor", badgeField.selector.select.reorder === true && badgeField.selector.select.multiple === true, "the badges can be put in order");
@@ -45,7 +56,8 @@
 
     // The xTool options change
     form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { style: "none", badges: ["alarm"], progress: { edge: "bottom" } } } }));
-    check("editor", fired.style === "none" && !("features_style" in fired), "no features style without an xTool style");
+    check("editor", fired.style === "none" && !("features_style" in fired) && !("pattern" in fired), "no features style or pattern without an xTool style");
+    check("reflections", editor.shadowRoot.getElementById("row").style.display === "none", "no Randomize reflections without a style");
     check("editor", fired.badges.join() === "alarm" && fired.progress.edge === "bottom" && fired.progress.thickness === 4,
       "badges and the progress edge are saved, with the edge's other options written out");
     check("editor", !editor.shadowRoot.getElementById("form").schema.some((s) => s.name === "features_style"), "the features style is hidden");
