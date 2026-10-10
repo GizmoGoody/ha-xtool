@@ -13,7 +13,9 @@
 <script>
   const keysOf = (el) => [...el.shadowRoot.querySelectorAll(".key")];
   const keyNamed = (el, key) => el.shadowRoot.querySelector(`.key[data-key="${key}"]`);
-  const dialogOf = (el) => el.shadowRoot.querySelector("dialog");
+  // Home Assistant's confirmation dialog: what it asks, if anything
+  const asking = () => window.confirming;
+  const lastAction = () => window.actions[window.actions.length - 1];
   const lastCall = (hass) => hass.calls[hass.calls.length - 1];
 
   runChecks(async () => {
@@ -27,14 +29,15 @@
       "Pause presses the pause button");
     keyNamed(job, "cancel").click();
     await wait(20);
-    check("job, processing", dialogOf(job)?.open, "Cancel asks first");
-    dialogOf(job).querySelector(".keep").click();
-    await wait(20);
-    check("job, processing", lastCall(hass).data.entity_id === "button.f2_pause" && !dialogOf(job), "Keep it does not cancel");
+    check("job, processing", asking()?.title === "Cancel the job?" && asking().confirm_text === "Cancel the job" && asking().dismiss_text === "Keep it",
+      "Cancel asks first, in Home Assistant's confirmation dialog");
+    check("job, processing", JSON.stringify(lastAction()?.config.tap_action.target) === JSON.stringify({ entity_id: "button.f2_cancel" })
+      && lastAction().config.tap_action.perform_action === "button.press" && lastAction().action === "tap", "as a perform-action, through Home Assistant's action handling");
+    asking().answer(false);
+    check("job, processing", lastCall(hass).data.entity_id === "button.f2_pause", "Keep it does not cancel");
     keyNamed(job, "cancel").click();
     await wait(20);
-    dialogOf(job).querySelector(".go").click();
-    await wait(20);
+    asking().answer(true);
     check("job, processing", lastCall(hass).data.entity_id === "button.f2_cancel", "confirming cancels");
 
     // Job: idle and paused
@@ -49,7 +52,7 @@
     check("job, paused", keyNamed(job, "resume").textContent === "Resume", "Resume");
     keyNamed(job, "cancel").click();
     await wait(20);
-    check("job, paused", !dialogOf(job) && lastCall(hass).data.entity_id === "button.f2_cancel", "without asking, when turned off in the options");
+    check("job, paused", !asking() && lastCall(hass).data.entity_id === "button.f2_cancel", "without asking, when turned off in the options");
 
     // Peripherals
     hass = makeHass({ "sensor.f2_status": "idle" });
@@ -66,7 +69,7 @@
     check("peripherals", lastCall(hass).domain === "light" && lastCall(hass).service === "turn_on", "a tap turns the back fill light on");
     keyNamed(row, "power").click();
     await wait(20);
-    check("peripherals", !dialogOf(row) && lastCall(hass).data.entity_id === "switch.f2_power", "Power turns off without asking while idle");
+    check("peripherals", !asking() && lastCall(hass).data.entity_id === "switch.f2_power", "Power turns off without asking while idle");
     hass = makeHass({ "sensor.f2_status": "processing" });
     row = addFeature({ type: "custom:xtool-peripherals", controls: ["red_dot", "power"], show_names: true }, { hass });
     await wait(50);
@@ -74,8 +77,8 @@
       "the chosen parts, in the chosen order, with names");
     keyNamed(row, "power").click();
     await wait(20);
-    check("peripherals, chosen", dialogOf(row)?.open && hass.calls.length === 0, "Power asks first while a job runs");
-    dialogOf(row).querySelector(".keep").click();
+    check("peripherals, chosen", asking()?.title === "Turn off power?" && hass.calls.length === 0, "Power asks first while a job runs");
+    asking().answer(false);
 
     // The fill lights stay buttons in the peripherals feature: on or off only
     hass = makeHass();
@@ -151,23 +154,13 @@
     check("safety", !row.shadowRoot.querySelector(".warn, i"), "no dots");
     keyNamed(row, "moved_stop").click();
     await wait(20);
-    check("safety", !dialogOf(row) && lastCall(hass).service === "turn_on", "turning a check on does not ask");
-    // A glass theme: light text, a see-through card background
-    const rootStyle = document.documentElement.style;
-    rootStyle.setProperty("--primary-text-color", "#ffffff");
-    rootStyle.setProperty("--secondary-text-color", "rgba(255, 255, 255, 0.7)");
-    rootStyle.setProperty("--card-background-color", "rgba(255, 255, 255, 0.08)");
+    check("safety", !asking() && lastCall(hass).service === "turn_on", "turning a check on does not ask");
     keyNamed(row, "flame_alarm").click();
     await wait(20);
-    const box = dialogOf(row);
-    check("safety dialog", /^rgb\(\d+, \d+, \d+\)$/.test(box.style.background) && box.style.color === "rgb(255, 255, 255)",
-      `a solid surface with readable text on a glass theme (${box.style.background}, ${box.style.color})`);
-    rootStyle.removeProperty("--primary-text-color");
-    rootStyle.removeProperty("--secondary-text-color");
-    rootStyle.removeProperty("--card-background-color");
-    check("safety", dialogOf(row)?.open && dialogOf(row).textContent.includes("No flame alarm will be triggered"), "turning the flame alarm off asks, with xTool's warning");
-    dialogOf(row).querySelector(".go").click();
-    await wait(20);
+    check("safety", asking()?.text.includes("No flame alarm will be triggered") && asking().confirm_text === "Turn off",
+      "turning the flame alarm off asks, with xTool's warning");
+    check("safety", !document.querySelector("dialog") && !row.shadowRoot.querySelector("dialog"), "no dialog of the card's own");
+    asking().answer(true);
     check("safety", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "switch", service: "turn_off", data: { entity_id: "switch.f2_flame" } }),
       "confirming turns it off");
 
@@ -178,7 +171,7 @@
     check("settings", keysOf(row).map((k) => k.dataset.key).join() === "buzzer,device_sleep,auto_mode,if2_buzzer", "buzzer reminders, device sleep, auto mode, IF2 buzzer");
     keyNamed(row, "auto_mode").click();
     await wait(20);
-    check("settings", !dialogOf(row) && JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "switch", service: "turn_on", data: { entity_id: "switch.f2_auto_mode" } }),
+    check("settings", !asking() && JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "switch", service: "turn_on", data: { entity_id: "switch.f2_auto_mode" } }),
       "auto mode turns on and off with a tap, without asking");
     keyNamed(row, "if2_buzzer").click();
     check("settings", lastCall(hass).data.entity_id === "switch.if2_buzzer", "the IF2 buzzer is found on the accessory device");
@@ -251,9 +244,37 @@
     const fanForm = fanOptions.querySelector("ha-form");
     check("IF2 fan", fanForm.schema[0].selector.select.reorder === true && fanForm.data.options.join() === "Auto Regular,Auto Quiet,Off,1,2,3,4",
       "the editor offers the fan's choices, all by default");
+    check("IF2 fan", fanForm.data.control === "select" && fanForm.schema[0].name === "control"
+      && fanForm.schema[0].selector.select.options.map((o) => o.value).join() === "select,fan", "Controls: select options by default, or the fan");
+
+    // IF2 fan, as a fan: Home Assistant's fan preset modes and fan speed features
+    fan = addFeature({ type: "custom:xtool-if2-fan", control: "fan" }, { hass });
+    await wait(50);
+    const fanFeatures = [...fan.shadowRoot.querySelectorAll("hui-card-feature")];
+    check("IF2 fan, fan", fanFeatures.map((f) => f.feature.type).join() === "fan-preset-modes,fan-speed"
+      && fanFeatures.every((f) => f.context.entity_id === "fan.if2_fan" && f.hass === hass),
+      "the fan preset modes and fan speed features, for the IF2's fan entity");
+    check("IF2 fan, fan", fanFeatures[0].feature.style === "icons" && !("preset_modes" in fanFeatures[0].feature), "the Auto modes as icons, all of them");
+    check("IF2 fan, fan", fanFeatures[0].color.includes("--state-fan-active-color"), "in the fan's colors");
+    check("IF2 fan, fan", fan.shadowRoot.querySelectorAll(".slide").length === 2, "two rows");
+    fan = addFeature({ type: "custom:xtool-if2-fan", control: "fan", preset_style: "dropdown", preset_modes: ["Auto Quiet"] }, { hass });
+    await wait(50);
+    const presetFeature = fan.shadowRoot.querySelector("hui-card-feature");
+    check("IF2 fan, fan", presetFeature.feature.style === "dropdown" && presetFeature.feature.preset_modes.join() === "Auto Quiet", "the chosen style and Auto modes");
+    fan.setConfig({ type: "custom:xtool-if2-fan" });
+    await wait(20);
+    check("IF2 fan, fan", [...fan.shadowRoot.querySelectorAll("hui-card-feature")].map((f) => f.feature.type).join() === "select-options",
+      "changing back to select options shows the select options feature");
+    fanOptions.setConfig({ type: "custom:xtool-if2-fan", control: "fan" });
+    const fanNames = fanOptions.querySelector("ha-form").schema.map((s) => s.name);
+    check("IF2 fan, fan", fanNames.join() === "control,preset_style,preset_modes"
+      && fanOptions.querySelector("ha-form").data.preset_modes.join() === "Auto Regular,Auto Quiet", `the editor offers the fan's options (${fanNames.join(", ")})`);
     const noFan = addFeature({ type: "custom:xtool-if2-fan" }, { hass, entityId: "sensor.p2_status" });
     await wait(50);
     check("IF2 fan", !noFan.shadowRoot.querySelector("hui-card-feature"), "nothing for a laser without an IF2");
+    const noFanEntity = addFeature({ type: "custom:xtool-if2-fan", control: "fan" }, { hass, entityId: "sensor.p2_status" });
+    await wait(50);
+    check("IF2 fan, fan", !noFanEntity.shadowRoot.querySelector("hui-card-feature"), "nothing as a fan either");
 
     // A laser without the parts: nothing to show
     hass = makeHass();

@@ -36,6 +36,7 @@ const F2 = [
 const IF2 = [
   ["select.if2_fan", "accessory_ductfanv3_mode_speed", "Auto Quiet", { options: ["Auto Regular", "Auto Quiet", "Off", "1", "2", "3", "4"] }],
   ["switch.if2_buzzer", "accessory_ductfanv3_buzzer", "off"],
+  ["fan.if2_fan", "accessory_ductfanv3_fan", "on", { preset_modes: ["Auto Regular", "Auto Quiet"], percentage_step: 25, percentage: 50 }],
   ["sensor.if2_speed", "accessory_ductfanv3_current_speed", "60"],
 ];
 const P2 = [
@@ -63,8 +64,9 @@ window.makeHass = (changes = {}) => {
       dev_p2: { id: "dev_p2", model: "xTool P2", via_device_id: null },
     },
     calls: [],
-    callService(domain, service, data) {
-      hass.calls.push({ domain, service, data });
+    // A call's target is recorded with its data, as one entity_id
+    callService(domain, service, data, target) {
+      hass.calls.push({ domain, service, data: { ...(data ?? {}), ...(target ?? {}) } });
       return Promise.resolve();
     },
   };
@@ -338,4 +340,31 @@ window.loadCardHelpers = async () => ({
     if (config.type === "picture-entity" && !customElements.get("hui-image")) setTimeout(() => window.defineHuiImage(), 10);
     return document.createElement(config.type === "tile" ? "hui-tile-card" : "div");
   },
+});
+
+// Home Assistant's action handling (its action mixin and handle-action): a
+// hass-action with a confirmation waits for an answer (window.confirming,
+// answered with window.confirming.answer(true or false)); one without is
+// performed at once, with the hass of the element that sent it
+window.actions = [];
+window.confirming = null;
+document.addEventListener("hass-action", (ev) => {
+  const action = ev.detail.config.tap_action;
+  const hass = ev.composedPath()[0]._hass;
+  window.actions.push(ev.detail);
+  const perform = () => {
+    const [domain, service] = action.perform_action.split(".");
+    hass.callService(domain, service, action.data, action.target);
+  };
+  if (!action.confirmation) {
+    perform();
+    return;
+  }
+  window.confirming = {
+    ...action.confirmation,
+    answer: (ok) => {
+      window.confirming = null;
+      if (ok) perform();
+    },
+  };
 });
