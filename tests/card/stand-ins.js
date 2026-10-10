@@ -104,7 +104,11 @@ window.defineHuiImage = () => customElements.define("hui-image", class extends H
 if (!window.noHuiImage) window.defineHuiImage();
 
 // hui-select-options-card-feature: Home Assistant's select options feature
-customElements.define("hui-select-options-card-feature", class extends HTMLElement {});
+customElements.define("hui-select-options-card-feature", class extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = "display:block;height:42px";
+  }
+});
 
 // hui-light-brightness-card-feature: Home Assistant's light brightness feature
 customElements.define("hui-light-brightness-card-feature", class extends HTMLElement {
