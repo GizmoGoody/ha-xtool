@@ -276,10 +276,10 @@ Tile features (they also work in a plain tile card for an xTool entity):
 
 | Feature | Controls |
 |---|---|
-| xTool job | Start or Resume, Pause, Cancel (asks before cancelling) |
+| xTool job | Start or Resume, Pause, Cancel (asks first, in Home Assistant's confirmation dialog) |
 | xTool peripherals | Power (smart plug), exhaust fan, fill lights (on or off), red dot, cooling fan, cover lock. A fan's icon turns while it runs (*Animate fan*) |
 | xTool fill light brightness | The tile card's own light brightness feature, for one fill light. Add it once for each light |
-| xTool safety checks | Flame alarm, stops when enclosure opened, stops when moved. A check that is on is green, one that is off is red. Turning one off always asks first |
+| xTool safety checks | Flame alarm, stops when enclosure opened, stops when moved. A check that is on is green, one that is off is red. Turning one off always asks first, in Home Assistant's confirmation dialog |
 | xTool settings | Buzzer reminders, device sleep, auto mode, IF2 buzzer |
 | xTool camera | The camera's picture, shown by Home Assistant's own image element (Auto: snapshots; Live: the stream), tap to open it, with buttons to switch cameras and, as an option, the time the picture was last updated (in the tile card's time formats) |
 | xTool SafetyPro IF2 fan | The tile card's own select options feature, as buttons, for the IF2's fan. Choose which choices show |
