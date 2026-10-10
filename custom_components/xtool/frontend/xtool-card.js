@@ -1365,6 +1365,33 @@ function styleHaControl(control, on) {
   control.toggleAttribute("xtool-slide", on);
 }
 
+/**
+ * The control Home Assistant draws for one of its own features shown inside
+ * this card's (the fill light's slider, the IF2 fan's buttons): the feature
+ * element inside hui-card-feature, and the control inside that.
+ */
+function haControlOf(slide) {
+  let el = slide.querySelector("hui-card-feature");
+  for (let depth = 0; depth < 2 && el?.shadowRoot; depth++) {
+    const next = [...el.shadowRoot.children].find((c) => c.localName !== "style");
+    if (!next) break;
+    el = next;
+  }
+  return el ?? slide;
+}
+
+/**
+ * A control's corner radius: the theme's feature radius (Home Assistant's
+ * controls draw their corners with it inside their own shadow roots), or the
+ * element's own, no more than half its height.
+ */
+function featureRadius(el, height) {
+  const themed = parseFloat(getComputedStyle(el).getPropertyValue("--feature-border-radius"));
+  const own = parseFloat(getComputedStyle(el).borderTopLeftRadius);
+  const radius = Number.isFinite(themed) ? themed : Number.isFinite(own) ? own : 0;
+  return Math.min(radius, height / 2);
+}
+
 /** All elements matching selector inside root and its shadow roots, a few deep. */
 function findAllDeep(root, selector, depth = 5, out = []) {
   if (!root || depth < 0) return out;
@@ -2039,11 +2066,11 @@ class XtoolCard extends HTMLElement {
     if (infoBox) {
       const groups = findAllDeep(root, "hui-card-features").map((el) => this._box(el)).filter(Boolean);
       const infoBottom = infoBox.y + infoBox.h;
-      // A feature beside the title (features position: inline) is in the header
-      const beside = groups.filter((b) => b.y < infoBottom - 1);
       const below = groups.filter((b) => b.y >= infoBottom - 1);
-      const headerBottom = Math.max(infoBottom, ...beside.map((b) => b.y + b.h));
-      if (below.length) bottom = Math.max(Math.min(...below.map((b) => b.y)) - 6, headerBottom + 6);
+      // The window ends halfway into the gap above the first features below
+      // the title. (The box of the group beside the title is taller than its
+      // controls, so it does not set the window's height.)
+      if (below.length) bottom = Math.min(...below.map((b) => b.y)) - 6;
     }
     Object.assign(this._window.style, {
       left: `${margin}px`, top: `${margin}px`, width: `${W - 2 * margin}px`, height: `${Math.max(0, bottom - margin)}px`,
@@ -2063,16 +2090,19 @@ class XtoolCard extends HTMLElement {
     if (!root) return [];
     const areas = [];
     for (const wrap of findAllDeep(root, "hui-card-feature")) {
+      // The feature this card's fill light and IF2 fan show is measured with them
+      if (FEATURE_TAGS.includes(wrap.getRootNode()?.host?.localName)) continue;
       this._watchAdded(wrap.shadowRoot);
       const inner = wrap.shadowRoot ?? wrap;
       const ours = findDeep(inner, FEATURE_TAGS.join(", "));
       const keys = ours ? [...(ours.shadowRoot?.querySelectorAll(".key, .shot, .slide") ?? [])] : [];
       const element = [...inner.children].find((c) => c.tagName !== "STYLE");
-      for (const el of keys.length ? keys : [element]) {
+      for (const key of keys.length ? keys : [element]) {
+        // A Home Assistant feature inside one of this card's: its own control
+        const el = key?.classList?.contains("slide") ? haControlOf(key) : key;
         const b = el && this._box(el);
         if (!b) continue;
-        const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
-        areas.push({ ...b, radius });
+        areas.push({ ...b, radius: featureRadius(el, b.h) });
       }
     }
     this._watchAdded(root);
