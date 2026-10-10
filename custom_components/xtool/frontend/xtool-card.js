@@ -8,7 +8,8 @@
  *                             and other parts; a fan's icon turns while it runs
  * - custom:xtool-fill-light   one fill light's brightness: the tile card's own light brightness feature
  * - custom:xtool-safety       the safety checks; turning one off asks first
- * - custom:xtool-settings     buzzer reminders, device sleep, auto mode and the IF2's buzzer
+ * - custom:xtool-settings     buzzer reminders, device sleep and auto mode
+ * - custom:xtool-accessories  the accessories' switches, such as the IF2's buzzer
  * - custom:xtool-camera       a camera, shown by Home Assistant's own image element, with buttons to switch
  * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: the tile card's own select options or fan features
  * Each finds its entities on the same device as the card's entity (the IF2
@@ -192,6 +193,9 @@ const HA_COLORS = [
   "light-grey", "grey", "dark-grey", "blue-grey", "black", "white", "disabled",
 ];
 const cssColor = (color) => (HA_COLORS.includes(color) ? `var(--${color}-color)` : color);
+// The fill lights are daylight white, not the yellow Home Assistant gives a
+// light without a color of its own
+const DAYLIGHT = "rgb(214, 228, 255)";
 
 // The working color by laser, and the color of every other state
 const LASER_COLORS = { uv: "#9b7bff", co2: "#ff7043", diode: "#42a5f5" };
@@ -393,11 +397,16 @@ function statePicture(phase, color, { galvo = false, seed = 1, backing = false, 
 
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-// The tile card's Time format choices: [id, label]. Auto leaves the format
-// to Home Assistant's timestamp display.
-const TIME_FORMATS = [
-  ["auto", "Auto"], ["relative", "Relative"], ["total", "Total"], ["date", "Date"], ["time", "Time"], ["datetime", "Date and time"],
-];
+// The tile card's Time format choices (its time_format option)
+const TIME_FORMATS = ["relative", "total", "date", "time", "datetime"];
+
+/** The xTool card a feature is in, if any. */
+function cardOf(el) {
+  for (let node = el.getRootNode?.()?.host; node; node = node.getRootNode?.()?.host) {
+    if (node.localName === CARD_TYPE) return node;
+  }
+  return undefined;
+}
 
 /** Seconds as 1:02:03 or 12:08. */
 function formatDuration(seconds) {
@@ -453,9 +462,10 @@ const KEY_CSS = `
   }
   :host([xtool-console]) .key:active,
   :host([xtool-console]) .key[aria-pressed="true"] {
-    transform: translateY(1px) scale(.96);
-    background-image: linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,0) 55%, rgba(255,255,255,.08));
-    box-shadow: inset 0 2px 4px rgba(0,0,0,.55), inset 0 -1px 0 rgba(255,255,255,.2);
+    /* Pressed in: the same size, set lower, lit from above */
+    transform: translateY(1px);
+    background-image: linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.06) 40%, rgba(255,255,255,.1));
+    box-shadow: inset 0 3px 6px rgba(0,0,0,.55), inset 0 1px 2px rgba(0,0,0,.4), inset 0 -1px 0 rgba(255,255,255,.25);
   }
 `;
 
@@ -491,6 +501,17 @@ const FEATURE_CSS = `
   .key.fill { color: var(--xtool-on-color, #fff); }
   ${KEY_CSS}
 `;
+
+/**
+ * Show or hide a feature. A hidden feature takes no room: the cell Home
+ * Assistant's features grid holds it in (hui-card-feature) is hidden with it,
+ * so no gap is left and the card gets shorter.
+ */
+function showFeature(el, shown) {
+  el.style.display = shown ? "" : "none";
+  const cell = el.getRootNode?.()?.host;
+  if (cell?.localName === "hui-card-feature") cell.style.display = shown ? "" : "none";
+}
 
 /**
  * Perform an action through Home Assistant's own action handling, as a
@@ -658,9 +679,9 @@ const PERIPHERALS = [
     warning: "A job is running. Turning the power off stops it at once and it cannot be resumed.",
   },
   { role: "exhaust", label: "Exhaust fan", icon: "mdi:fan", color: "blue", fan: true },
-  { role: "fill_light_front", label: "Fill light (front)", icon: "mdi:dome-light", color: "amber" },
-  { role: "fill_light_back", label: "Fill light (back)", icon: "mdi:dome-light", color: "amber" },
-  { role: "fill_light", label: "Fill light", icon: "mdi:dome-light", color: "amber" },
+  { role: "fill_light_front", label: "Fill light (front)", icon: "mdi:dome-light", color: DAYLIGHT },
+  { role: "fill_light_back", label: "Fill light (back)", icon: "mdi:dome-light", color: DAYLIGHT },
+  { role: "fill_light", label: "Fill light", icon: "mdi:dome-light", color: DAYLIGHT },
   { role: "red_dot", label: "Red dot", icon: "mdi:laser-pointer", color: "red" },
   { role: "cooling_fan", label: "Cooling fan", icon: "mdi:fan-chevron-up", color: "cyan", fan: true },
   { role: "cover_lock", label: "Cover lock", icon: "mdi:lock", color: "indigo" },
@@ -673,12 +694,17 @@ function chosen(hass, entityId, list, roles) {
   return roles.map((role) => present.find((item) => item.role === role)).filter(Boolean);
 }
 
-// The machine's and the IF2's own settings (auto mode is a setting: it decides
-// who may start a job, and is not one of the safety checks)
+// The machine's own settings (auto mode is a setting: it decides who may
+// start a job, and is not one of the safety checks)
 const SETTINGS = [
   { role: "buzzer", label: "Buzzer reminders", icon: "mdi:volume-high", color: "teal" },
   { role: "device_sleep", label: "Device sleep", icon: "mdi:power-sleep", color: "indigo" },
   { role: "auto_mode", label: "Auto mode (access control)", icon: "mdi:key-variant", color: "deep-purple" },
+];
+
+// The accessories' switches (devices the laser connects, such as the
+// SafetyPro IF2); the IF2's fan has its own feature
+const ACCESSORIES = [
   { role: "if2_buzzer", label: "IF2 buzzer", icon: "mdi:bell-ring", color: "teal" },
 ];
 
@@ -731,6 +757,22 @@ class XtoolSettings extends XtoolToggles {
 
   static getStubConfig() {
     return { type: "custom:xtool-settings" };
+  }
+}
+
+// Hidden while no accessory can be used (the laser does not see it)
+class XtoolAccessories extends XtoolToggles {
+  static label = "Accessories";
+  static list = ACCESSORIES;
+
+  static getStubConfig() {
+    return { type: "custom:xtool-accessories" };
+  }
+
+  _buttons() {
+    const buttons = super._buttons();
+    showFeature(this, buttons.some((b) => !b.disabled));
+    return buttons;
   }
 }
 
@@ -799,7 +841,11 @@ class XtoolCamera extends XtoolFeature {
   }
 
   _buttons() {
+    const status = statusOf(this._hass, this._entityId);
+    const off = phaseOf(status ? this._hass.states[status]?.state : undefined) === "off";
     const cameras = camerasOf(this._hass, this._entityId);
+    // The laser is off, or no camera can be used: no picture and no buttons
+    showFeature(this, !off && cameras.some(([id]) => this._usable(id)));
     const current = this._currentCamera(cameras);
     if (current !== this._camera) {
       this._camera = current;
@@ -881,11 +927,11 @@ class XtoolCamera extends XtoolFeature {
       this._time.replaceChildren();
       return;
     }
-    const chosen = this._config.time_format;
+    const chosen = cardOf(this)?._config?.time_format;
     this._stamp ??= document.createElement("hui-timestamp-display");
     this._stamp.hass = this._hass;
     this._stamp.ts = this._pictureAt;
-    this._stamp.format = TIME_FORMATS.some(([id]) => id === chosen) && chosen !== "auto" ? chosen : undefined;
+    this._stamp.format = TIME_FORMATS.includes(chosen) ? chosen : undefined;
     if (this._stamp.parentNode !== this._time) this._time.replaceChildren("Updated ", this._stamp);
   }
 }
@@ -909,9 +955,9 @@ function dimmableLights(hass, entityId) {
     .filter(({ entityId: light }) => (hass?.states[light]?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff"));
 }
 
-// The feature color the tile card gives a light: its own color when it has
-// one, Home Assistant's light colors otherwise
-const LIGHT_ON = "var(--state-light-active-color, var(--state-active-color, var(--amber-color, #ffc107)))";
+// The feature color: a light's own color when it has one, daylight
+// otherwise; Home Assistant's color for a light that is off
+const LIGHT_ON = DAYLIGHT;
 const LIGHT_OFF = "var(--state-light-inactive-color, var(--state-inactive-color, var(--disabled-color, #bdbdbd)))";
 
 class XtoolFillLight extends HTMLElement {
@@ -1087,9 +1133,10 @@ class XtoolIf2Fan extends HTMLElement {
   // The features to show: [{ feature, entityId, color }]
   _wanted() {
     const laser = this._context.entity_id, c = this._config;
+    const usable = (id) => !!id && !!this._hass.states[id] && this._hass.states[id].state !== "unavailable";
     if (c.control === "fan") {
       const fan = sibling(this._hass, laser, "if2_fan_entity");
-      if (!fan) return [];
+      if (!usable(fan)) return [];
       const color = this._hass.states[fan]?.state === "on" ? FAN_ON : FAN_OFF;
       const presets = Array.isArray(c.preset_modes) ? { preset_modes: c.preset_modes } : {};
       return [
@@ -1098,7 +1145,7 @@ class XtoolIf2Fan extends HTMLElement {
       ];
     }
     const select = if2Fan(this._hass, laser);
-    if (!select) return [];
+    if (!usable(select)) return [];
     const options = Array.isArray(c.options) ? { options: c.options } : {};
     return [{ feature: { type: "select-options", style: "buttons", ...options }, entityId: select, color: SELECT_ON }];
   }
@@ -1106,6 +1153,8 @@ class XtoolIf2Fan extends HTMLElement {
   _render() {
     if (!this._hass || !this._config || !this._context) return;
     const wanted = this._wanted();
+    // The laser does not see the IF2: nothing to show, and no room taken
+    showFeature(this, wanted.length > 0);
     const key = JSON.stringify(wanted.map(({ feature, entityId }) => [feature, entityId]));
     if (key !== this._key) {
       // Another choice or entity: new features (Home Assistant's feature
@@ -1139,6 +1188,7 @@ const FEATURES = {
   "xtool-fill-light": XtoolFillLight,
   "xtool-safety": XtoolSafety,
   "xtool-settings": XtoolSettings,
+  "xtool-accessories": XtoolAccessories,
   "xtool-camera": XtoolCamera,
   "xtool-if2-fan": XtoolIf2Fan,
 };
@@ -1196,6 +1246,13 @@ const FEATURE_FORMS = {
     ],
     data: (c) => ({ controls: c.controls ?? controlOptions(hass, entityId, SETTINGS).map((o) => o.value), show_names: !!c.show_names }),
   }),
+  "custom:xtool-accessories": (hass, entityId) => ({
+    schema: [
+      { name: "controls", label: "Accessories", selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: controlOptions(hass, entityId, ACCESSORIES) } } },
+      { name: "show_names", label: "Show names", selector: { boolean: {} } },
+    ],
+    data: (c) => ({ controls: c.controls ?? controlOptions(hass, entityId, ACCESSORIES).map((o) => o.value), show_names: !!c.show_names }),
+  }),
   "custom:xtool-camera": (hass, entityId) => {
     const labels = camerasOf(hass, entityId).map(([, label]) => label);
     return {
@@ -1207,13 +1264,15 @@ const FEATURE_FORMS = {
           selector: select(CAMERA_VIEWS),
         },
         { name: "show_switch", label: "Buttons to switch cameras", selector: { boolean: {} } },
-        { name: "show_time", label: "Show the last updated time", helper: "Along the bottom of the picture, in the Auto view.", selector: { boolean: {} } },
-        { name: "time_format", label: "Time format", selector: select(TIME_FORMATS) },
+        {
+          name: "show_time", label: "Show the last updated time",
+          helper: "Along the bottom of the picture, in the Auto view, in the card's Time format (under Content).",
+          selector: { boolean: {} },
+        },
       ],
       data: (c) => ({
         camera: labels.includes(c.camera) ? c.camera : labels[0], camera_view: c.camera_view === "live" ? "live" : "auto",
         show_switch: c.show_switch !== false, show_time: !!c.show_time,
-        time_format: TIME_FORMATS.some(([id]) => id === c.time_format) ? c.time_format : "auto",
       }),
     };
   },
@@ -1229,25 +1288,48 @@ const FEATURE_FORMS = {
           helper: "Home Assistant's features. Select options: every choice as a button, in one row. Fan: the Auto modes and the speeds (Off, 1 to 4), in two rows, as the tile card shows a fan.",
           selector: select(IF2_CONTROLS),
         },
+        // As in Home Assistant's own editors: every choice, unless customized
         ...(c.control === "fan" ? [
           { name: "preset_style", label: "Auto modes style", selector: select(PRESET_STYLES) },
-          {
+          { name: "customize_modes", label: "Customize Auto modes", selector: { boolean: {} } },
+          ...(Array.isArray(c.preset_modes) ? [{
             name: "preset_modes", label: "Auto modes",
             helper: "Which Auto modes show, and in what order.",
-            selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: presets } },
-          },
-        ] : [{
-          name: "options", label: "Choices",
-          helper: "Which of the fan's choices show as buttons, and in what order.",
-          selector: { select: { multiple: true, reorder: true, mode: "dropdown", options } },
-        }]),
+            selector: { select: { multiple: true, reorder: true, options: presets } },
+          }] : []),
+        ] : [
+          { name: "customize_options", label: "Customize choices", selector: { boolean: {} } },
+          ...(Array.isArray(c.options) ? [{
+            name: "options", label: "Choices",
+            helper: "Which of the fan's choices show as buttons, and in what order.",
+            selector: { select: { multiple: true, reorder: true, options } },
+          }] : []),
+        ]),
       ],
       data: (c) => ({
         control: c.control === "fan" ? "fan" : "select",
         ...(c.control === "fan"
-          ? { preset_style: c.preset_style === "dropdown" ? "dropdown" : "icons", preset_modes: Array.isArray(c.preset_modes) ? c.preset_modes : presets }
-          : { options: Array.isArray(c.options) ? c.options : options }),
+          ? {
+            preset_style: c.preset_style === "dropdown" ? "dropdown" : "icons",
+            customize_modes: Array.isArray(c.preset_modes), ...(Array.isArray(c.preset_modes) ? { preset_modes: c.preset_modes } : {}),
+          }
+          : { customize_options: Array.isArray(c.options), ...(Array.isArray(c.options) ? { options: c.options } : {}) }),
       }),
+      // Turning Customize on starts with every choice; off removes the list
+      save: (v) => {
+        const { customize_options: customOptions, customize_modes: customModes, ...c } = v;
+        if (c.control === "fan") {
+          delete c.options;
+          if (customModes) c.preset_modes = Array.isArray(c.preset_modes) ? c.preset_modes : presets;
+          else delete c.preset_modes;
+        } else {
+          delete c.preset_style;
+          delete c.preset_modes;
+          if (customOptions) c.options = Array.isArray(c.options) ? c.options : options;
+          else delete c.options;
+        }
+        return c;
+      },
     };
   },
 };
@@ -1278,7 +1360,9 @@ class XtoolFeatureEditor extends HTMLElement {
       this._form.computeHelper = (s) => s.helper;
       this._form.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
-        const config = { type: this._config.type, ...ev.detail.value };
+        const form = FEATURE_FORMS[this._config.type]?.(this._hass, this._context?.entity_id);
+        const value = form?.save ? form.save(ev.detail.value) : ev.detail.value;
+        const config = { type: this._config.type, ...value };
         this._config = config;
         fire(this, "config-changed", { config });
         // Some options show only for some choices
@@ -2104,12 +2188,18 @@ class XtoolCard extends HTMLElement {
    * column. Taken out here, from inside the tile card's feature groups; if
    * Home Assistant renames that part, the dividers simply stay.
    */
+  // No dividers between features, and a steady height beside the title
   _removeDividers() {
     const root = this._tile?.shadowRoot;
     if (!root) return;
     if (!XtoolCard._plainSheet) {
       XtoolCard._plainSheet = new CSSStyleSheet();
-      XtoolCard._plainSheet.replaceSync(".divided { border-inline-start: none !important; margin-inline-start: 0 !important; padding-inline-start: 0 !important; }");
+      XtoolCard._plainSheet.replaceSync(`
+        .divided { border-inline-start: none !important; margin-inline-start: 0 !important; padding-inline-start: 0 !important; }
+        /* The feature beside the title keeps the height it has when the card
+           is collapsed; the tile card would let it fill a taller row once
+           features show below it */
+        :host([slot="features-inline"]) { --feature-height: var(--ha-space-9, 36px) !important; }`);
     }
     try {
       for (const group of findAllDeep(root, "hui-card-features")) {
@@ -2483,6 +2573,7 @@ if (!customElements.get(CARD_TYPE)) {
     },
     { type: "xtool-safety", name: "xTool safety checks", isSupported: has(SAFETY.map((s) => s.role)), configurable: true },
     { type: "xtool-settings", name: "xTool settings", isSupported: has(SETTINGS.map((s) => s.role)), configurable: true },
+    { type: "xtool-accessories", name: "xTool accessories", isSupported: has(ACCESSORIES.map((s) => s.role)), configurable: true },
     {
       type: "xtool-camera", name: "xTool camera",
       isSupported: (hass, context) => isXtool(hass, context?.entity_id) && camerasOf(hass, context.entity_id).length > 0, configurable: true,

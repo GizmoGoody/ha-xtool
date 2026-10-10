@@ -280,9 +280,10 @@ Tile features (they also work in a plain tile card for an xTool entity):
 | xTool peripherals | Power (smart plug), exhaust fan, fill lights (on or off), red dot, cooling fan, cover lock. A fan's icon turns while it runs (*Animate fan*) |
 | xTool fill light brightness | The tile card's own light brightness feature, for one fill light. Add it once for each light |
 | xTool safety checks | Flame alarm, stops when enclosure opened, stops when moved. A check that is on is green, one that is off is red. Turning one off always asks first, in Home Assistant's confirmation dialog |
-| xTool settings | Buzzer reminders, device sleep, auto mode, IF2 buzzer |
-| xTool camera | The camera's picture, shown by Home Assistant's own image element (Auto: snapshots; Live: the stream), tap to open it, with buttons to switch cameras and, as an option, the time the picture was last updated (in the tile card's time formats) |
-| xTool SafetyPro IF2 fan | The tile card's own features for the IF2's fan, your choice: select options (every choice as a button, in one row; choose which show), or fan preset modes and fan speed (the Auto modes, then Off and 1 to 4, in two rows) |
+| xTool settings | Buzzer reminders, device sleep, auto mode |
+| xTool accessories | The switches of accessories the laser connects, such as the IF2 buzzer. Hidden while the laser does not see the accessory |
+| xTool camera | The camera's picture, shown by Home Assistant's own image element (Auto: snapshots; Live: the stream), tap to open it, with buttons to switch cameras and, as an option, the time the picture was last updated, in the card's own Time format (under Content). Hidden while the laser is off |
+| xTool SafetyPro IF2 fan | The tile card's own features for the IF2's fan, your choice: select options (every choice as a button, in one row), or fan preset modes and fan speed (the Auto modes, then Off and 1 to 4, in two rows). As in Home Assistant's own feature editors, every choice shows unless you turn on Customize. Hidden while the laser does not see the IF2 |
 
 Each feature shows only the controls the laser has.
 
