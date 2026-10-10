@@ -282,7 +282,7 @@ Tile features (they also work in a plain tile card for an xTool entity):
 | xTool safety checks | Flame alarm, stops when enclosure opened, stops when moved. A check that is on is green, one that is off is red. Turning one off always asks first, in Home Assistant's confirmation dialog |
 | xTool settings | Buzzer reminders, device sleep, auto mode, IF2 buzzer |
 | xTool camera | The camera's picture, shown by Home Assistant's own image element (Auto: snapshots; Live: the stream), tap to open it, with buttons to switch cameras and, as an option, the time the picture was last updated (in the tile card's time formats) |
-| xTool SafetyPro IF2 fan | The tile card's own select options feature, as buttons, for the IF2's fan. Choose which choices show |
+| xTool SafetyPro IF2 fan | The tile card's own features for the IF2's fan, your choice: select options (every choice as a button, in one row; choose which show), or fan preset modes and fan speed (the Auto modes, then Off and 1 to 4, in two rows) |
 
 Each feature shows only the controls the laser has.
 

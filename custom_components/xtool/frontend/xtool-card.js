@@ -10,7 +10,7 @@
  * - custom:xtool-safety       the safety checks; turning one off asks first
  * - custom:xtool-settings     buzzer reminders, device sleep, auto mode and the IF2's buzzer
  * - custom:xtool-camera       a camera, shown by Home Assistant's own image element, with buttons to switch
- * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: the tile card's own select options feature
+ * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: the tile card's own select options or fan features
  * Each finds its entities on the same device as the card's entity (the IF2
  * on the laser's accessory device).
  *
@@ -76,6 +76,7 @@ const ROLES = {
 // The same, on the laser's accessory devices (the SafetyPro IF2 2.0)
 const ACCESSORY_ROLES = {
   if2_fan: [["accessory_ductfanv3_mode_speed"], ["select"]],
+  if2_fan_entity: [["accessory_ductfanv3_fan"], ["fan"]],
   if2_buzzer: [["accessory_ductfanv3_buzzer", "accessory_ductfan_buzzer"], ["switch"]],
 };
 // The cameras, in the order the camera feature offers them
@@ -1029,11 +1030,20 @@ class XtoolSafety extends XtoolFeature {
 }
 
 // ---------------------------------------------------------------------------
-// Feature: the SafetyPro IF2 inline fan. It is Home Assistant's own select
-// options feature, as buttons, for the IF2's fan select (on the laser's
-// accessory device), shown through hui-card-feature like the fill light.
+// Feature: the SafetyPro IF2 inline fan, with Home Assistant's own features
+// (on the laser's accessory device), shown through hui-card-feature like
+// the fill light. Controls, a choice:
+// - Select options: the select options feature, as buttons, for the IF2's
+//   fan select: Auto Regular, Auto Quiet, Off and gears 1 to 4 in one row.
+// - Fan: the fan preset modes feature (Auto Regular, Auto Quiet) and the
+//   fan speed feature (Off, 1 to 4) for the IF2's fan, in two rows, as the
+//   tile card shows a fan.
 // ---------------------------------------------------------------------------
 const SELECT_ON = "var(--state-select-active-color, var(--state-active-color, var(--primary-color, #03a9f4)))";
+const FAN_ON = "var(--state-fan-active-color, var(--state-active-color, var(--primary-color, #03a9f4)))";
+const FAN_OFF = "var(--state-fan-inactive-color, var(--state-inactive-color, var(--disabled-color, #bdbdbd)))";
+const IF2_CONTROLS = [["select", "Select options (one row)"], ["fan", "Fan preset modes and speed (two rows)"]];
+const PRESET_STYLES = [["icons", "Icons"], ["dropdown", "Dropdown"]];
 
 class XtoolIf2Fan extends HTMLElement {
   static label = "SafetyPro IF2 fan";
@@ -1043,9 +1053,10 @@ class XtoolIf2Fan extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this.shadowRoot.innerHTML = `<style>
       :host { display: block; }
+      .rows { display: flex; flex-direction: column; gap: var(--feature-button-spacing, 12px); }
       .slide { display: block; border-radius: var(--feature-border-radius, 12px); }
-    </style><div class="slide"></div>`;
-    this._box = this.shadowRoot.querySelector(".slide");
+    </style><div class="rows"></div>`;
+    this._box = this.shadowRoot.querySelector(".rows");
     keepTaps(this);
   }
 
@@ -1073,28 +1084,52 @@ class XtoolIf2Fan extends HTMLElement {
     this._render();
   }
 
+  // The features to show: [{ feature, entityId, color }]
+  _wanted() {
+    const laser = this._context.entity_id, c = this._config;
+    if (c.control === "fan") {
+      const fan = sibling(this._hass, laser, "if2_fan_entity");
+      if (!fan) return [];
+      const color = this._hass.states[fan]?.state === "on" ? FAN_ON : FAN_OFF;
+      const presets = Array.isArray(c.preset_modes) ? { preset_modes: c.preset_modes } : {};
+      return [
+        { feature: { type: "fan-preset-modes", style: c.preset_style === "dropdown" ? "dropdown" : "icons", ...presets }, entityId: fan, color },
+        { feature: { type: "fan-speed" }, entityId: fan, color },
+      ];
+    }
+    const select = if2Fan(this._hass, laser);
+    if (!select) return [];
+    const options = Array.isArray(c.options) ? { options: c.options } : {};
+    return [{ feature: { type: "select-options", style: "buttons", ...options }, entityId: select, color: SELECT_ON }];
+  }
+
   _render() {
     if (!this._hass || !this._config || !this._context) return;
-    const fan = if2Fan(this._hass, this._context.entity_id);
-    if (!fan) {
-      this._box.replaceChildren();
-      this._feature = undefined;
-      return;
+    const wanted = this._wanted();
+    const key = JSON.stringify(wanted.map(({ feature, entityId }) => [feature, entityId]));
+    if (key !== this._key) {
+      // Another choice or entity: new features (Home Assistant's feature
+      // elements are made for one type)
+      this._key = key;
+      this._features = wanted.map(({ feature, entityId }) => {
+        const el = document.createElement("hui-card-feature");
+        el.feature = feature;
+        el.context = { entity_id: entityId };
+        return el;
+      });
+      this._box.replaceChildren(...this._features.map((el) => {
+        const slide = document.createElement("div");
+        slide.className = "slide";
+        slide.append(el);
+        return slide;
+      }));
     }
-    if (!this._feature) {
-      this._feature = document.createElement("hui-card-feature");
-      this._box.replaceChildren(this._feature);
+    const color = wanted[0]?.color;
+    if (color) this.style.setProperty("--feature-color", color);
+    for (const el of this._features) {
+      el.color = color;
+      el.hass = this._hass;
     }
-    const options = Array.isArray(this._config.options) ? this._config.options : undefined;
-    const key = JSON.stringify(options ?? null);
-    if (key !== this._optionsKey) {
-      this._optionsKey = key;
-      this._feature.feature = { type: "select-options", style: "buttons", ...(options ? { options } : {}) };
-    }
-    this.style.setProperty("--feature-color", SELECT_ON);
-    this._feature.color = SELECT_ON;
-    if (this._feature.context?.entity_id !== fan) this._feature.context = { entity_id: fan };
-    this._feature.hass = this._hass;
   }
 }
 
@@ -1183,15 +1218,36 @@ const FEATURE_FORMS = {
     };
   },
   "custom:xtool-if2-fan": (hass, entityId) => {
-    const fan = if2Fan(hass, entityId);
-    const options = fan ? hass.states[fan]?.attributes.options ?? [] : [];
+    const fanSelect = if2Fan(hass, entityId);
+    const options = fanSelect ? hass.states[fanSelect]?.attributes.options ?? [] : [];
+    const fan = sibling(hass, entityId, "if2_fan_entity");
+    const presets = fan ? hass.states[fan]?.attributes.preset_modes ?? [] : [];
     return {
-      schema: [{
-        name: "options", label: "Choices",
-        helper: "Which of the fan's choices show as buttons, and in what order.",
-        selector: { select: { multiple: true, reorder: true, mode: "dropdown", options } },
-      }],
-      data: (c) => ({ options: Array.isArray(c.options) ? c.options : options }),
+      schema: (c) => [
+        {
+          name: "control", label: "Controls",
+          helper: "Home Assistant's features. Select options: every choice as a button, in one row. Fan: the Auto modes and the speeds (Off, 1 to 4), in two rows, as the tile card shows a fan.",
+          selector: select(IF2_CONTROLS),
+        },
+        ...(c.control === "fan" ? [
+          { name: "preset_style", label: "Auto modes style", selector: select(PRESET_STYLES) },
+          {
+            name: "preset_modes", label: "Auto modes",
+            helper: "Which Auto modes show, and in what order.",
+            selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: presets } },
+          },
+        ] : [{
+          name: "options", label: "Choices",
+          helper: "Which of the fan's choices show as buttons, and in what order.",
+          selector: { select: { multiple: true, reorder: true, mode: "dropdown", options } },
+        }]),
+      ],
+      data: (c) => ({
+        control: c.control === "fan" ? "fan" : "select",
+        ...(c.control === "fan"
+          ? { preset_style: c.preset_style === "dropdown" ? "dropdown" : "icons", preset_modes: Array.isArray(c.preset_modes) ? c.preset_modes : presets }
+          : { options: Array.isArray(c.options) ? c.options : options }),
+      }),
     };
   },
 };
@@ -1225,11 +1281,13 @@ class XtoolFeatureEditor extends HTMLElement {
         const config = { type: this._config.type, ...ev.detail.value };
         this._config = config;
         fire(this, "config-changed", { config });
+        // Some options show only for some choices
+        this._render();
       });
       this.append(this._form);
     }
     this._form.hass = this._hass;
-    this._form.schema = form.schema;
+    this._form.schema = typeof form.schema === "function" ? form.schema(this._config) : form.schema;
     this._form.data = form.data(this._config);
   }
 }
