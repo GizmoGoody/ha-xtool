@@ -1281,25 +1281,48 @@ const FEATURE_FORMS = {
           helper: "Home Assistant's features. Select options: every choice as a button, in one row. Fan: the Auto modes and the speeds (Off, 1 to 4), in two rows, as the tile card shows a fan.",
           selector: select(IF2_CONTROLS),
         },
+        // As in Home Assistant's own editors: every choice, unless customized
         ...(c.control === "fan" ? [
           { name: "preset_style", label: "Auto modes style", selector: select(PRESET_STYLES) },
-          {
+          { name: "customize_modes", label: "Customize Auto modes", selector: { boolean: {} } },
+          ...(Array.isArray(c.preset_modes) ? [{
             name: "preset_modes", label: "Auto modes",
             helper: "Which Auto modes show, and in what order.",
-            selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: presets } },
-          },
-        ] : [{
-          name: "options", label: "Choices",
-          helper: "Which of the fan's choices show as buttons, and in what order.",
-          selector: { select: { multiple: true, reorder: true, mode: "dropdown", options } },
-        }]),
+            selector: { select: { multiple: true, reorder: true, options: presets } },
+          }] : []),
+        ] : [
+          { name: "customize_options", label: "Customize choices", selector: { boolean: {} } },
+          ...(Array.isArray(c.options) ? [{
+            name: "options", label: "Choices",
+            helper: "Which of the fan's choices show as buttons, and in what order.",
+            selector: { select: { multiple: true, reorder: true, options } },
+          }] : []),
+        ]),
       ],
       data: (c) => ({
         control: c.control === "fan" ? "fan" : "select",
         ...(c.control === "fan"
-          ? { preset_style: c.preset_style === "dropdown" ? "dropdown" : "icons", preset_modes: Array.isArray(c.preset_modes) ? c.preset_modes : presets }
-          : { options: Array.isArray(c.options) ? c.options : options }),
+          ? {
+            preset_style: c.preset_style === "dropdown" ? "dropdown" : "icons",
+            customize_modes: Array.isArray(c.preset_modes), ...(Array.isArray(c.preset_modes) ? { preset_modes: c.preset_modes } : {}),
+          }
+          : { customize_options: Array.isArray(c.options), ...(Array.isArray(c.options) ? { options: c.options } : {}) }),
       }),
+      // Turning Customize on starts with every choice; off removes the list
+      save: (v) => {
+        const { customize_options: customOptions, customize_modes: customModes, ...c } = v;
+        if (c.control === "fan") {
+          delete c.options;
+          if (customModes) c.preset_modes = Array.isArray(c.preset_modes) ? c.preset_modes : presets;
+          else delete c.preset_modes;
+        } else {
+          delete c.preset_style;
+          delete c.preset_modes;
+          if (customOptions) c.options = Array.isArray(c.options) ? c.options : options;
+          else delete c.options;
+        }
+        return c;
+      },
     };
   },
 };
@@ -1330,7 +1353,9 @@ class XtoolFeatureEditor extends HTMLElement {
       this._form.computeHelper = (s) => s.helper;
       this._form.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
-        const config = { type: this._config.type, ...ev.detail.value };
+        const form = FEATURE_FORMS[this._config.type]?.(this._hass, this._context?.entity_id);
+        const value = form?.save ? form.save(ev.detail.value) : ev.detail.value;
+        const config = { type: this._config.type, ...value };
         this._config = config;
         fire(this, "config-changed", { config });
         // Some options show only for some choices
