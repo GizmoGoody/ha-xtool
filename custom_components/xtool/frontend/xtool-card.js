@@ -2122,12 +2122,18 @@ class XtoolCard extends HTMLElement {
    * column. Taken out here, from inside the tile card's feature groups; if
    * Home Assistant renames that part, the dividers simply stay.
    */
+  // No dividers between features, and a steady height beside the title
   _removeDividers() {
     const root = this._tile?.shadowRoot;
     if (!root) return;
     if (!XtoolCard._plainSheet) {
       XtoolCard._plainSheet = new CSSStyleSheet();
-      XtoolCard._plainSheet.replaceSync(".divided { border-inline-start: none !important; margin-inline-start: 0 !important; padding-inline-start: 0 !important; }");
+      XtoolCard._plainSheet.replaceSync(`
+        .divided { border-inline-start: none !important; margin-inline-start: 0 !important; padding-inline-start: 0 !important; }
+        /* The feature beside the title keeps the height it has when the card
+           is collapsed; the tile card would let it fill a taller row once
+           features show below it */
+        :host([slot="features-inline"]) { --feature-height: var(--ha-space-9, 36px) !important; }`);
     }
     try {
       for (const group of findAllDeep(root, "hui-card-features")) {
