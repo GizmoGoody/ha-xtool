@@ -8,7 +8,8 @@
  *                             and other parts; a fan's icon turns while it runs
  * - custom:xtool-fill-light   one fill light's brightness: the tile card's own light brightness feature
  * - custom:xtool-safety       the safety checks; turning one off asks first
- * - custom:xtool-settings     buzzer reminders, device sleep, auto mode and the IF2's buzzer
+ * - custom:xtool-settings     buzzer reminders, device sleep and auto mode
+ * - custom:xtool-accessories  the accessories' switches, such as the IF2's buzzer
  * - custom:xtool-camera       a camera, shown by Home Assistant's own image element, with buttons to switch
  * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: the tile card's own select options or fan features
  * Each finds its entities on the same device as the card's entity (the IF2
@@ -688,12 +689,17 @@ function chosen(hass, entityId, list, roles) {
   return roles.map((role) => present.find((item) => item.role === role)).filter(Boolean);
 }
 
-// The machine's and the IF2's own settings (auto mode is a setting: it decides
-// who may start a job, and is not one of the safety checks)
+// The machine's own settings (auto mode is a setting: it decides who may
+// start a job, and is not one of the safety checks)
 const SETTINGS = [
   { role: "buzzer", label: "Buzzer reminders", icon: "mdi:volume-high", color: "teal" },
   { role: "device_sleep", label: "Device sleep", icon: "mdi:power-sleep", color: "indigo" },
   { role: "auto_mode", label: "Auto mode (access control)", icon: "mdi:key-variant", color: "deep-purple" },
+];
+
+// The accessories' switches (devices the laser connects, such as the
+// SafetyPro IF2); the IF2's fan has its own feature
+const ACCESSORIES = [
   { role: "if2_buzzer", label: "IF2 buzzer", icon: "mdi:bell-ring", color: "teal" },
 ];
 
@@ -746,6 +752,22 @@ class XtoolSettings extends XtoolToggles {
 
   static getStubConfig() {
     return { type: "custom:xtool-settings" };
+  }
+}
+
+// Hidden while no accessory can be used (the laser does not see it)
+class XtoolAccessories extends XtoolToggles {
+  static label = "Accessories";
+  static list = ACCESSORIES;
+
+  static getStubConfig() {
+    return { type: "custom:xtool-accessories" };
+  }
+
+  _buttons() {
+    const buttons = super._buttons();
+    showFeature(this, buttons.some((b) => !b.disabled));
+    return buttons;
   }
 }
 
@@ -1161,6 +1183,7 @@ const FEATURES = {
   "xtool-fill-light": XtoolFillLight,
   "xtool-safety": XtoolSafety,
   "xtool-settings": XtoolSettings,
+  "xtool-accessories": XtoolAccessories,
   "xtool-camera": XtoolCamera,
   "xtool-if2-fan": XtoolIf2Fan,
 };
@@ -1217,6 +1240,13 @@ const FEATURE_FORMS = {
       { name: "show_names", label: "Show names", selector: { boolean: {} } },
     ],
     data: (c) => ({ controls: c.controls ?? controlOptions(hass, entityId, SETTINGS).map((o) => o.value), show_names: !!c.show_names }),
+  }),
+  "custom:xtool-accessories": (hass, entityId) => ({
+    schema: [
+      { name: "controls", label: "Accessories", selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: controlOptions(hass, entityId, ACCESSORIES) } } },
+      { name: "show_names", label: "Show names", selector: { boolean: {} } },
+    ],
+    data: (c) => ({ controls: c.controls ?? controlOptions(hass, entityId, ACCESSORIES).map((o) => o.value), show_names: !!c.show_names }),
   }),
   "custom:xtool-camera": (hass, entityId) => {
     const labels = camerasOf(hass, entityId).map(([, label]) => label);
@@ -2511,6 +2541,7 @@ if (!customElements.get(CARD_TYPE)) {
     },
     { type: "xtool-safety", name: "xTool safety checks", isSupported: has(SAFETY.map((s) => s.role)), configurable: true },
     { type: "xtool-settings", name: "xTool settings", isSupported: has(SETTINGS.map((s) => s.role)), configurable: true },
+    { type: "xtool-accessories", name: "xTool accessories", isSupported: has(ACCESSORIES.map((s) => s.role)), configurable: true },
     {
       type: "xtool-camera", name: "xTool camera",
       isSupported: (hass, context) => isXtool(hass, context?.entity_id) && camerasOf(hass, context.entity_id).length > 0, configurable: true,
