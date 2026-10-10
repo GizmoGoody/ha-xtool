@@ -493,6 +493,17 @@ const FEATURE_CSS = `
 `;
 
 /**
+ * Show or hide a feature. A hidden feature takes no room: the cell Home
+ * Assistant's features grid holds it in (hui-card-feature) is hidden with it,
+ * so no gap is left and the card gets shorter.
+ */
+function showFeature(el, shown) {
+  el.style.display = shown ? "" : "none";
+  const cell = el.getRootNode?.()?.host;
+  if (cell?.localName === "hui-card-feature") cell.style.display = shown ? "" : "none";
+}
+
+/**
  * Perform an action through Home Assistant's own action handling, as a
  * card's tap action does. With a confirmation, Home Assistant first asks in
  * its own confirmation dialog ({ title, text, confirm_text }).
@@ -799,7 +810,11 @@ class XtoolCamera extends XtoolFeature {
   }
 
   _buttons() {
+    const status = statusOf(this._hass, this._entityId);
+    const off = phaseOf(status ? this._hass.states[status]?.state : undefined) === "off";
     const cameras = camerasOf(this._hass, this._entityId);
+    // The laser is off, or no camera can be used: no picture and no buttons
+    showFeature(this, !off && cameras.some(([id]) => this._usable(id)));
     const current = this._currentCamera(cameras);
     if (current !== this._camera) {
       this._camera = current;
@@ -1087,9 +1102,10 @@ class XtoolIf2Fan extends HTMLElement {
   // The features to show: [{ feature, entityId, color }]
   _wanted() {
     const laser = this._context.entity_id, c = this._config;
+    const usable = (id) => !!id && !!this._hass.states[id] && this._hass.states[id].state !== "unavailable";
     if (c.control === "fan") {
       const fan = sibling(this._hass, laser, "if2_fan_entity");
-      if (!fan) return [];
+      if (!usable(fan)) return [];
       const color = this._hass.states[fan]?.state === "on" ? FAN_ON : FAN_OFF;
       const presets = Array.isArray(c.preset_modes) ? { preset_modes: c.preset_modes } : {};
       return [
@@ -1098,7 +1114,7 @@ class XtoolIf2Fan extends HTMLElement {
       ];
     }
     const select = if2Fan(this._hass, laser);
-    if (!select) return [];
+    if (!usable(select)) return [];
     const options = Array.isArray(c.options) ? { options: c.options } : {};
     return [{ feature: { type: "select-options", style: "buttons", ...options }, entityId: select, color: SELECT_ON }];
   }
@@ -1106,6 +1122,8 @@ class XtoolIf2Fan extends HTMLElement {
   _render() {
     if (!this._hass || !this._config || !this._context) return;
     const wanted = this._wanted();
+    // The laser does not see the IF2: nothing to show, and no room taken
+    showFeature(this, wanted.length > 0);
     const key = JSON.stringify(wanted.map(({ feature, entityId }) => [feature, entityId]));
     if (key !== this._key) {
       // Another choice or entity: new features (Home Assistant's feature
