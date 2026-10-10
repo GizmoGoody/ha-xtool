@@ -488,112 +488,23 @@ const FEATURE_CSS = `
   /* Filled in its color without being on: a safety check that is off */
   .key.fill::before { opacity: 1; }
   .key.fill { color: var(--xtool-on-color, #fff); }
-  dialog {
-    border: 0; padding: 24px; box-sizing: border-box; width: min(400px, calc(100vw - 32px));
-    border-radius: var(--ha-dialog-border-radius, var(--ha-border-radius-3xl, 24px));
-    background: var(--ha-dialog-surface-background, var(--card-background-color, #fff));
-    color: var(--primary-text-color); font-family: var(--ha-font-family-body, inherit); text-shadow: none;
-  }
-  dialog::backdrop { background: rgba(0, 0, 0, .5); }
-  dialog h2 { margin: 0 0 12px; font-size: var(--ha-font-size-xl, 20px); font-weight: 400; }
-  dialog p { margin: 0 0 20px; font-size: var(--ha-font-size-m, 14px); line-height: 1.45; color: var(--secondary-text-color); }
-  .actions { display: flex; justify-content: flex-end; gap: 8px; }
-  .actions button {
-    height: 40px; padding: 0 16px; border: 0; border-radius: 20px; cursor: pointer;
-    font: inherit; font-weight: 500; background: transparent; color: var(--primary-color);
-  }
-  .actions .go { background: var(--error-color, #db4437); color: #fff; }
   ${KEY_CSS}
 `;
 
-/** [r, g, b, a] of a CSS color (no variables). */
-function rgbaOf(color) {
-  colorProbe ??= document.createElement("canvas").getContext("2d");
-  colorProbe.fillStyle = "#000";
-  colorProbe.fillStyle = color;
-  const value = colorProbe.fillStyle;
-  if (value.startsWith("#")) return [...value.slice(1).match(/../g).map((h) => parseInt(h, 16)), 1];
-  const n = (value.match(/[\d.]+/g) ?? [0, 0, 0, 1]).map(Number);
-  return [n[0], n[1], n[2], n[3] ?? 1];
-}
-
-const luminance = ([r, g, b]) => {
-  const [lr, lg, lb] = [r, g, b].map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
-};
-const contrast = (a, b) => {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-};
-const rgbCss = ([r, g, b]) => `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
-
-/** A theme color from the page itself: inside this card, some are changed for the xTool styles. */
-function pageColor(...names) {
-  const style = getComputedStyle(document.documentElement);
-  for (const name of names) {
-    const value = style.getPropertyValue(name).trim();
-    if (value) return value;
-  }
-  return "";
-}
-
 /**
- * The dialog's colors: the theme's dialog surface, made solid if the theme's
- * is see-through, and text that reads on it (4.5:1 at least).
+ * Perform an action through Home Assistant's own action handling, as a
+ * card's tap action does. With a confirmation, Home Assistant first asks in
+ * its own confirmation dialog ({ title, text, confirm_text }).
  */
-function dialogColors() {
-  const text = rgbaOf(pageColor("--primary-text-color") || "#212121");
-  const darkText = luminance(text) < 0.4;
-  let surface = rgbaOf(pageColor("--ha-dialog-surface-background", "--mdc-theme-surface", "--card-background-color",
-    "--primary-background-color") || (darkText ? "#ffffff" : "#1c1c1c"));
-  if (surface[3] < 1) {
-    const base = darkText ? 255 : 28;
-    surface = [...surface.slice(0, 3).map((c) => c * surface[3] + base * (1 - surface[3])), 1];
-  }
-  const readable = (color, min) => (contrast(color, surface) >= min ? color : null);
-  const main = readable(text, 4.5) ?? (luminance(surface) > 0.4 ? [33, 33, 33, 1] : [255, 255, 255, 1]);
-  const secondary = readable(rgbaOf(pageColor("--secondary-text-color") || rgbCss(main)), 4.5) ?? main;
-  const accent = readable(rgbaOf(pageColor("--primary-color") || "#03a9f4"), 3) ?? main;
-  return { surface: rgbCss(surface), text: rgbCss(main), secondary: rgbCss(secondary), accent: rgbCss(accent) };
-}
-
-/**
- * Ask before an action that cannot be taken back, or that turns a safety
- * check off. Resolves true to go ahead. The dialog is the browser's own, so
- * it sits above the dashboard and closes with Escape.
- */
-function confirmAction(host, { title, text, action }) {
-  return new Promise((resolve) => {
-    const dialog = document.createElement("dialog");
-    dialog.innerHTML = `<h2></h2><p></p><div class="actions"><button type="button" class="keep"></button><button type="button" class="go"></button></div>`;
-    dialog.querySelector("h2").textContent = title;
-    dialog.querySelector("p").textContent = text;
-    dialog.querySelector(".keep").textContent = "Keep it";
-    dialog.querySelector(".go").textContent = action;
-    // The card changes the text colors for its styles: the dialog takes the page's
-    const colors = dialogColors();
-    dialog.style.background = colors.surface;
-    dialog.style.color = colors.text;
-    dialog.querySelector("p").style.color = colors.secondary;
-    dialog.querySelector(".keep").style.color = colors.accent;
-    const done = (ok) => {
-      if (dialog.open) dialog.close();
-      dialog.remove();
-      resolve(ok);
-    };
-    dialog.querySelector(".keep").addEventListener("click", () => done(false));
-    dialog.querySelector(".go").addEventListener("click", () => done(true));
-    dialog.addEventListener("cancel", (ev) => {
-      ev.preventDefault();
-      done(false);
-    });
-    host.shadowRoot.append(dialog);
-    if (dialog.showModal) dialog.showModal();
-    else resolve(window.confirm(`${title}\n\n${text}`));
-    dialog.querySelector(".keep").focus();
+function performAction(host, service, entityId, confirmation) {
+  fire(host, "hass-action", {
+    config: {
+      tap_action: {
+        action: "perform-action", perform_action: service, target: { entity_id: entityId },
+        ...(confirmation ? { confirmation: { dismiss_text: "Keep it", ...confirmation } } : {}),
+      },
+    },
+    action: "tap",
   });
 }
 
@@ -728,16 +639,11 @@ class XtoolJob extends XtoolFeature {
     return buttons;
   }
 
-  async _cancel(entityId) {
-    if (this._config.confirm_cancel !== false) {
-      const ok = await confirmAction(this, {
-        title: "Cancel the job?",
-        text: "The job stops and cannot be resumed.",
-        action: "Cancel the job",
-      });
-      if (!ok) return;
-    }
-    this._hass.callService("button", "press", { entity_id: entityId });
+  _cancel(entityId) {
+    const confirmation = this._config.confirm_cancel !== false
+      ? { title: "Cancel the job?", text: "The job stops and cannot be resumed.", confirm_text: "Cancel the job" }
+      : undefined;
+    performAction(this, "button.press", entityId, confirmation);
   }
 }
 
@@ -796,16 +702,16 @@ class XtoolToggles extends XtoolFeature {
     });
   }
 
-  async _toggle(item, entityId, on) {
+  _toggle(item, entityId, on) {
+    let confirmation;
     if (on && item.warning) {
       const status = statusOf(this._hass, this._entityId);
       const phase = phaseOf(status ? this._hass.states[status]?.state : undefined);
       if (phase === "processing" || phase === "paused") {
-        const ok = await confirmAction(this, { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, action: "Turn off" });
-        if (!ok) return;
+        confirmation = { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, confirm_text: "Turn off" };
       }
     }
-    this._hass.callService(domainOf(entityId), on ? "turn_off" : "turn_on", { entity_id: entityId });
+    performAction(this, `${domainOf(entityId)}.${on ? "turn_off" : "turn_on"}`, entityId, confirmation);
   }
 }
 
@@ -1116,12 +1022,9 @@ class XtoolSafety extends XtoolFeature {
     });
   }
 
-  async _toggle(item, entityId, on) {
-    if (on) {
-      const ok = await confirmAction(this, { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, action: "Turn off" });
-      if (!ok) return;
-    }
-    this._hass.callService("switch", on ? "turn_off" : "turn_on", { entity_id: entityId });
+  _toggle(item, entityId, on) {
+    const confirmation = on ? { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, confirm_text: "Turn off" } : undefined;
+    performAction(this, `switch.${on ? "turn_off" : "turn_on"}`, entityId, confirmation);
   }
 }
 
