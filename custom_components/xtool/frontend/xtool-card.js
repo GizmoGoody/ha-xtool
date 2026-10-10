@@ -253,7 +253,8 @@ const PICTURE_CSS = `
 @keyframes fw{0%{transform:translateY(-2px);opacity:0}30%{opacity:1}70%{opacity:1}100%{transform:translateY(2px);opacity:0}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important}.z{opacity:1}.u{stroke-dashoffset:0}}`;
 
-// A small seeded random generator: the same job draws the same path
+// A small seeded random generator: the same job draws the same path, and
+// the same pattern the same reflections
 function seeded(seed) {
   let s = seed | 0;
   return () => {
@@ -1422,6 +1423,31 @@ function findDeep(root, selector, depth = 5) {
 // body), and the body's base color without grain (for Flat)
 const STYLES = [["none", "None (the theme's card)"], ["champagne", "xTool Champagne"], ["graphite", "xTool Graphite"]];
 const TONE = { champagne: "light", graphite: "dark" };
+const DEFAULT_PATTERN = 4242;
+
+/**
+ * The window's glass: a sheen along the top and two to four reflections
+ * falling across it at an angle, their places from the pattern (Randomize
+ * reflections in the editor picks a new pattern). Stronger on the
+ * champagne's orange glass than on the graphite's dark glass.
+ */
+function glassReflections(tone, pattern) {
+  const r = seeded(pattern);
+  const k = tone === "light" ? 1 : .5;
+  const white = (a) => `rgba(255, 255, 255, ${(a * k).toFixed(3)})`;
+  const angle = Math.round((r() < .5 ? 100 : 30) + r() * 50);
+  const layers = [`linear-gradient(to bottom, ${white(.3)} 0%, ${white(.1)} 14%, transparent 42%)`];
+  const count = 2 + Math.floor(r() * 3);
+  for (let i = 0; i < count; i++) {
+    const at = 4 + r() * 84, width = 3 + r() * 16, peak = .14 + r() * .26;
+    const mid = (at + width / 2).toFixed(1), end = (at + width).toFixed(1), start = at.toFixed(1);
+    // The first reflection has a sharp leading edge, like light off a pane's edge
+    layers.push(i === 0
+      ? `linear-gradient(${angle}deg, transparent ${start}%, ${white(peak)} ${start}%, ${white(peak * .25)} ${end}%, transparent ${end}%)`
+      : `linear-gradient(${angle}deg, transparent ${start}%, ${white(peak)} ${mid}%, transparent ${end}%)`);
+  }
+  return layers.join(", ");
+}
 const FLAT = { champagne: "#c4a191", graphite: "#2d3136" };
 // The same keys and values as the SVS and Lampster cards
 const FEATURES_STYLES = [["match", "Match style"], ["flat", "Flat"], ["console", "Console"]];
@@ -1463,7 +1489,7 @@ const BADGE_PATHS = {
 };
 
 // Options this card adds to the tile card's
-const OWN_KEYS = ["style", "features_style", "badges", "progress", "features_toggle", "features_open"];
+const OWN_KEYS = ["style", "features_style", "pattern", "badges", "progress", "features_toggle", "features_open"];
 
 /** The tile card's own options (as its editor shows them). */
 function tileConfig(config) {
@@ -1523,15 +1549,13 @@ class XtoolCard extends HTMLElement {
         }
         .champagne #window {
           background: linear-gradient(170deg, #ef8a3a 0%, #e0681f 45%, #b9480f 100%);
-          box-shadow: inset 0 0 0 1px rgba(90, 30, 0, .35), inset 0 2px 6px rgba(90, 30, 0, .35);
-          --xtool-gloss: linear-gradient(115deg, rgba(255, 255, 255, .22) 0%, rgba(255, 255, 255, .06) 32%, transparent 33%);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), inset 0 0 0 1px rgba(90, 30, 0, .35), inset 0 3px 8px rgba(90, 30, 0, .3);
         }
         .graphite #body { background: linear-gradient(170deg, #3a3f45 0%, #2d3136 40%, #24272b 100%); }
         .graphite #window {
           background: radial-gradient(120% 90% at 50% 120%, rgba(214, 140, 60, .28) 0%, rgba(214, 140, 60, 0) 60%),
             linear-gradient(175deg, #1d2024 0%, #141619 60%, #0f1113 100%);
-          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06), inset 0 2px 6px rgba(0, 0, 0, .6);
-          --xtool-gloss: linear-gradient(115deg, rgba(255, 255, 255, .1) 0%, rgba(255, 255, 255, .03) 32%, transparent 33%);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), inset 0 0 0 1px rgba(255, 255, 255, .06), inset 0 3px 8px rgba(0, 0, 0, .6);
         }
         .graphite #stripe {
           display: block; height: 2px; border-radius: 1px;
@@ -1999,6 +2023,10 @@ class XtoolCard extends HTMLElement {
     const tone = TONE[style];
     for (const [id] of STYLES) this._frame.classList.toggle(id, id === style && !!tone);
     this._frame.classList.toggle("styled", !!tone);
+    if (tone) {
+      const pattern = Number.isFinite(this._config.pattern) ? this._config.pattern : DEFAULT_PATTERN;
+      this._window.style.setProperty("--xtool-gloss", glassReflections(tone, pattern));
+    }
     if (this._tile) {
       this._tile.classList.toggle("dark", tone === "dark");
       this._tile.classList.toggle("light", tone === "light");
@@ -2284,31 +2312,46 @@ class XtoolCardEditor extends HTMLElement {
         }
         ha-expansion-panel > [slot="header"] { margin: 0; font-size: inherit; font-weight: inherit; }
         .content { padding: 12px; display: grid; gap: 16px; }
+        .row { display: flex; align-items: center; gap: 12px; }
       </style>
       <div id="tile"></div>
       <ha-expansion-panel outlined expanded>
         <div slot="header" role="heading" aria-level="3">xTool</div>
-        <div class="content"><ha-form id="form"></ha-form></div>
+        <div class="content">
+          <ha-form id="style"></ha-form>
+          <div class="row" id="row"><ha-button id="randomize">Randomize reflections</ha-button></div>
+          <ha-form id="form"></ha-form>
+        </div>
       </ha-expansion-panel>`;
+    this._styleForm = this.shadowRoot.getElementById("style");
     this._form = this.shadowRoot.getElementById("form");
-    this._form.computeLabel = (s) => s.label ?? s.title ?? s.name;
-    this._form.computeHelper = (s) => s.helper;
-    this._form.addEventListener("value-changed", (ev) => {
-      ev.stopPropagation();
-      const v = ev.detail.value;
-      this._update({
-        style: v.style ?? "none",
-        features_style: v.features_style,
-        badges: v.badges ?? [],
-        progress: { ...PROGRESS_DEFAULTS, ...(v.progress ?? {}) },
-        features_toggle: !!v.features_toggle,
-        features_open: v.features_open !== false,
-      });
+    for (const form of [this._styleForm, this._form]) {
+      form.computeLabel = (s) => s.label ?? s.title ?? s.name;
+      form.computeHelper = (s) => s.helper;
+      form.addEventListener("value-changed", (ev) => this._changed(ev));
+    }
+    this.shadowRoot.getElementById("randomize").addEventListener("click", () => {
+      this._update({ pattern: 1 + Math.floor(Math.random() * 99999) });
+    });
+  }
+
+  // Either form changed: both forms' values make the card's options
+  _changed(ev) {
+    ev.stopPropagation();
+    const v = { ...this._styleForm.data, ...this._form.data, ...ev.detail.value };
+    this._update({
+      style: v.style ?? "none",
+      features_style: v.features_style,
+      badges: v.badges ?? [],
+      progress: { ...PROGRESS_DEFAULTS, ...(v.progress ?? {}) },
+      features_toggle: !!v.features_toggle,
+      features_open: v.features_open !== false,
     });
   }
 
   set hass(hass) {
     this._hass = hass;
+    this._styleForm.hass = hass;
     this._form.hass = hass;
     if (this._tileEditor) this._tileEditor.hass = withJobAttributes(hass, this._config?.entity);
   }
@@ -2360,12 +2403,14 @@ class XtoolCardEditor extends HTMLElement {
   _render() {
     const c = this._config;
     const styled = c.style !== "none";
+    this._styleForm.schema = [{
+      name: "style", label: "xTool style",
+      helper: "The machine's window behind the title and its body behind the rest.",
+      selector: select(STYLES),
+    }];
+    this._styleForm.data = { style: c.style };
+    this.shadowRoot.getElementById("row").style.display = styled ? "" : "none";
     this._form.schema = [
-      {
-        name: "style", label: "xTool style",
-        helper: "The machine's window behind the title and its body behind the rest.",
-        selector: select(STYLES),
-      },
       ...(styled ? [{
         name: "features_style", label: "Features style",
         helper: "Match style: the controls sit on the body. Flat: on a patch of the body's base color. Console: in a channel pressed into the body.",
@@ -2409,7 +2454,6 @@ class XtoolCardEditor extends HTMLElement {
       },
     ];
     this._form.data = {
-      style: c.style,
       features_style: c.features_style ?? "match",
       badges: Array.isArray(c.badges) ? c.badges : DEFAULT_BADGES,
       progress: progressOptions(c),
@@ -2431,13 +2475,18 @@ class XtoolCardEditor extends HTMLElement {
 
 /**
  * The configuration as the editor saves it: the style written out, and the
- * features style only for a style that has one.
+ * features style and the reflections' pattern only for a style that has them.
  */
 function explicit(config) {
   const c = { ...config };
   c.style = STYLES.some(([id]) => id === c.style) ? c.style : "none";
-  if (c.style === "none") delete c.features_style;
-  else c.features_style = FEATURES_STYLES.some(([id]) => id === c.features_style) ? c.features_style : "match";
+  if (c.style === "none") {
+    delete c.features_style;
+    delete c.pattern;
+  } else {
+    c.features_style = FEATURES_STYLES.some(([id]) => id === c.features_style) ? c.features_style : "match";
+    c.pattern = Number.isFinite(c.pattern) ? c.pattern : DEFAULT_PATTERN;
+  }
   // Whether the features show at load matters only when a tap shows or hides them
   if (c.features_toggle) c.features_open = c.features_open !== false;
   else {
