@@ -242,7 +242,7 @@
     fanOptions.context = { entity_id: "sensor.f2_status" };
     fanOptions.setConfig({ type: "custom:xtool-if2-fan" });
     const fanForm = fanOptions.querySelector("ha-form");
-    check("IF2 fan", fanForm.schema[0].selector.select.reorder === true && fanForm.data.options.join() === "Auto Regular,Auto Quiet,Off,1,2,3,4",
+    check("IF2 fan", fanForm.schema.find((s) => s.name === "options").selector.select.reorder === true && fanForm.data.options.join() === "Auto Regular,Auto Quiet,Off,1,2,3,4",
       "the editor offers the fan's choices, all by default");
     check("IF2 fan", fanForm.data.control === "select" && fanForm.schema[0].name === "control"
       && fanForm.schema[0].selector.select.options.map((o) => o.value).join() === "select,fan", "Controls: select options by default, or the fan");
