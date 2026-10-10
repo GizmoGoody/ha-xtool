@@ -1,6 +1,7 @@
 {
   "domain": "xtool",
   "name": "xTool Laser",
+  "after_dependencies": ["frontend", "http", "lovelace"],
   "codeowners": ["@thecodingdad"],
   "config_flow": true,
   "documentation": "https://github.com/thecodingdad/ha-xtool",

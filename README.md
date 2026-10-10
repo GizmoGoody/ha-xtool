@@ -260,6 +260,32 @@ Transient-event entities — fire once on edge transitions (rather than holding 
 | Error | `limit`, `laser_control`, `laser_module`, `tilt`, `moving`, `emergency_stop`, `temperature`, `gyro`, `laser_head_fault`, `z_axis_fault`, `u_axis_fault`, `conveyor_fault`, `board_fault`, `camera_fault`, `dongle_fault`, `udisk_fault`, `machine_lock_md_fault` | Error-state transitions. `tilt` / `moving` are D-series only; `emergency_stop` plus the `*_fault` and hardware-alarm types are V2 only (driven by per-subsystem `/.../alarm` pushes — `/emergency/status` on MetalFab and `/emergency_stop/status` on the F-series are both routed to `emergency_stop`) |
 | Fire warning | `triggered`, `cleared` | Flame-detector edge — separate entity so safety automations can target it directly. Source: `M340` push (S1), `ERROR_FIRE_WARNING` status edge (REST + D-series), or `state.alarm_present` / `/v1/device/alarms` / `/fire/alarm` push (WS-V2) |
 
+## Dashboard card
+
+The integration adds an **xTool Laser** card to the dashboard card picker. It needs no separate install: the card is added to the dashboard resources when the integration loads. It is Home Assistant's tile card with additions, so every tile card option works the same way.
+
+- **State picture** in place of the icon: an engraving trail while the laser works (random strokes on galvo machines such as the F-series, a raster on the others), burned-in pause bars when paused, a burned-in check when finished, drifting Zs when asleep, and so on. Animations stop when the device asks for reduced motion.
+- **Badge** on the picture: the first that applies of alarm or fire warning, not connected, safety key removed, lid open, a safety check off and firmware update. You choose which are shown and put them in priority order in the editor.
+- **Progress edge** along the top, bottom, left or right of the card, or around it. It fills from the laser's progress sensor; models without one (such as the F2 Ultra UV) show a sweep while a job runs.
+- **xTool style** (optional): *xTool Champagne* (orange window, champagne aluminum body) or *xTool Graphite* (dark tinted window, charcoal body). The features sit on the body in the **Match**, **Flat** or **Console** style.
+- **Collapsible**: with *Tap the card to show or hide the features*, a tap on the card collapses it to the title and back. The choice is remembered in each browser. The card's height follows its content.
+- **When the laser is off**, only its window darkens; the body keeps its finish, and controls that cannot be used are dimmed.
+- **State content**: the card adds `progress`, `elapsed`, `job_time` and the state of parts such as `exhaust`, `red_dot`, `power` and `safety_key`, which the tile card's *State content* can show.
+
+Tile features (they also work in a plain tile card for an xTool entity):
+
+| Feature | Controls |
+|---|---|
+| xTool job | Start or Resume, Pause, Cancel (asks before cancelling) |
+| xTool peripherals | Power (smart plug), exhaust fan, fill lights (on or off), red dot, cooling fan, cover lock. A fan's icon turns while it runs (*Animate fan*) |
+| xTool fill light brightness | The tile card's own light brightness feature, for one fill light. Add it once for each light |
+| xTool safety checks | Flame alarm, stops when enclosure opened, stops when moved. A check that is on is green, one that is off is red. Turning one off always asks first |
+| xTool settings | Buzzer reminders, device sleep, auto mode, IF2 buzzer |
+| xTool camera | The camera's picture, shown by Home Assistant's own image element (Auto: snapshots; Live: the stream), tap to open it, with buttons to switch cameras and, as an option, the time the picture was last updated (in the tile card's time formats) |
+| xTool SafetyPro IF2 fan | The tile card's own select options feature, as buttons, for the IF2's fan. Choose which choices show |
+
+Each feature shows only the controls the laser has.
+
 ## Device Information
 
 The device page in Home Assistant shows:
