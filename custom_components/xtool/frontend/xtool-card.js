@@ -397,11 +397,16 @@ function statePicture(phase, color, { galvo = false, seed = 1, backing = false, 
 
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-// The tile card's Time format choices: [id, label]. Auto leaves the format
-// to Home Assistant's timestamp display.
-const TIME_FORMATS = [
-  ["auto", "Auto"], ["relative", "Relative"], ["total", "Total"], ["date", "Date"], ["time", "Time"], ["datetime", "Date and time"],
-];
+// The tile card's Time format choices (its time_format option)
+const TIME_FORMATS = ["relative", "total", "date", "time", "datetime"];
+
+/** The xTool card a feature is in, if any. */
+function cardOf(el) {
+  for (let node = el.getRootNode?.()?.host; node; node = node.getRootNode?.()?.host) {
+    if (node.localName === CARD_TYPE) return node;
+  }
+  return undefined;
+}
 
 /** Seconds as 1:02:03 or 12:08. */
 function formatDuration(seconds) {
@@ -922,11 +927,11 @@ class XtoolCamera extends XtoolFeature {
       this._time.replaceChildren();
       return;
     }
-    const chosen = this._config.time_format;
+    const chosen = cardOf(this)?._config?.time_format;
     this._stamp ??= document.createElement("hui-timestamp-display");
     this._stamp.hass = this._hass;
     this._stamp.ts = this._pictureAt;
-    this._stamp.format = TIME_FORMATS.some(([id]) => id === chosen) && chosen !== "auto" ? chosen : undefined;
+    this._stamp.format = TIME_FORMATS.includes(chosen) ? chosen : undefined;
     if (this._stamp.parentNode !== this._time) this._time.replaceChildren("Updated ", this._stamp);
   }
 }
@@ -1259,13 +1264,15 @@ const FEATURE_FORMS = {
           selector: select(CAMERA_VIEWS),
         },
         { name: "show_switch", label: "Buttons to switch cameras", selector: { boolean: {} } },
-        { name: "show_time", label: "Show the last updated time", helper: "Along the bottom of the picture, in the Auto view.", selector: { boolean: {} } },
-        { name: "time_format", label: "Time format", selector: select(TIME_FORMATS) },
+        {
+          name: "show_time", label: "Show the last updated time",
+          helper: "Along the bottom of the picture, in the Auto view, in the card's Time format (under Content).",
+          selector: { boolean: {} },
+        },
       ],
       data: (c) => ({
         camera: labels.includes(c.camera) ? c.camera : labels[0], camera_view: c.camera_view === "live" ? "live" : "auto",
         show_switch: c.show_switch !== false, show_time: !!c.show_time,
-        time_format: TIME_FORMATS.some(([id]) => id === c.time_format) ? c.time_format : "auto",
       }),
     };
   },
