@@ -80,6 +80,10 @@
     features: [{ type: "custom:xtool-job" }, { type: "custom:xtool-peripherals" }, { type: "custom:xtool-safety" }] }, { hass: f2("idle"), height: 280 });
   const camera = addCard("camera", { features: [{ type: "custom:xtool-camera" }, { type: "custom:xtool-if2-fan" }] }, { hass: f2("idle"), height: 120 });
 
+  // Home Assistant's own features inside the card's, in Console: one channel each, fitted to the control
+  const haInside = addCard("console, Home Assistant features inside", { style: "champagne", features_style: "console",
+    features: [{ type: "custom:xtool-fill-light", light: "fill_light_front" }, { type: "custom:xtool-if2-fan" }] }, { hass: f2("idle"), height: 200 });
+
   // State content attributes
   const content = addCard("state content", { state_content: ["state", "elapsed", "exhaust", "red_dot"] }, { hass: f2("processing") });
 
@@ -215,6 +219,12 @@
     // The card's height follows its content
     check("grid", inlineCard.getGridOptions().rows === "auto" && inlineCard.getGridOptions().columns === 6, "rows: auto, with the tile card's columns");
     check("grid", camera.getCardSize() === 7, `the camera counts as five rows (${camera.getCardSize()})`);
+
+    // One channel for each Home Assistant control inside the card's features
+    const channels = [...haInside.shadowRoot.querySelectorAll(".area.console")];
+    check("console, Home Assistant features inside", channels.length === 2, `one channel each (${channels.length})`);
+    check("console, Home Assistant features inside", channels.every((a) => Math.abs(parseFloat(a.style.height) - 48) <= 1),
+      `fitted to the 42 px control (${channels.map((a) => a.style.height).join(", ")})`);
 
     // State content
     const info = content.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-info").textContent;
