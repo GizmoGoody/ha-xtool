@@ -453,9 +453,10 @@ const KEY_CSS = `
   }
   :host([xtool-console]) .key:active,
   :host([xtool-console]) .key[aria-pressed="true"] {
-    transform: translateY(1px) scale(.96);
-    background-image: linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,0) 55%, rgba(255,255,255,.08));
-    box-shadow: inset 0 2px 4px rgba(0,0,0,.55), inset 0 -1px 0 rgba(255,255,255,.2);
+    /* Pressed in: the same size, set lower, lit from above */
+    transform: translateY(1px);
+    background-image: linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.06) 40%, rgba(255,255,255,.1));
+    box-shadow: inset 0 3px 6px rgba(0,0,0,.55), inset 0 1px 2px rgba(0,0,0,.4), inset 0 -1px 0 rgba(255,255,255,.25);
   }
 `;
 
