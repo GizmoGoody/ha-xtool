@@ -140,3 +140,19 @@ def test_restart_keeps_the_firmware_from_the_device_page(hass: HomeAssistant, co
         sw_version=INSTALLED,
     )
     assert _last_firmware_version(hass, "MXTEST0001", stored) == INSTALLED
+
+
+@requires("device_info_refetch")
+async def test_identity_is_read_again_on_a_new_connection(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """A quick power cycle reconnects without a failed poll; the identity is still read again."""
+    from unittest.mock import AsyncMock
+
+    coordinator = _polling_coordinator(hass)
+    coordinator.protocol.get_device_info = AsyncMock(return_value=_identity(INSTALLED))
+    await coordinator._async_update_data()
+    assert coordinator.protocol.get_device_info.await_count == 1
+
+    coordinator.protocol.connected = False
+    coordinator.protocol.connect = AsyncMock()
+    await coordinator._async_update_data()
+    assert coordinator.protocol.get_device_info.await_count == 2
