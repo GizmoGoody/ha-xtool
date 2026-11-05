@@ -32,6 +32,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     not in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
     # The config read lists the keys it wants (F-series firmware needs that)
     "config_read_key_list": lambda: "CONFIG_READ_KEYS" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
+    # Issue #4: the IF2 2.0 fan is one fan entity using Studio's setFanGearV3 commands
+    "if2_fan_v3": lambda: "def fan_v3_manual_mcode" in (COMPONENT / "protocols" / "accessories" / "duct_fan.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }

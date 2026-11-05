@@ -1,0 +1,225 @@
+"""Tests for the IF2 2.0 fan (issue #4).
+
+The commands and the push fields follow xTool Studio: its setFanGearV3
+command (``M9064 <A|B><gear> C<mode>``) and its M9064 report handler
+(mode in ``C``, Manual gear in ``A``, Auto gear in ``B``). The push
+samples are from Studio's own log of an F2 Ultra UV with an IF2 2.0.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock
+
+import pytest
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from .conftest import SERIAL, build_coordinator
+from .features import requires
+
+pytestmark = requires("if2_fan_v3")
+
+IF2_SN = "MXAK013001250917TAF0FC0"
+
+
+def duct_fan():
+    from custom_components.xtool.protocols.accessories import duct_fan
+
+    return duct_fan
+
+
+@pytest.mark.parametrize(
+    ("gear", "command"),
+    [(0, "M9064 A0 C2"), (1, "M9064 A1 C3"), (2, "M9064 A2 C3"), (3, "M9064 A3 C3"), (4, "M9064 A4 C3")],
+)
+def test_manual_commands_carry_the_mode(gear: int, command: str) -> None:
+    """Each Manual gear (and Off) names its mode, as Studio does."""
+    assert duct_fan().fan_v3_manual_mcode(gear) == command
+
+
+def test_auto_commands() -> None:
+    """Auto runs at Studio's default gear 3, quiet one gear less."""
+    df = duct_fan()
+    assert df.fan_v3_auto_mcode("Auto Regular") == "M9064 B3 C4"
+    assert df.fan_v3_auto_mcode("Auto Quiet") == "M9064 B2 C4"
+    assert df.fan_v3_auto_mcode("Turbo") is None
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("A1 B0 C2 D0 S0", {"mode_class": 2, "current_gear": 0}),
+        ("A1 B1 C3 D0 S0", {"mode_class": 3, "current_gear": 1}),
+        ("A4 B1 C3 D0 S0", {"mode_class": 3, "current_gear": 4}),
+        ("A4 B3 C4 D0 S0", {"mode_class": 4, "auto_gear": 3, "auto_submode": "Auto Regular"}),
+        ("A4 B2 C4 D0 S0", {"mode_class": 4, "auto_gear": 2, "auto_submode": "Auto Quiet"}),
+        ("A4 B1 C4 D0 S0", {"mode_class": 4, "auto_gear": 1}),
+    ],
+)
+def test_push_reads_the_mode_from_c(body: str, expected: dict) -> None:
+    """The push names the mode in C; D is always 0 and is ignored."""
+    fields = duct_fan().parse_fan_v3_push(body)
+    fields.pop("alert", None)
+    assert fields == expected
+
+
+def test_push_keeps_the_alert() -> None:
+    """S carries the stall (1) and cleaning (2) alerts."""
+    assert duct_fan().parse_fan_v3_push("A2 B1 C3 D0 S2")["alert"] == 2
+
+
+@pytest.mark.parametrize(
+    ("body", "mode", "gear"),
+    [
+        ('A40.213.004.4E22.01.B02 B4 C2 D2 E:"SN" S0 Z1', 2, 0),
+        ('A40.213.004.4E22.01.B02 B2 C3 D3 E:"SN" S0 Z1', 3, 2),
+        ('A40.213.004.4E22.01.B02 B3 C4 D4 E:"SN" S0 Z0', 4, None),
+    ],
+)
+def test_poll_reads_the_mode_from_d(body: str, mode: int, gear: int | None) -> None:
+    """The M9082 poll names the mode in D, and B is the gear only in Manual."""
+    fields = duct_fan().parse_fan_v3_info(body)
+    assert fields["mode_class"] == mode
+    assert fields.get("current_gear") == gear
+    assert fields["version"] == "40.213.004.4E22.01.B02"
+
+
+def test_if2_builds_one_fan_and_no_select_or_speed_sensor() -> None:
+    """The fan entity replaces the Fan select and the Current speed sensor."""
+    from custom_components.xtool.protocols.accessories import ACCESSORY_DEFINITIONS
+
+    definition = ACCESSORY_DEFINITIONS["DuctFanV3"]
+    platforms = [(spec.platform, spec.key) for spec in definition.entities]
+    assert ("fan", "fan") in platforms
+    assert ("select", "mode_speed") not in platforms
+    assert ("sensor", "current_speed") not in platforms
+
+
+def _wsv2_f2_ultra_uv():
+    from custom_components.xtool.protocols import DEVICE_MODELS
+
+    return next(
+        m for m in DEVICE_MODELS.values()
+        if m.model_id == "F2UltraUV" and m.protocol_version == "V2"
+    )
+
+
+@pytest.fixture
+def fan(hass: HomeAssistant, config_entry: MockConfigEntry):
+    """The IF2 2.0 fan entity on an F2 Ultra UV, with the IF2 in Manual Off."""
+    from custom_components.xtool.protocols.accessories.entities import build_accessory_entities
+    from custom_components.xtool.protocols.base import AccessoryState, XtoolDeviceState
+
+    coordinator = build_coordinator(hass, _wsv2_f2_ultra_uv())
+    coordinator.protocol.parts_control = AsyncMock(return_value="ok")
+    accessory = AccessoryState(
+        type_id="DuctFanV3",
+        sn=IF2_SN,
+        fields=duct_fan().parse_fan_v3_info('A40.213.004 B4 C2 D2 E:"SN" S0 Z1'),
+    )
+    state = XtoolDeviceState()
+    state.available = True
+    state.connected_accessories = {f"DuctFanV3:{IF2_SN}": accessory}
+    coordinator.data = state
+    entity = next(
+        e for e in build_accessory_entities(coordinator, accessory)
+        if getattr(e, "_xtool_platform", None) == "fan"
+    )
+    entity.async_write_ha_state = lambda: None
+    return entity, coordinator.protocol.parts_control, accessory
+
+
+def _sent(parts_control: AsyncMock) -> str:
+    return parts_control.await_args.args[0]
+
+
+async def test_fan_starts_off(fan) -> None:
+    entity, _, _ = fan
+    assert entity.is_on is False
+    assert entity.percentage == 0
+    assert entity.preset_mode is None
+
+
+@pytest.mark.parametrize(
+    ("percentage", "command", "gear"),
+    [(25, "M9064 A1 C3", 1), (50, "M9064 A2 C3", 2), (100, "M9064 A4 C3", 4)],
+)
+async def test_fan_speed_from_off(fan, percentage: int, command: str, gear: int) -> None:
+    """A speed set while Off turns the IF2 on at that gear."""
+    entity, parts_control, accessory = fan
+    await entity.async_set_percentage(percentage)
+    assert _sent(parts_control) == command
+    assert entity.is_on is True
+    assert entity.percentage == percentage
+    # The next poll agrees with what was written.
+    accessory.fields.update(
+        duct_fan().parse_fan_v3_info(f'A40.213.004 B{gear} C3 D3 E:"SN" S0 Z1')
+    )
+    assert entity.percentage == percentage
+
+
+async def test_fan_presets(fan) -> None:
+    entity, parts_control, _ = fan
+    await entity.async_set_preset_mode("Auto Quiet")
+    assert _sent(parts_control) == "M9064 B2 C4"
+    assert entity.preset_mode == "Auto Quiet"
+    assert entity.percentage == 50
+    await entity.async_set_preset_mode("Auto Regular")
+    assert _sent(parts_control) == "M9064 B3 C4"
+    assert entity.preset_mode == "Auto Regular"
+    assert entity.percentage == 75
+
+
+async def test_fan_off_and_back_on_restores_the_last_gear(fan) -> None:
+    entity, parts_control, _ = fan
+    await entity.async_set_percentage(75)
+    await entity.async_turn_off()
+    assert _sent(parts_control) == "M9064 A0 C2"
+    assert entity.is_on is False
+    await entity.async_turn_on()
+    assert _sent(parts_control) == "M9064 A3 C3"
+    assert entity.percentage == 75
+
+
+async def test_fan_off_and_back_on_restores_the_last_preset(fan) -> None:
+    entity, parts_control, _ = fan
+    await entity.async_set_preset_mode("Auto Quiet")
+    await entity.async_turn_off()
+    await entity.async_turn_on()
+    assert _sent(parts_control) == "M9064 B2 C4"
+    assert entity.preset_mode == "Auto Quiet"
+
+
+async def test_fan_follows_a_studio_change(fan) -> None:
+    """A change made in Studio arrives as a push and shows at once."""
+    entity, _, accessory = fan
+    accessory.fields.update(duct_fan().parse_fan_v3_push("A2 B1 C3 D0 S0"))
+    assert entity.is_on is True
+    assert entity.percentage == 50
+    accessory.fields.update(duct_fan().parse_fan_v3_push("A2 B3 C4 D0 S0"))
+    assert entity.preset_mode == "Auto Regular"
+    assert entity.percentage == 75
+
+
+async def test_retired_if2_entities_are_removed(
+    hass: HomeAssistant, config_entry: MockConfigEntry
+) -> None:
+    """The old Fan select and Current speed sensor leave the registry."""
+    from custom_components.xtool.const import DOMAIN
+    from custom_components.xtool.protocols.accessories.entities import build_accessory_entities
+    from custom_components.xtool.protocols.base import AccessoryState
+
+    registry = er.async_get(hass)
+    prefix = f"{SERIAL}_accessory_ductfanv3_{IF2_SN}_"
+    select = registry.async_get_or_create(
+        "select", DOMAIN, prefix + "mode_speed", config_entry=config_entry
+    )
+    sensor = registry.async_get_or_create(
+        "sensor", DOMAIN, prefix + "current_speed", config_entry=config_entry
+    )
+    coordinator = build_coordinator(hass, _wsv2_f2_ultra_uv())
+    accessory = AccessoryState(type_id="DuctFanV3", sn=IF2_SN, fields={"mode_class": 2})
+    build_accessory_entities(coordinator, accessory)
+    assert registry.async_get(select.entity_id) is None
+    assert registry.async_get(sensor.entity_id) is None
