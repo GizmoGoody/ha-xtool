@@ -42,6 +42,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "firmware_version_normalized": lambda: "parse_firmware_version" in (COMPONENT / "update.py").read_text(encoding="utf-8"),
     # Issue #4: the laser identity is read again after a reconnect and an empty machineInfo is retried
     "device_info_refetch": lambda: "self._device_info_fetched = False" in (COMPONENT / "protocols" / "ws_v2" / "coordinator.py").read_text(encoding="utf-8"),
+    # Issue #4: after a restart the firmware version starts from the device page
+    "firmware_from_device_page": lambda: "def _last_firmware_version" in (COMPONENT / "__init__.py").read_text(encoding="utf-8"),
     # Issue #4: F2 Ultra UV exhaust fan install state, and the fan assumed off on connect
     "exhaust_fan_install_state": lambda: "has_smoking_fan_install_state" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # Issue #4: working time from machineInfo when statistics has none

@@ -124,3 +124,19 @@ async def test_identity_is_read_again_after_reconnect(hass: HomeAssistant, confi
     coordinator.protocol.poll_state = AsyncMock(side_effect=ConnectionError("laser off"))
     await coordinator._async_update_data()
     assert coordinator._device_info_fetched is False
+
+
+
+@requires("firmware_from_device_page")
+def test_restart_keeps_the_firmware_from_the_device_page(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """Setup starts from the device page's version, not the one stored at setup."""
+    from custom_components.xtool import _last_firmware_version
+
+    stored = "40.130.022.00.ht1"
+    assert _last_firmware_version(hass, "MXTEST0001", stored) == stored
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={("xtool", "MXTEST0001")},
+        sw_version=INSTALLED,
+    )
+    assert _last_firmware_version(hass, "MXTEST0001", stored) == INSTALLED

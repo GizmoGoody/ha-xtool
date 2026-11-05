@@ -1,0 +1,81 @@
+xTool Integration 2.8.0 local edits including custom dashboard card
+
+This testing session is mostly focused on Issue #4 outstanding items (https://github.com/thecodingdad/ha-xtool/issues/4). The intent is to determine which entities can be fixed and which are a lost cause and/or require a different approach. It's possible that other PRs (e.g. ours here https://github.com/thecodingdad/ha-xtool/pull/21) may provide some answers to help us out.
+
+Below, is a table of all entities for my xTool F2 Ultra UV following a simple power on and basic functionality test comparing what the HA entity indicated and the xTool Studio Status. My summary of what I think is the issue is in the last column. Let's plan an approach to nail down how we intend to most efficienctly closeout these issues. Then advise if it would be most efficient to run sub-sessions instead of one long dedicated sessions for each of these issues.
+
+Lastly, you have access to HA through ha-mcp. If you think more permissions would speed up our efforts, then tell me what you need from ha-mcp (be succinct but complete in your instructions) and I'll most likely grant you what you need for this/these sessions.
+
+				HA State @ Power On	xTool Studio Status	ISSUE
+Info
+Firmware			40.130.022.00.ht1	40.130.023.00.ht5	Incorrect
+Serial number			MXFK007002251107H0184A4 MXFK007002251107H0184A4
+MAC				6A:C4:AF:DE:80:A4	c8:26:e2:d6:b1:3c	Incorrect
+
+Controls			
+Cancel job			Press			
+Exhaust fan			Off and works		Off			Indicates two lightning icons instead of toggle until toggled the first time
+Fill light back			On 1%			2%			Accurate above 50 but 1 low below 50
+Fill light front		On 1%			2%			Accurate above 50 but 1 low below 50
+
+Pause job			Press			
+Power				On			On
+Red dot				Off			On			Red dot binary_sensor does not reflect on status at machine start up. It is always off even though the actual red dot is always on when the machine turns on
+Start/Resume job		Press			
+
+Sensors
+Alarm				OK			OK
+Deep camera			Streaming		Streaming w/ thumbnail  Thumbnail does not update and went black at one point. It SEEMS that maybe only one of the thumbnails can be populated at once (deep/main), but this is not confirmed. Check the code to see if that's a possible cause though. Also, what is best practice for the thumbnail when a streaming camera entity stops streaming (e.g. because its device is off)? Should it go blank as well? Currently, it seems to continue to show the last thumbnail it retrieved.
+Exhaust fan			Unknown			Responsive		Seems redundant given the control works
+Main camera			Streaming		Streaming no thumbnail	Missing thumbnail. Eventually updated but should update at power on until it has a thumbnail and then update more frequently
+Safety key			Plugged in		Responsive		
+Status				Idle			Idle
+Task time			Unknown			
+
+Events
+Button				Unknown			
+Error				Unknown			
+Fire warning			Unknown			
+Job				Unknown			
+
+Configuration
+Auto mode (access control)	Off			Off
+Buzzer reminders		Off			Off
+Device sleep			On			On
+Exhaust time after processing	5s			5s
+Flame alarm			On			On
+Stops when enclosure opened	Off			Off
+Stops when moved		Off			Off
+
+Diagnostic
+CPU temperature			111.2 F			
+Firmware			Update available	40.130.023.00.ht5 (The current firmware is the latest one)	
+Session count			553			553
+Task ID				Task ID			
+
+Working time						19.6 h			Missing. Available?
+
+
+
+
+
+
+Connected Devices
+
+xTool SafetyPro IF2 2.0_C196
+Serial number			MXAK013001250917TAF0FC0	MXAK013001250917TAF0FC0
+Firmware						40.213.004.4E22.01.B02	Missing. Available?
+
+Sensors
+Current speed			1			Off			Incorrect
+
+Configuration
+Buzzer				On			On
+Fan (switch)			On			Off			Incorrect...super buggy and bouncy
+Fan (fan)			Auto Regular		Correct			Toggling the switch entity seemed to put it in Manual Off. Change to Either of the Auto modes don't seem to do anything from either side. Changing to off from the entity seem to turn the IF2 off. Manual changes from xTool Studio from OFF through speeds 1-4 seem to reflect fairly timely in the fan entity. Changes from the fan entity fail to update the IF2 for all speeds 1-4 and the entity bounces back to OFF for all.
+Fan speed startup optimization				On			Missing. Available?
+Cleaning reminder					On			Missing. Available?
+
+Diagnostic
+xTool SafetyPro IF2 2.0		5s						Should be labeled "Time the inline fan continues to work" This will always match the primary device as discovered and implemented previously, so most likely just a name change is required
+Firmware			Up-to-date		40.213.004.4E22.01.B02	

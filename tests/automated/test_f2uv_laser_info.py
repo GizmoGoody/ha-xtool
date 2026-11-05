@@ -151,6 +151,13 @@ async def test_statistics_time_wins() -> None:
     assert proto._latest["working_seconds"] == 100
 
 
+@requires("working_time_from_machine_info")
+def test_working_time_sensor_exists(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    coordinator = build_coordinator(hass, _model())
+    keys = [e.entity_description.key for e in coordinator.build_sensors()]
+    assert keys.count("working_seconds") == 1
+
+
 # ── MAC ─────────────────────────────────────────────────────────────
 
 MACHINE_INFO = {"mac": WRONG_MAC, "sn": "MXTEST0001", "firmware": {"package_version": "40.130.023.00.ht5"}}
