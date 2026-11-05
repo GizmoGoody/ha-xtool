@@ -97,12 +97,12 @@ async def test_exhaust_fan_is_assumed_off_once_per_connection() -> None:
 def test_problem_sensor_replaces_running_sensor(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
     coordinator = build_coordinator(hass, _model())
     keys = {e.translation_key for e in coordinator.build_binary_sensors()}
-    assert "smoking_fan_install_abnormal" in keys
+    assert "smoking_fan_installation" in keys
     assert "smoking_fan_running" not in keys
 
     sensor = next(
         e for e in coordinator.build_binary_sensors()
-        if e.translation_key == "smoking_fan_install_abnormal"
+        if e.translation_key == "smoking_fan_installation"
     )
     coordinator.data = _state(smoking_fan_installed=False)
     assert sensor.is_on is True
