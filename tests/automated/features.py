@@ -38,6 +38,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "accessory_firmware_on_device": lambda: "def _firmware_version" in (COMPONENT / "protocols" / "accessories" / "entities.py").read_text(encoding="utf-8"),
     # Issue #4: fill-light brightness converts through Studio's 1-100 percentage
     "fill_light_studio_percent": lambda: "def _js_round" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
+    # Issue #4: the update entity compares normalized versions; the device page follows the firmware
+    "firmware_version_normalized": lambda: "parse_firmware_version" in (COMPONENT / "update.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }

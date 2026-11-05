@@ -1,0 +1,70 @@
+"""Tests for the laser firmware version (issue #4).
+
+The cloud names the F2 Ultra UV firmware 40.130.023.05; the device
+reports the same firmware as 40.130.023.00.ht5.
+"""
+
+from __future__ import annotations
+
+import pytest
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from .conftest import build_coordinator
+from .features import requires
+
+pytestmark = requires("firmware_version_normalized")
+
+INSTALLED = "40.130.023.00.ht5"
+
+
+def _f2_ultra_uv():
+    from custom_components.xtool.protocols import DEVICE_MODELS
+
+    return next(
+        m for m in DEVICE_MODELS.values()
+        if m.model_id == "F2UltraUV" and m.protocol_version == "V2"
+    )
+
+
+def _update_entity(hass: HomeAssistant, cloud_version: str):
+    from custom_components.xtool.protocols.base import FirmwareUpdateInfo
+    from custom_components.xtool.update import XtoolFirmwareUpdate
+
+    coordinator = build_coordinator(hass, _f2_ultra_uv())
+    coordinator.firmware_version = INSTALLED
+    entity = XtoolFirmwareUpdate(coordinator)
+    entity._update_info = FirmwareUpdateInfo(latest_version=cloud_version, release_summary="notes")
+    return entity
+
+
+def test_same_firmware_written_differently_is_not_an_update(
+    hass: HomeAssistant, config_entry: MockConfigEntry
+) -> None:
+    entity = _update_entity(hass, "40.130.023.05")
+    assert entity.installed_version == INSTALLED
+    assert entity.latest_version == INSTALLED
+    assert entity.release_notes() == "notes"
+
+
+@pytest.mark.parametrize("cloud_version", ["40.130.024.01", "40.131.001.00"])
+def test_newer_firmware_is_still_an_update(
+    hass: HomeAssistant, config_entry: MockConfigEntry, cloud_version: str
+) -> None:
+    entity = _update_entity(hass, cloud_version)
+    assert entity.latest_version == cloud_version
+
+
+def test_device_page_follows_the_firmware(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """A version read from the device replaces the one stored at setup."""
+    coordinator = build_coordinator(hass, _f2_ultra_uv())
+    registry = dr.async_get(hass)
+    device = registry.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={("xtool", "MXTEST0001")},
+        sw_version="40.130.022.00.ht1",
+    )
+    coordinator.laser_device_id = device.id
+    coordinator.firmware_version = INSTALLED
+    assert registry.async_get(device.id).sw_version == INSTALLED
