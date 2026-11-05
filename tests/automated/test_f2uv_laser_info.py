@@ -3,7 +3,7 @@
 The firmware never reports whether the exhaust fan runs; its smoking_fan
 read answers whether the fan is installed. Statistics has no working time;
 machineInfo's worktime has it. machineInfo's mac is not the Wi-Fi MAC; the
-wlan0 entry of /v1/wifi/interfaces has it.
+no reply carries the real one.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from .conftest import build_coordinator
 from .features import requires
 
 WRONG_MAC = "6A:C4:AF:DE:80:A4"
-WIFI_MAC = "c8:26:e2:d6:b1:3c"
 
 
 def _model(model_id: str = "F2UltraUV"):
@@ -163,40 +162,30 @@ def test_working_time_sensor_exists(hass: HomeAssistant, config_entry: MockConfi
 MACHINE_INFO = {"mac": WRONG_MAC, "sn": "MXTEST0001", "firmware": {"package_version": "40.130.023.00.ht5"}}
 
 
-@requires("mac_from_wifi_interfaces")
-@pytest.mark.parametrize("interfaces", [
-    [{"iface": "eth0", "mac": "02:00:00:00:00:01"}, {"iface": "wlan0", "ip": "192.168.0.48", "mac": "C8:26:E2:D6:B1:3C"}],
-    {"interfaces": [{"iface": "wlan0", "hwaddr": "C8:26:E2:D6:B1:3C"}]},
-])
-async def test_mac_comes_from_wlan0(interfaces) -> None:
-    proto = _protocol(replies={"/v1/device/machineInfo": MACHINE_INFO, "/v1/wifi/interfaces": interfaces})
-    info = await proto.get_device_info()
-    assert info.mac_address == WIFI_MAC
-
-
-@requires("mac_from_wifi_interfaces")
-async def test_machine_info_mac_is_not_used_on_f2_ultra_uv() -> None:
-    proto = _protocol(replies={"/v1/device/machineInfo": MACHINE_INFO, "/v1/wifi/interfaces": [{"iface": "wlan0", "ip": "192.168.0.48"}]})
+@requires("no_wrong_mac")
+async def test_f2_ultra_uv_shows_no_mac() -> None:
+    proto = _protocol(replies={"/v1/device/machineInfo": MACHINE_INFO})
+    proto._dispatch_push({"url": "/device/info", "data": {"module": "MACHINE_INFO", "type": "INFO", "info": MACHINE_INFO}})
     info = await proto.get_device_info()
     assert info.mac_address == ""
 
 
-@requires("mac_from_wifi_interfaces")
+@requires("no_wrong_mac")
 async def test_other_models_keep_machine_info_mac() -> None:
     proto = _protocol("F1Ultra", replies={"/v1/device/machineInfo": MACHINE_INFO})
     info = await proto.get_device_info()
     assert info.mac_address == WRONG_MAC
 
 
-@requires("mac_from_wifi_interfaces")
+@requires("no_wrong_mac")
 def test_wrong_mac_is_removed_from_the_device(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-    from custom_components.xtool import _drop_stale_mac_connections
+    from custom_components.xtool import _drop_mac_connections
 
     registry = dr.async_get(hass)
     device = registry.async_get_or_create(
         config_entry_id=config_entry.entry_id,
         identifiers={("xtool", "MXTEST0001")},
-        connections={(dr.CONNECTION_NETWORK_MAC, WRONG_MAC), (dr.CONNECTION_NETWORK_MAC, WIFI_MAC)},
+        connections={(dr.CONNECTION_NETWORK_MAC, WRONG_MAC)},
     )
-    _drop_stale_mac_connections(hass, device, WIFI_MAC)
-    assert registry.async_get(device.id).connections == {(dr.CONNECTION_NETWORK_MAC, WIFI_MAC)}
+    _drop_mac_connections(hass, device)
+    assert registry.async_get(device.id).connections == set()

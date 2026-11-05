@@ -48,8 +48,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "exhaust_fan_install_state": lambda: "has_smoking_fan_install_state" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # Issue #4: working time from machineInfo when statistics has none
     "working_time_from_machine_info": lambda: "def _latch_worktime" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
-    # Issue #4: F2 Ultra UV Wi-Fi MAC from /v1/wifi/interfaces
-    "mac_from_wifi_interfaces": lambda: "mac_from_wifi_interfaces" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
+    # Issue #4: F2 Ultra UV shows no MAC instead of machineInfo's wrong one
+    "no_wrong_mac": lambda: "has_wrong_machine_info_mac" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
