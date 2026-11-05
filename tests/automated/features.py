@@ -40,6 +40,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "fill_light_studio_percent": lambda: "def _js_round" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     # Issue #4: the update entity compares normalized versions; the device page follows the firmware
     "firmware_version_normalized": lambda: "parse_firmware_version" in (COMPONENT / "update.py").read_text(encoding="utf-8"),
+    # Issue #4: the laser identity is read again after a reconnect and an empty machineInfo is retried
+    "device_info_refetch": lambda: "self._device_info_fetched = False" in (COMPONENT / "protocols" / "ws_v2" / "coordinator.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }

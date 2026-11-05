@@ -68,3 +68,59 @@ def test_device_page_follows_the_firmware(hass: HomeAssistant, config_entry: Moc
     coordinator.laser_device_id = device.id
     coordinator.firmware_version = INSTALLED
     assert registry.async_get(device.id).sw_version == INSTALLED
+
+
+def _identity(firmware: str = "", serial: str = ""):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        serial_number=serial,
+        laser_power_watts=0,
+        laser=None,
+        main_firmware=firmware,
+        mac_address="",
+        hardware_version="",
+    )
+
+
+def _polling_coordinator(hass: HomeAssistant):
+    from unittest.mock import AsyncMock
+
+    coordinator = build_coordinator(hass, _f2_ultra_uv())
+    coordinator.firmware_version = "40.130.022.00.ht1"
+    coordinator.protocol.connected = True
+    coordinator.protocol.poll_state = AsyncMock()
+    coordinator.protocol.disconnect = AsyncMock()
+    coordinator._poll_accessories = AsyncMock()
+    return coordinator
+
+
+@requires("device_info_refetch")
+async def test_empty_machine_info_is_read_again(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """An empty machineInfo right after power-on does not end the retry."""
+    from unittest.mock import AsyncMock
+
+    coordinator = _polling_coordinator(hass)
+    coordinator.protocol.get_device_info = AsyncMock(return_value=_identity())
+    await coordinator._async_update_data()
+    assert coordinator._device_info_fetched is False
+
+    coordinator.protocol.get_device_info = AsyncMock(return_value=_identity(INSTALLED))
+    await coordinator._async_update_data()
+    assert coordinator._device_info_fetched is True
+    assert coordinator.firmware_version == INSTALLED
+
+
+@requires("device_info_refetch")
+async def test_identity_is_read_again_after_reconnect(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """A failed poll (laser off) makes the next connect read the identity again."""
+    from unittest.mock import AsyncMock
+
+    coordinator = _polling_coordinator(hass)
+    coordinator.protocol.get_device_info = AsyncMock(return_value=_identity(INSTALLED))
+    await coordinator._async_update_data()
+    assert coordinator._device_info_fetched is True
+
+    coordinator.protocol.poll_state = AsyncMock(side_effect=ConnectionError("laser off"))
+    await coordinator._async_update_data()
+    assert coordinator._device_info_fetched is False
