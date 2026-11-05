@@ -42,6 +42,12 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "firmware_version_normalized": lambda: "parse_firmware_version" in (COMPONENT / "update.py").read_text(encoding="utf-8"),
     # Issue #4: the laser identity is read again after a reconnect and an empty machineInfo is retried
     "device_info_refetch": lambda: "self._device_info_fetched = False" in (COMPONENT / "protocols" / "ws_v2" / "coordinator.py").read_text(encoding="utf-8"),
+    # Issue #4: F2 Ultra UV exhaust fan install state, and the fan assumed off on connect
+    "exhaust_fan_install_state": lambda: "has_smoking_fan_install_state" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
+    # Issue #4: working time from machineInfo when statistics has none
+    "working_time_from_machine_info": lambda: "def _latch_worktime" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
+    # Issue #4: F2 Ultra UV Wi-Fi MAC from /v1/wifi/interfaces
+    "mac_from_wifi_interfaces": lambda: "mac_from_wifi_interfaces" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
