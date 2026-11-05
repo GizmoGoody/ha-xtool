@@ -49,16 +49,18 @@ def test_auto_commands() -> None:
 @pytest.mark.parametrize(
     ("body", "expected"),
     [
-        ("A1 B0 C2 D0 S0", {"mode_class": 2, "current_gear": 0}),
-        ("A1 B1 C3 D0 S0", {"mode_class": 3, "current_gear": 1}),
-        ("A4 B1 C3 D0 S0", {"mode_class": 3, "current_gear": 4}),
-        ("A4 B3 C4 D0 S0", {"mode_class": 4, "auto_gear": 3, "auto_submode": "Auto Regular"}),
-        ("A4 B2 C4 D0 S0", {"mode_class": 4, "auto_gear": 2, "auto_submode": "Auto Quiet"}),
-        ("A4 B1 C4 D0 S0", {"mode_class": 4, "auto_gear": 1}),
+        ("A1 B0 C2 D0 S0", {"mode_class": 2, "current_gear": 0, "job_active": False}),
+        ("A1 B1 C3 D0 S0", {"mode_class": 3, "current_gear": 1, "job_active": False}),
+        ("A1 B2 C3 D1 S0", {"mode_class": 3, "current_gear": 1, "job_active": True}),
+        ("A4 B3 C4 D0 S0", {"mode_class": 4, "auto_gear": 3, "auto_submode": "Auto Regular", "job_active": False}),
+        ("A4 B4 C4 D1 S0", {"mode_class": 4, "auto_gear": 4, "auto_submode": "Auto Regular", "job_active": True}),
+        ("A4 B2 C4 D1 S0", {"mode_class": 4, "auto_gear": 2, "auto_submode": "Auto Quiet", "job_active": True}),
+        ("A4 B1 C4 D0 S0", {"mode_class": 4, "auto_gear": 1, "auto_submode": "Auto Quiet", "job_active": False}),
+        ("A1 B0 C4 D0 S0", {"mode_class": 4, "auto_gear": 0, "job_active": False}),
     ],
 )
-def test_push_reads_the_mode_from_c(body: str, expected: dict) -> None:
-    """The push names the mode in C; D is always 0 and is ignored."""
+def test_push_reads_mode_gear_and_job(body: str, expected: dict) -> None:
+    """The push names the mode in C, the Auto gear in B and a running job in D."""
     fields = duct_fan().parse_fan_v3_push(body)
     fields.pop("alert", None)
     assert fields == expected
@@ -159,16 +161,51 @@ async def test_fan_speed_from_off(fan, percentage: int, command: str, gear: int)
     assert entity.percentage == percentage
 
 
-async def test_fan_presets(fan) -> None:
+async def test_fan_presets_while_idle_stay_off(fan) -> None:
+    """Choosing a preset with no job running shows it, with the fan off."""
     entity, parts_control, _ = fan
     await entity.async_set_preset_mode("Auto Quiet")
     assert _sent(parts_control) == "M9064 B2 C4"
     assert entity.preset_mode == "Auto Quiet"
-    assert entity.percentage == 50
+    assert entity.is_on is False
+    assert entity.percentage == 0
     await entity.async_set_preset_mode("Auto Regular")
     assert _sent(parts_control) == "M9064 B3 C4"
     assert entity.preset_mode == "Auto Regular"
+    assert entity.is_on is False
+
+
+async def test_auto_job_shows_the_real_speed(fan) -> None:
+    """Captured from an F2 Ultra UV: the job runs at the speed saved in it,
+    HA's preset changes apply live, and the fan is off after the post-run."""
+    entity, parts_control, accessory = fan
+    await entity.async_set_preset_mode("Auto Regular")
+
+    def push(body: str) -> None:
+        accessory.fields.update(duct_fan().parse_fan_v3_push(body))
+
+    push("A1 B3 C4 D1 S0")
+    push("A1 B2 C4 D1 S0")  # the job was saved with Auto Quiet
+    assert entity.is_on is True
+    assert entity.percentage == 50
+    assert entity.preset_mode == "Auto Quiet"
+    await entity.async_set_preset_mode("Auto Regular")
+    push("A1 B3 C4 D1 S0")
     assert entity.percentage == 75
+    assert entity.preset_mode == "Auto Regular"
+    push("A1 B0 C4 D0 S0")  # post-run over
+    assert entity.is_on is False
+    assert entity.percentage == 0
+    assert entity.preset_mode == "Auto Regular"
+
+
+def test_poll_keeps_the_job_flag() -> None:
+    """The M9082 poll has no job flag, so the push's flag survives it."""
+    import inspect
+
+    from custom_components.xtool import coordinator
+
+    assert '"job_active"' in inspect.getsource(coordinator)
 
 
 async def test_fan_off_and_back_on_restores_the_last_gear(fan) -> None:
@@ -182,13 +219,29 @@ async def test_fan_off_and_back_on_restores_the_last_gear(fan) -> None:
     assert entity.percentage == 75
 
 
-async def test_fan_off_and_back_on_restores_the_last_preset(fan) -> None:
-    entity, parts_control, _ = fan
-    await entity.async_set_preset_mode("Auto Quiet")
+async def test_turn_on_is_manual_at_the_last_spinning_speed(fan) -> None:
+    """Turning on leaves Auto, at the speed the fan last spun at in either mode."""
+    entity, parts_control, accessory = fan
+    await entity.async_set_preset_mode("Auto Regular")
+    accessory.fields.update(duct_fan().parse_fan_v3_push("A1 B2 C4 D1 S0"))
+    entity._handle_coordinator_update()
     await entity.async_turn_off()
+    assert _sent(parts_control) == "M9064 A0 C2"
+    assert entity.preset_mode is None
     await entity.async_turn_on()
-    assert _sent(parts_control) == "M9064 B2 C4"
-    assert entity.preset_mode == "Auto Quiet"
+    assert _sent(parts_control) == "M9064 A2 C3"
+    assert entity.preset_mode is None
+    assert entity.percentage == 50
+
+
+async def test_speed_during_an_auto_job_leaves_auto(fan) -> None:
+    entity, parts_control, accessory = fan
+    await entity.async_set_preset_mode("Auto Regular")
+    accessory.fields.update(duct_fan().parse_fan_v3_push("A1 B3 C4 D1 S0"))
+    await entity.async_set_percentage(25)
+    assert _sent(parts_control) == "M9064 A1 C3"
+    assert entity.preset_mode is None
+    assert entity.percentage == 25
 
 
 async def test_fan_follows_a_studio_change(fan) -> None:
@@ -199,7 +252,7 @@ async def test_fan_follows_a_studio_change(fan) -> None:
     assert entity.percentage == 50
     accessory.fields.update(duct_fan().parse_fan_v3_push("A2 B3 C4 D0 S0"))
     assert entity.preset_mode == "Auto Regular"
-    assert entity.percentage == 75
+    assert entity.is_on is False
 
 
 async def test_retired_if2_entities_are_removed(
