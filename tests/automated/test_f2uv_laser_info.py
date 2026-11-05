@@ -155,6 +155,9 @@ def test_working_time_sensor_exists(hass: HomeAssistant, config_entry: MockConfi
     coordinator = build_coordinator(hass, _model())
     keys = [e.entity_description.key for e in coordinator.build_sensors()]
     assert keys.count("working_seconds") == 1
+    sensor = next(e for e in coordinator.build_sensors() if e.entity_description.key == "working_seconds")
+    # Raises when HA cannot convert to the suggested unit.
+    assert sensor.unit_of_measurement in ("h", "s")
 
 
 # ── MAC ─────────────────────────────────────────────────────────────
