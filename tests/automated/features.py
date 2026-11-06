@@ -65,6 +65,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "focus_control": lambda: "has_focus_control" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # F2 Ultra UV Status: Focusing, Warming up, Interrupted, Laser overheat
     "status_details": lambda: "has_power_resume" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
+    # F2 Ultra UV Engraving lens, Wi-Fi signal and Calibration sensors
+    "laser_info": lambda: "has_laser_info" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }

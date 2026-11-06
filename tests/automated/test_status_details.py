@@ -147,7 +147,8 @@ async def test_power_resume_buttons(hass: HomeAssistant, action: str, wire: str)
     }
     assert set(buttons) == {"continue", "discard"}
     button = buttons[action]
-    proto = coordinator.protocol
+    proto = _protocol()
+    coordinator.protocol = proto
     proto._power_resume = False
     assert button.available is False
     with pytest.raises(HomeAssistantError):

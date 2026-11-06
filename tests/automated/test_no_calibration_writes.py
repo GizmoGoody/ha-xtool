@@ -79,6 +79,9 @@ def test_source_names_no_calibration_key_or_write() -> None:
         if path.suffix == ".py":
             # Comments may name a key to say it is left alone.
             text = "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+        if path.name == "protocol.py" and f"async def {READ_ONLY_FUNCTION}(" in text:
+            # The Calibration sensor's read; test_calibration_is_only_read checks it.
+            text = text.replace(_protocol_function(READ_ONLY_FUNCTION, text), "")
         for found in _touches_calibration(text):
             problems.append(f"{path.relative_to(COMPONENT)}: {found}")
     assert not problems, "calibration data named in the integration:\n" + "\n".join(problems)
@@ -93,8 +96,27 @@ def _head_move_sites(word: str) -> list[str]:
     return found
 
 
-def _protocol_function(name: str) -> str:
+# The one function that may name calibration keys: it only reads them,
+# for the diagnostic Calibration sensor.
+READ_ONLY_FUNCTION = "_read_calibration_info"
+
+
+def test_calibration_is_only_read() -> None:
+    """The Calibration sensor's read sends GET requests and nothing else."""
     text = (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8")
+    if f"async def {READ_ONLY_FUNCTION}(" not in text:
+        pytest.skip("branch has no Calibration sensor")
+    body = _protocol_function(READ_ONLY_FUNCTION)
+    for forbidden in ("PUT", "POST", "set_config", "setUserConfigs", "_send", "upload", "file_type"):
+        assert forbidden not in body, forbidden
+    methods = re.findall(r'self\.request\(\s*[^,]+,\s*"([A-Z]+)"', body)
+    assert methods, "no request found"
+    assert set(methods) == {"GET"}, methods
+
+
+def _protocol_function(name: str, text: str | None = None) -> str:
+    if text is None:
+        text = (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8")
     body = text[text.index(f"    async def {name}("):]
     end = body.find("\n    async def ", 10)
     return body if end < 0 else body[:end]
