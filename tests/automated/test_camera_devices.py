@@ -365,30 +365,31 @@ async def test_old_view_entity_ids_become_crop(hass: HomeAssistant, config_entry
     assert ids["center_y"] == "number.my_own_name"  # chosen by the user: kept
 
 
-def _perspective_switch(coordinator):
+def _perspective_select(coordinator):
     return next(
-        s for s in coordinator.build_switches()
-        if s.unique_id == f"{SERIAL}_camera_deep_perspective_correction"
+        s for s in coordinator.build_selects()
+        if s.unique_id == f"{SERIAL}_camera_deep_perspective"
     )
 
 
-def test_perspective_switch_is_on_the_deep_camera_device(hass: HomeAssistant) -> None:
+def test_perspective_select_is_on_the_deep_camera_device(hass: HomeAssistant) -> None:
     coordinator = _f2uv(hass)
-    switch = _perspective_switch(coordinator)
-    assert _identifiers(switch) == {("xtool", f"{SERIAL}:camera_deep")}
-    assert switch.translation_key == "perspective_correction"
-    assert switch.is_on is True
-    assert switch.available
-    ids = [s.unique_id for s in coordinator.build_switches() if "perspective" in s.unique_id]
-    assert ids == [f"{SERIAL}_camera_deep_perspective_correction"]
+    select = _perspective_select(coordinator)
+    assert _identifiers(select) == {("xtool", f"{SERIAL}:camera_deep")}
+    assert select.translation_key == "perspective"
+    assert select.options == ["uncorrected", "rotated", "straightened"]
+    assert select.current_option == "rotated"
+    assert select.available
+    ids = [s.unique_id for s in coordinator.build_selects() if "perspective" in s.unique_id]
+    assert ids == [f"{SERIAL}_camera_deep_perspective"]
 
 
-def test_only_cameras_with_a_perspective_have_the_switch(hass: HomeAssistant) -> None:
+def test_only_cameras_with_a_perspective_have_the_select(hass: HomeAssistant) -> None:
     from custom_components.xtool.protocols import DEVICE_MODELS
 
     for key, model in DEVICE_MODELS.items():
         coordinator = build_coordinator(hass, model)
-        has = any("perspective" in (s.unique_id or "") for s in coordinator.build_switches())
+        has = any("perspective" in (s.unique_id or "") for s in coordinator.build_selects())
         assert has is bool(getattr(model, "camera_perspectives", ())), key
 
 
@@ -400,27 +401,33 @@ def _deep_photo() -> bytes:
     return out.getvalue()
 
 
-async def test_switch_off_only_turns_the_picture_upright(hass: HomeAssistant) -> None:
+async def test_each_perspective_option(hass: HomeAssistant) -> None:
     from PIL import Image
+
+    from custom_components.xtool.protocols.ws_v2.entities import _thumbnail_registry
 
     coordinator = _f2uv(hass)
     coordinator.protocol.camera_snap = AsyncMock(return_value=_deep_photo())
     deep = _camera(coordinator, "deep")
     deep.hass = hass
     deep.async_write_ha_state = MagicMock()
-    switch = _perspective_switch(coordinator)
-    switch.async_write_ha_state = MagicMock()
-    from custom_components.xtool.protocols.ws_v2.entities import _thumbnail_registry
-
+    select = _perspective_select(coordinator)
+    select.async_write_ha_state = MagicMock()
     _thumbnail_registry(coordinator).cameras["deep"] = deep
-    on = Image.open(io.BytesIO(await deep.async_camera_image()))
-    assert on.size == (1000, 750)  # the perspective result
-    await switch.async_turn_off()
-    assert switch.is_on is False
-    # The picture was refreshed with a new photo, turned upright only.
+
+    # Rotated (the default): turned upright, keeping the photo's shape.
+    rotated = Image.open(io.BytesIO(await deep.async_camera_image()))
+    assert rotated.size[0] == 1000 and rotated.size[1] == pytest.approx(750, abs=2)
+
+    # Each change takes a new photo.
+    await select.async_select_option("straightened")
+    assert select.current_option == "straightened"
     assert coordinator.protocol.camera_snap.await_count == 2
-    off = Image.open(io.BytesIO(deep._last_snapshot))
-    assert off.size[0] == 1000 and off.size[1] == pytest.approx(750, abs=2)
+    assert Image.open(io.BytesIO(deep._last_snapshot)).size == (1000, 750)
+
+    await select.async_select_option("uncorrected")
+    assert coordinator.protocol.camera_snap.await_count == 3
+    assert Image.open(io.BytesIO(deep._last_snapshot)).size == (4000, 3000)
     deep.async_write_ha_state.assert_called()
 
 
@@ -437,6 +444,6 @@ def test_upright_turn_has_no_empty_corners() -> None:
 @pytest.mark.parametrize(
     "path", [ROOT / "strings.json", ROOT / "translations" / "en.json", ROOT / "translations" / "de.json"],
 )
-def test_switch_is_named(path: Path) -> None:
-    switches = json.loads(path.read_text(encoding="utf-8"))["entity"]["switch"]
-    assert "perspective_correction" in switches
+def test_select_is_named(path: Path) -> None:
+    select = json.loads(path.read_text(encoding="utf-8"))["entity"]["select"]["perspective"]
+    assert set(select["state"]) == {"uncorrected", "rotated", "straightened"}
