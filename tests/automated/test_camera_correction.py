@@ -198,5 +198,10 @@ async def test_deep_camera_is_corrected(hass: HomeAssistant) -> None:
     coordinator.protocol.camera_calibration_file = AsyncMock(return_value=None)
     deep = next(c for c in coordinator.build_cameras() if c._camera_name == "deep")
     deep.hass = hass
+    from custom_components.xtool.protocols.ws_v2 import entities
+
+    if hasattr(entities, "PERSPECTIVE_STRAIGHTENED"):
+        # The Perspective select (default Rotated) chooses the correction.
+        entities._perspective_settings(coordinator)["deep"] = entities.PERSPECTIVE_STRAIGHTENED
     image = Image.open(io.BytesIO(await deep.async_camera_image()))
     assert image.size == (1000, 750)

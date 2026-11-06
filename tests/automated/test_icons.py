@@ -48,12 +48,13 @@ def test_icons_json_has_no_unused_entries(built_entities: list[Built]) -> None:
 
 @requires("icon_translations")
 def test_icons_json_entries_are_well_formed() -> None:
-    """Each entry has a default icon and only on/off state icons."""
+    """Each entry has a default icon; switches and binary sensors have only on/off state icons."""
     for platform, entries in _icons().items():
         for key, entry in entries.items():
             assert entry["default"].startswith("mdi:"), f"{platform}.{key}"
             states = entry.get("state", {})
-            assert set(states) <= {"on", "off"}, f"{platform}.{key}"
+            if platform in PLATFORMS:
+                assert set(states) <= {"on", "off"}, f"{platform}.{key}"
             assert all(icon.startswith("mdi:") for icon in states.values())
 
 
