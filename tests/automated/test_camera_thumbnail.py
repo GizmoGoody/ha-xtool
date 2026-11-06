@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.core import HomeAssistant
 
@@ -51,9 +51,9 @@ async def test_token_changes_only_on_the_cameras_schedule(hass: HomeAssistant) -
     token = camera.access_tokens[-1]
     camera.async_update_token()  # Home Assistant's 5-minute call
     assert camera.access_tokens[-1] == token
-    camera.hass = hass
-    camera.entity_id = "camera.test_main"
+    camera.async_write_ha_state = MagicMock()
     camera._refresh_thumbnail()
+    camera.async_write_ha_state.assert_called_once()
     assert camera.access_tokens[-1] != token
 
 
