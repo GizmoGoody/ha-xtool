@@ -69,6 +69,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "laser_info": lambda: "has_laser_info" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # The red dot is assumed on after a V2 laser connects
     "red_dot_assumed_on": lambda: "_assume_red_dot_on" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
+    # IF2 2.0 Alert event (fan stall, cleaning needed)
+    "if2_alerts": lambda: '"event": _AccessoryAlertEvent' in (COMPONENT / "protocols" / "accessories" / "entities.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
