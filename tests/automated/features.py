@@ -52,6 +52,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "no_wrong_mac": lambda: "has_wrong_machine_info_mac" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # Task ID shows None when the laser has no job
     "task_id_none": lambda: "def task_id_value" in (COMPONENT / "const.py").read_text(encoding="utf-8"),
+    # WS-V2 camera: faster photo live view, Idle when nobody watches
+    "camera_photo_live_view": lambda: "MAX_SNAPSHOT_AGE" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }

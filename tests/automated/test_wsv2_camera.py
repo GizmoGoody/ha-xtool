@@ -1,0 +1,101 @@
+"""Tests for the WS-V2 camera (issue #4).
+
+These lasers have no live video, so the live view is built from photos.
+A photo takes about 0.3 s on the F2 Ultra UV.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import timedelta
+from unittest.mock import AsyncMock
+
+import pytest
+from homeassistant.core import HomeAssistant
+
+from .conftest import build_coordinator
+from .features import requires
+
+pytestmark = requires("camera_photo_live_view")
+
+
+def _main_camera(hass: HomeAssistant):
+    from custom_components.xtool.protocols import DEVICE_MODELS
+
+    model = next(
+        m for m in DEVICE_MODELS.values()
+        if m.model_id == "F2UltraUV" and m.protocol_version == "V2"
+    )
+    coordinator = build_coordinator(hass, model)
+    coordinator.protocol.camera_snap = AsyncMock(return_value=b"jpeg-1")
+    camera = next(
+        c for c in coordinator.build_cameras() if c._camera_name == "main"
+    )
+    return camera, coordinator.protocol
+
+
+async def test_camera_is_idle_until_a_live_view_opens(hass: HomeAssistant) -> None:
+    camera, _ = _main_camera(hass)
+    assert camera.is_streaming is False
+    camera._set_live_viewers(1)
+    assert camera.is_streaming is True
+    camera._set_live_viewers(-1)
+    assert camera.is_streaming is False
+
+
+async def test_recent_photo_is_shared(hass: HomeAssistant) -> None:
+    camera, protocol = _main_camera(hass)
+    assert await camera.async_camera_image() == b"jpeg-1"
+    assert await camera.async_camera_image() == b"jpeg-1"
+    assert protocol.camera_snap.await_count == 1
+
+
+async def test_thumbnail_is_not_older_than_a_few_seconds(hass: HomeAssistant) -> None:
+    from custom_components.xtool.protocols.ws_v2.entities import MIN_SNAPSHOT_INTERVAL
+
+    assert MIN_SNAPSHOT_INTERVAL <= timedelta(seconds=10)
+
+
+async def test_failed_photo_keeps_a_recent_image(hass: HomeAssistant) -> None:
+    camera, protocol = _main_camera(hass)
+    await camera.async_camera_image()
+    camera._last_snapshot_time -= timedelta(seconds=5)
+    protocol.camera_snap.return_value = None
+    assert await camera.async_camera_image() == b"jpeg-1"
+
+
+async def test_failed_photo_drops_a_stale_image(hass: HomeAssistant) -> None:
+    camera, protocol = _main_camera(hass)
+    await camera.async_camera_image()
+    camera._last_snapshot_time -= timedelta(minutes=5)
+    protocol.camera_snap.side_effect = RuntimeError("offline")
+    assert await camera.async_camera_image() is None
+
+
+def test_live_view_is_faster_than_one_frame_per_second() -> None:
+    from custom_components.xtool.protocols.ws_v2.entities import LIVE_FRAME_INTERVAL
+
+    assert LIVE_FRAME_INTERVAL < 1.0
+
+
+async def test_photos_are_taken_one_at_a_time() -> None:
+    from custom_components.xtool.protocols.ws_v2.protocol import WSV2Protocol
+
+    proto = WSV2Protocol("192.0.2.10")
+    running = 0
+    most = 0
+
+    async def snap(name: str) -> bytes:
+        nonlocal running, most
+        running += 1
+        most = max(most, running)
+        await asyncio.sleep(0.01)
+        running -= 1
+        return name.encode()
+
+    proto._camera_snap = snap
+    results = await asyncio.gather(
+        proto.camera_snap("main"), proto.camera_snap("deep"),
+    )
+    assert results == [b"main", b"deep"]
+    assert most == 1
