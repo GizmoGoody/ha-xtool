@@ -105,6 +105,10 @@
           "working_api": "Running (API)",
           "working_button": "Running (button)",
           "measure_area": "Measuring area",
+          "focusing": "Focusing",
+          "warming_up": "Warming up",
+          "interrupted": "Interrupted",
+          "laser_overheat": "Laser overheat",
           "unknown": "Unknown"
         }
       },
@@ -867,6 +871,12 @@
       },
       "measure_distance": {
         "name": "Measure distance"
+      },
+      "power_resume_continue": {
+        "name": "Continue interrupted job"
+      },
+      "power_resume_discard": {
+        "name": "Discard interrupted job"
       },
       "quit_lightburn": {
         "name": "Quit LightBurn mode"
