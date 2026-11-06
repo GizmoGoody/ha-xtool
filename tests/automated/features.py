@@ -63,6 +63,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "camera_devices": lambda: "_camera_device_info" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     # F2 Ultra UV focus height control and the xtool.focus action
     "focus_control": lambda: "has_focus_control" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
+    # F2 Ultra UV Status: Focusing, Warming up, Interrupted, Laser overheat
+    "status_details": lambda: "has_power_resume" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
