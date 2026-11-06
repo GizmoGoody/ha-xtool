@@ -36,6 +36,7 @@ from .card import async_register_card, async_remove_card_resource
 # fails (Home Assistant then retries it inside the event loop).
 from .protocols import DEVICE_MODELS, LaserInfo, detect_model  # isort: skip
 from .coordinator import XtoolCoordinator  # isort: skip
+from .services import async_setup_services  # isort: skip
 
 PLATFORMS = [
     Platform.BINARY_SENSOR,
@@ -61,6 +62,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the xTool integration: serve its dashboard card and tile features."""
     await async_register_card(hass)
+    async_setup_services(hass)
     return True
 
 
