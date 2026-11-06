@@ -71,6 +71,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "red_dot_assumed_on": lambda: "_assume_red_dot_on" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
     # IF2 2.0 Alert event (fan stall, cleaning needed)
     "if2_alerts": lambda: '"event": _AccessoryAlertEvent' in (COMPONENT / "protocols" / "accessories" / "entities.py").read_text(encoding="utf-8"),
+    # F2 Ultra UV main camera Calibration image
+    "calibration_image": lambda: (COMPONENT / "image.py").exists(),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
