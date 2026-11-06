@@ -378,7 +378,7 @@ def test_perspective_select_is_on_the_deep_camera_device(hass: HomeAssistant) ->
     assert _identifiers(select) == {("xtool", f"{SERIAL}:camera_deep")}
     assert select.translation_key == "perspective"
     assert select.options == ["uncorrected", "rotated", "straightened"]
-    assert select.current_option == "rotated"
+    assert select.current_option == "straightened"
     assert select.available
     ids = [s.unique_id for s in coordinator.build_selects() if "perspective" in s.unique_id]
     assert ids == [f"{SERIAL}_camera_deep_perspective"]
@@ -415,15 +415,16 @@ async def test_each_perspective_option(hass: HomeAssistant) -> None:
     select.async_write_ha_state = MagicMock()
     _thumbnail_registry(coordinator).cameras["deep"] = deep
 
-    # Rotated (the default): turned upright, keeping the photo's shape.
-    rotated = Image.open(io.BytesIO(await deep.async_camera_image()))
-    assert rotated.size[0] == 1000 and rotated.size[1] == pytest.approx(750, abs=2)
+    # Straightened (the default): the perspective result.
+    straightened = Image.open(io.BytesIO(await deep.async_camera_image()))
+    assert straightened.size == (1000, 750)
 
-    # Each change takes a new photo.
-    await select.async_select_option("straightened")
-    assert select.current_option == "straightened"
+    # Each change takes a new photo. Rotated keeps the photo's shape.
+    await select.async_select_option("rotated")
+    assert select.current_option == "rotated"
     assert coordinator.protocol.camera_snap.await_count == 2
-    assert Image.open(io.BytesIO(deep._last_snapshot)).size == (1000, 750)
+    rotated = Image.open(io.BytesIO(deep._last_snapshot))
+    assert rotated.size[0] == 1000 and rotated.size[1] == pytest.approx(750, abs=2)
 
     await select.async_select_option("uncorrected")
     assert coordinator.protocol.camera_snap.await_count == 3
