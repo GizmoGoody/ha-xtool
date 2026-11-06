@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.core import HomeAssistant
 
-from .conftest import build_coordinator
-from .features import requires
+from .conftest import SERIAL, build_coordinator
+from .features import has, requires
 
 pytestmark = requires("camera_thumbnail_refresh")
 
@@ -25,21 +25,26 @@ def _f2uv(hass: HomeAssistant):
     return coordinator
 
 
+def _thumbnail_number(coordinator, camera_key: str):
+    unique_id = f"{SERIAL}_{camera_key}_thumbnail_refresh"
+    return next(n for n in coordinator.build_numbers() if n.unique_id == unique_id)
+
+
 def test_one_number_per_camera(hass: HomeAssistant) -> None:
     coordinator = _f2uv(hass)
-    keys = {
-        n.translation_key for n in coordinator.build_numbers()
-        if n.translation_key.endswith("_thumbnail_refresh")
+    ids = {
+        n.unique_id for n in coordinator.build_numbers()
+        if n.unique_id.endswith("_thumbnail_refresh")
     }
-    assert keys == {"camera_main_thumbnail_refresh", "camera_deep_thumbnail_refresh"}
+    assert ids == {
+        f"{SERIAL}_camera_main_thumbnail_refresh",
+        f"{SERIAL}_camera_deep_thumbnail_refresh",
+    }
 
 
 def test_number_range(hass: HomeAssistant) -> None:
     coordinator = _f2uv(hass)
-    number = next(
-        n for n in coordinator.build_numbers()
-        if n.translation_key == "camera_main_thumbnail_refresh"
-    )
+    number = _thumbnail_number(coordinator, "camera_main")
     assert (number.native_min_value, number.native_max_value, number.native_step) == (5, 600, 5)
     assert number.native_value == 300
     assert number.available
@@ -63,10 +68,7 @@ async def test_token_changes_only_on_the_cameras_schedule(hass: HomeAssistant) -
 async def test_number_restarts_the_camera_timer(hass: HomeAssistant) -> None:
     coordinator = _f2uv(hass)
     camera = next(c for c in coordinator.build_cameras() if c._camera_name == "main")
-    number = next(
-        n for n in coordinator.build_numbers()
-        if n.translation_key == "camera_main_thumbnail_refresh"
-    )
+    number = _thumbnail_number(coordinator, "camera_main")
     camera.hass = hass
     from custom_components.xtool.protocols.ws_v2.entities import _thumbnail_registry
 
@@ -84,5 +86,8 @@ def test_translations_name_every_number() -> None:
     root = Path("custom_components/xtool")
     for path in (root / "translations" / "en.json", root / "translations" / "de.json", root / "strings.json"):
         numbers = json.loads(path.read_text(encoding="utf-8"))["entity"]["number"]
-        for key in ("camera_main", "camera_deep", "camera"):
-            assert f"{key}_thumbnail_refresh" in numbers, (path, key)
+        # With camera devices, a camera's own device needs no camera name.
+        keys = ("camera", "") if has("camera_devices") else ("camera_main", "camera_deep", "camera")
+        for key in keys:
+            name = f"{key}_thumbnail_refresh" if key else "thumbnail_refresh"
+            assert name in numbers, (path, name)

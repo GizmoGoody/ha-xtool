@@ -58,6 +58,9 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "camera_calibration": lambda: (COMPONENT / "protocols" / "ws_v2" / "camera_correction.py").exists(),
     # Per-camera thumbnail refresh interval number
     "camera_thumbnail_refresh": lambda: "THUMBNAIL_REFRESH_DEFAULT" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
+    # Each camera of a multi-camera laser on its own device; the main
+    # camera crop numbers and the xtool.camera action
+    "camera_devices": lambda: "_camera_device_info" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     # F2 Ultra UV focus height control and the xtool.focus action
     "focus_control": lambda: "has_focus_control" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features

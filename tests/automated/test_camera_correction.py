@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 from homeassistant.core import HomeAssistant
 
-from .conftest import build_coordinator
+from .conftest import SERIAL, build_coordinator
 from .features import requires
 
 pytestmark = requires("camera_calibration")
@@ -177,11 +177,11 @@ def test_view_numbers_for_the_main_camera(hass: HomeAssistant) -> None:
         if m.model_id == "F2UltraUV" and m.protocol_version == "V2"
     )
     coordinator = build_coordinator(hass, model)
-    keys = {n.translation_key for n in coordinator.build_numbers()}
+    ids = {n.unique_id for n in coordinator.build_numbers()}
     assert {
-        "camera_main_view_width", "camera_main_view_height",
-        "camera_main_view_center_x", "camera_main_view_center_y",
-    } <= keys
+        f"{SERIAL}_camera_main_view_{setting}"
+        for setting in ("width", "height", "center_x", "center_y")
+    } <= ids
 
 
 async def test_deep_camera_is_corrected(hass: HomeAssistant) -> None:
