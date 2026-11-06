@@ -124,3 +124,17 @@ async def test_live_view_ends_when_the_viewer_stops_reading(
     camera, _ = _main_camera(hass)
     await asyncio.wait_for(camera.handle_async_mjpeg_stream(object()), timeout=2)
     assert camera.is_streaming is False
+
+
+async def test_photo_age_counts_from_the_request(hass: HomeAssistant) -> None:
+    camera, protocol = _main_camera(hass)
+
+    async def slow_snap(name: str) -> bytes:
+        await asyncio.sleep(0.05)
+        return b"jpeg"
+
+    protocol.camera_snap = AsyncMock(side_effect=slow_snap)
+    await camera._image(timedelta(seconds=0.06))
+    await asyncio.sleep(0.02)
+    await camera._image(timedelta(seconds=0.06))
+    assert protocol.camera_snap.await_count == 2
