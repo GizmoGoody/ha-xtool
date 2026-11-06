@@ -75,14 +75,15 @@ def test_photo_is_mapped_onto_the_grid() -> None:
     )
 
     calibration = parse_calibration(json.dumps(GRID))
-    result = Image.open(io.BytesIO(correct_image(_photo(), calibration, width=200)))
-    assert result.size == (200, 200)
-    top = result.getpixel((100, 40))
-    bottom = result.getpixel((100, 160))
+    result = Image.open(io.BytesIO(correct_image(_photo(), calibration)))
+    # The default view is the calibrated area at 5 pixels per mm.
+    assert result.size == (1000, 1000)
+    top = result.getpixel((500, 200))
+    bottom = result.getpixel((500, 800))
     assert top[1] > 200 and top[0] < 60 and top[2] < 60
     assert bottom[2] > 200 and bottom[0] < 60 and bottom[1] < 60
     # Nothing from outside the grid (red) reaches the result.
-    corner = result.getpixel((5, 5))
+    corner = result.getpixel((20, 20))
     assert corner[0] < 100
 
 
@@ -104,9 +105,7 @@ async def test_main_camera_serves_straightened_photos(hass: HomeAssistant) -> No
     for camera in cameras.values():
         camera.hass = hass
     main = Image.open(io.BytesIO(await cameras["main"].async_camera_image()))
-    deep = Image.open(io.BytesIO(await cameras["deep"].async_camera_image()))
     assert main.size[0] == main.size[1]
-    assert deep.size == (400, 300)
     assert coordinator.protocol.camera_calibration_file.await_count == 1
 
 
@@ -124,3 +123,77 @@ async def test_without_calibration_photos_are_raw(hass: HomeAssistant) -> None:
     main = next(c for c in coordinator.build_cameras() if c._camera_name == "main")
     main.hass = hass
     assert await main.async_camera_image() == photo
+
+
+def test_view_moves_and_widens_the_area() -> None:
+    from PIL import Image
+
+    from custom_components.xtool.protocols.ws_v2.camera_correction import (
+        CameraView,
+        correct_image,
+        parse_calibration,
+    )
+
+    calibration = parse_calibration(json.dumps(GRID))
+    # The top half of the calibrated area only: all green.
+    top = Image.open(io.BytesIO(correct_image(
+        _photo(), calibration, CameraView(200, 100, 0, -50),
+    )))
+    assert top.size == (1000, 500)
+    pixel = top.getpixel((500, 250))
+    assert pixel[1] > 200 and pixel[2] < 60
+    # Wider than the calibrated area: the sides come from outside the grid (red).
+    wide = Image.open(io.BytesIO(correct_image(
+        _photo(), calibration, CameraView(300, 200, 0, 0),
+    )))
+    assert wide.size == (1500, 1000)
+    side = wide.getpixel((20, 500))
+    assert side[0] > 200 and side[1] < 60
+
+
+def test_rotate_keeps_shape_without_empty_corners() -> None:
+    from PIL import Image
+
+    from custom_components.xtool.protocols.ws_v2.camera_correction import rotate_image
+
+    photo = Image.new("RGB", (800, 600), (255, 255, 255))
+    out = io.BytesIO()
+    photo.save(out, "JPEG")
+    turned = Image.open(io.BytesIO(rotate_image(out.getvalue(), 151.5)))
+    assert abs(turned.width / turned.height - 800 / 600) < 0.02
+    for corner in ((2, 2), (turned.width - 3, turned.height - 3)):
+        assert min(turned.getpixel(corner)) > 200
+
+
+def test_view_numbers_for_the_main_camera(hass: HomeAssistant) -> None:
+    from custom_components.xtool.protocols import DEVICE_MODELS
+
+    model = next(
+        m for m in DEVICE_MODELS.values()
+        if m.model_id == "F2UltraUV" and m.protocol_version == "V2"
+    )
+    coordinator = build_coordinator(hass, model)
+    keys = {n.translation_key for n in coordinator.build_numbers()}
+    assert {
+        "camera_main_view_width", "camera_main_view_height",
+        "camera_main_view_center_x", "camera_main_view_center_y",
+    } <= keys
+
+
+async def test_deep_camera_is_turned(hass: HomeAssistant) -> None:
+    from PIL import Image
+
+    from custom_components.xtool.protocols import DEVICE_MODELS
+
+    model = next(
+        m for m in DEVICE_MODELS.values()
+        if m.model_id == "F2UltraUV" and m.protocol_version == "V2"
+    )
+    coordinator = build_coordinator(hass, model)
+    coordinator.protocol.camera_snap = AsyncMock(return_value=_photo())
+    coordinator.protocol.camera_calibration_file = AsyncMock(return_value=None)
+    deep = next(c for c in coordinator.build_cameras() if c._camera_name == "deep")
+    deep.hass = hass
+    image = Image.open(io.BytesIO(await deep.async_camera_image()))
+    assert image.size != (400, 300)
+    assert abs(image.width / image.height - 4 / 3) < 0.03
