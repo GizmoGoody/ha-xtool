@@ -204,6 +204,7 @@ Choosing a preset while no job is running only stores its speed; the next job re
 | Power | Linked smart plug (only when configured in integration options) |
 | Buzzer reminders / Beep | Audio feedback enable |
 | Move stop | Emergency-movement-stop toggle |
+| Perspective correction | **F2 Ultra UV**, on the Deep camera device. On (default): the deep camera picture is corrected so a flat surface looks straight and square from above. Off: the picture is only turned upright. Kept by Home Assistant; the laser is not involved |
 | Exhaust fan | Manual smoke-extraction fan toggle. The F2 Ultra UV never reports whether the fan runs, so it shows off after the laser connects and then follows HA's own commands |
 | Cooling fan | Manual cooling-fan toggle |
 | Purifier check / Drawer check | Safety-enforcement toggles — require accessory present before starting a job |
