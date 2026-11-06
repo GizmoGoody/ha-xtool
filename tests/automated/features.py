@@ -67,6 +67,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "status_details": lambda: "has_power_resume" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # F2 Ultra UV Engraving lens, Wi-Fi signal and Calibration sensors
     "laser_info": lambda: "has_laser_info" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
+    # The red dot is assumed on after a V2 laser connects
+    "red_dot_assumed_on": lambda: "_assume_red_dot_on" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
