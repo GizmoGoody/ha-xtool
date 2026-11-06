@@ -52,8 +52,11 @@ async def test_token_changes_only_on_the_cameras_schedule(hass: HomeAssistant) -
     camera.async_update_token()  # Home Assistant's 5-minute call
     assert camera.access_tokens[-1] == token
     camera.async_write_ha_state = MagicMock()
-    camera._refresh_thumbnail()
+    await camera._refresh_thumbnail()
     camera.async_write_ha_state.assert_called_once()
+    # The photo was taken before the token changed (served from cache).
+    assert coordinator.protocol.camera_snap.await_count == 1
+    assert camera._last_snapshot == b"jpeg"
     assert camera.access_tokens[-1] != token
 
 
