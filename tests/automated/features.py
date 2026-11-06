@@ -54,6 +54,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "task_id_none": lambda: "def task_id_value" in (COMPONENT / "const.py").read_text(encoding="utf-8"),
     # WS-V2 camera: faster photo live view, Idle when nobody watches
     "camera_photo_live_view": lambda: "MAX_SNAPSHOT_AGE" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
+    # F2 Ultra UV main camera straightened with the laser calibration
+    "camera_calibration": lambda: (COMPONENT / "protocols" / "ws_v2" / "camera_correction.py").exists(),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
