@@ -48,7 +48,6 @@ CALIBRATION_KEYS = (
 
 # Requests that move the head for calibration, or write calibration data.
 CALIBRATION_WRITES = (
-    "auto_start",  # focus/control: autofocus
     "/v1/laser-head/focus/parameter",  # Studio's setFocusInfo
     "/v1/motion_control",  # motion delay parameters
     "setUserConfigs",
@@ -85,21 +84,45 @@ def test_source_names_no_calibration_key_or_write() -> None:
     assert not problems, "calibration data named in the integration:\n" + "\n".join(problems)
 
 
-def test_head_moves_only_from_the_focus_control() -> None:
-    """Z is moved (``goTo``) only by the focus control, which writes no setting."""
+def _head_move_sites(word: str) -> list[str]:
     found = []
     for path in sorted(COMPONENT.rglob("*.py")):
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if "goTo" in line.split("#", 1)[0]:
-                found.append((path.relative_to(COMPONENT).as_posix(), number))
-    for where, _ in found:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if word in line.split("#", 1)[0]:
+                found.append(path.relative_to(COMPONENT).as_posix())
+    return found
+
+
+def _protocol_function(name: str) -> str:
+    text = (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8")
+    body = text[text.index(f"    async def {name}("):]
+    end = body.find("\n    async def ", 10)
+    return body if end < 0 else body[:end]
+
+
+@pytest.mark.parametrize(
+    ("word", "function"),
+    [
+        ("goTo", "focus_to"),         # Focus height and xtool.focus
+        ("auto_start", "autofocus"),  # the Autofocus button
+    ],
+)
+def test_head_moves_only_from_the_focus_controls(word: str, function: str) -> None:
+    """Z moves only from the focus controls, which write no setting.
+
+    Autofocus is Studio's ordinary Autofocus (the laser's own button does
+    the same). Studio's calibration flows also send ``goTo``, but with
+    ``autoHome`` and after writing calibration values.
+    """
+    found = _head_move_sites(word)
+    for where in found:
         assert where == "protocols/ws_v2/protocol.py", f"head moved from {where}"
     if found:
-        text = (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8")
-        body = text[text.index("    async def focus_to("):]
-        end = body.find("\n    async def ", 10)
-        body = body if end < 0 else body[:end]
-        assert "set_config" not in body and "/v1/device/configs" not in body
+        body = _protocol_function(function)
+        assert word in body
+        for forbidden in ("set_config", "/v1/device/configs", "setUserConfigs",
+                          "/v1/laser-head/focus/parameter", "autoHome"):
+            assert forbidden not in body, forbidden
 
 
 def test_file_transfers_only_download() -> None:

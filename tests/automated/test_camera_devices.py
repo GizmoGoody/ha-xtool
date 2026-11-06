@@ -104,6 +104,24 @@ def test_names_keep_the_entity_ids(hass: HomeAssistant) -> None:
     assert _number(coordinator, "camera_main_thumbnail_refresh").translation_key == "thumbnail_refresh"
 
 
+def test_camera_devices_follow_a_renamed_laser(hass: HomeAssistant, config_entry) -> None:
+    """The user renamed "F2 Ultra UV" to "xTool F2 Ultra UV": the cameras follow, so they sort under it."""
+    from homeassistant.helpers import device_registry as dr
+
+    coordinator = _f2uv(hass)
+    registry = dr.async_get(hass)
+    laser = registry.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={("xtool", SERIAL)},
+        name="xTool Test",
+    )
+    registry.async_update_device(laser.id, name_by_user="My laser")
+    coordinator.laser_device_id = laser.id
+    info = _camera(coordinator, "main").device_info
+    assert info["name"] == "My laser Main camera"
+    assert info["translation_placeholders"] == {"laser": "My laser"}
+
+
 def test_fire_record_stays_on_the_laser(hass: HomeAssistant) -> None:
     from custom_components.xtool.protocols import DEVICE_MODELS
 
@@ -201,6 +219,36 @@ def test_photo_size_with_a_turned_grid() -> None:
         "data0": "[300,225][200,225][100,225][300,150][200,150][100,150][300,75][200,75][100,75]",
     }
     assert photo_size_mm(parse_calibration(json.dumps(turned))) == (400.0, 400.0)
+
+
+def _lens(u: float, v: float) -> tuple[float, float]:
+    """A smooth lens distortion: work surface (mm) to photo pixel."""
+    s = (u - 100) / 100
+    t = (v - 100) / 100
+    return (2000 + 900 * s + 40 * s ** 3 + 25 * s * t * t, 1500 + 900 * t + 30 * t ** 3 + 20 * s * s * t)
+
+
+def test_beyond_the_grid_lines_stay_smooth() -> None:
+    """Outside the calibrated area the map follows the lens smoothly, not the outer cells."""
+    from custom_components.xtool.protocols.ws_v2.camera_correction import (
+        _surface_map,
+        parse_calibration,
+    )
+
+    points = "".join(
+        "[{},{}]".format(*_lens(col * 10, row * 10)) for row in range(21) for col in range(21)
+    )
+    calibration = parse_calibration(json.dumps({
+        "grid_num_w": 21, "grid_num_h": 21, "image_src_w": 4000, "image_src_h": 3000,
+        "image_dst_w": 2000, "image_dst_h": 2000, "data0": points,
+    }))
+    surface = _surface_map(calibration)
+    for u, v in ((-60, 37), (-30, 150), (260, 5), (100, -40), (250, 250)):
+        x, y = surface.photo_point(u, v)
+        want_x, want_y = _lens(u, v)
+        assert abs(x - want_x) < 0.5 and abs(y - want_y) < 0.5, (u, v)
+    # Inside, the grid is exact.
+    assert surface.photo_point(50, 70) == pytest.approx(_lens(50, 70), abs=0.5)
 
 
 def test_zero_shows_the_whole_photo() -> None:

@@ -140,13 +140,11 @@ def test_focus_height_is_a_millimetre_box(hass: HomeAssistant, config_entry) -> 
     [
         (36.5, {"step": 1.0}, 37.5),
         (36.5, {"step": -0.5, "steps": 3}, 35.0),
-        (36.5, {"step": 10.0, "steps": 20}, 150.0),   # stops at the top
-        (2.0, {"step": -1.0, "steps": 5}, 0.0),       # stops at the bottom
         (36.5, {"thickness": 12.7}, 12.7),
         (None, {"thickness": 12.7}, 12.7),
     ],
 )
-async def test_focus_action_steps_and_limits(
+async def test_focus_action_steps(
     hass: HomeAssistant, config_entry, current, kwargs, target
 ) -> None:
     entity, proto = _focus_entity(hass, current)
@@ -154,21 +152,68 @@ async def test_focus_action_steps_and_limits(
     proto.focus_to.assert_awaited_once_with(pytest.approx(target))
 
 
-async def test_step_past_a_limit_says_where_it_stopped(hass: HomeAssistant, config_entry) -> None:
-    entity, proto = _focus_entity(hass, 2.0)
-    result = await entity.async_focus(step=-1.0, steps=5)
-    proto.focus_to.assert_awaited_once_with(pytest.approx(0.0))
-    assert result["focus_height"] == 0.0
-    assert result["message"] == (
-        "Stopped at 0.0 mm, the lower limit. "
-        "5 steps of -1.0 mm from 2.0 mm would have gone to -3.0 mm."
-    )
-    entity, proto = _focus_entity(hass, 149.0)
-    result = await entity.async_focus(step=2.5)
-    assert result["message"] == (
-        "Stopped at 150.0 mm, the upper limit. "
-        "1 step of +2.5 mm from 149.0 mm would have gone to 151.5 mm."
-    )
+@pytest.mark.parametrize(
+    ("current", "kwargs", "target", "message"),
+    [
+        (2.0, {"step": -1.0, "steps": 5}, 0.0,
+         "Focus moved to 0.0 mm, the lower limit. "
+         "5 steps of -1.0 mm from 2.0 mm would have gone to -3.0 mm."),
+        (149.0, {"step": 2.5}, 150.0,
+         "Focus moved to 150.0 mm, the upper limit. "
+         "1 step of +2.5 mm from 149.0 mm would have gone to 151.5 mm."),
+    ],
+)
+async def test_step_past_a_limit_moves_there_then_says_so(
+    hass: HomeAssistant, config_entry, current, kwargs, target, message
+) -> None:
+    """Home Assistant shows only errors, so the stop is reported as one, after the move."""
+    entity, proto = _focus_entity(hass, current)
+    with pytest.raises(HomeAssistantError) as err:
+        await entity.async_focus(**kwargs)
+    proto.focus_to.assert_awaited_once_with(pytest.approx(target))
+    assert str(err.value) == message
+
+
+async def test_autofocus_starts_like_studio() -> None:
+    proto = _protocol()
+    await proto.autofocus()
+    calls = proto.request.await_args_list
+    assert calls[0].args == ("/v1/device/mode", "PUT")
+    assert calls[0].kwargs["data"] == {"mode": "P_AUTOFOCUS"}
+    assert calls[1].args == ("/v1/laser-head/focus/control", "POST")
+    assert calls[1].kwargs["data"] == {"action": "auto_start"}
+    assert len(calls) == 2
+
+
+def _autofocus_button(hass: HomeAssistant):
+    coordinator = build_coordinator(hass, _f2uv())
+    button = next(b for b in coordinator.build_buttons() if b.translation_key == "autofocus")
+    coordinator.protocol.autofocus = AsyncMock()
+    return button, coordinator.protocol
+
+
+async def test_autofocus_button(hass: HomeAssistant, config_entry) -> None:
+    button, proto = _autofocus_button(hass)
+    proto.focus_refusal = lambda: None
+    await button.async_press()
+    proto.autofocus.assert_awaited_once()
+
+
+async def test_autofocus_refused_when_studio_refuses(hass: HomeAssistant, config_entry) -> None:
+    button, proto = _autofocus_button(hass)
+    proto.focus_refusal = lambda: "the laser is busy"
+    with pytest.raises(HomeAssistantError):
+        await button.async_press()
+    proto.autofocus.assert_not_awaited()
+
+
+def test_only_the_f2_ultra_uv_has_autofocus(hass: HomeAssistant, config_entry) -> None:
+    from custom_components.xtool.protocols import DEVICE_MODELS
+
+    for key, model in DEVICE_MODELS.items():
+        coordinator = build_coordinator(hass, model)
+        has = any(b.translation_key == "autofocus" for b in coordinator.build_buttons())
+        assert has is (model.model_id in ("F2UltraUV", "F2UltraUVClass1") and model.protocol_version == "V2"), key
 
 
 async def test_move_within_the_limits_has_no_message(hass: HomeAssistant, config_entry) -> None:
