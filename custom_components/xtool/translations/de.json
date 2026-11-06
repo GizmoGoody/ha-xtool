@@ -556,12 +556,6 @@
       },
       "accessory_largepurifierv3_auto_continue": {
         "name": "Auto-Weiterlauf"
-      },
-      "perspective_correction": {
-        "name": "Perspektivkorrektur"
-      },
-      "camera_deep_perspective_correction": {
-        "name": "Tiefenkamera Perspektivkorrektur"
       }
     },
     "number": {
@@ -690,6 +684,14 @@
       }
     },
     "select": {
+      "perspective": {
+        "name": "Perspektive",
+        "state": {
+          "uncorrected": "Unkorrigiert",
+          "rotated": "Gedreht",
+          "straightened": "Begradigt"
+        }
+      },
       "flame_alarm_sensitivity": {
         "name": "Feueralarm-Empfindlichkeit",
         "state": {
@@ -835,6 +837,14 @@
       },
       "autofocus": {
         "name": "Autofokus"
+      }
+    },
+    "image": {
+      "calibration_image": {
+        "name": "Kalibrierung"
+      },
+      "camera_main_calibration_image": {
+        "name": "Kalibrierung der Hauptkamera"
       }
     },
     "event": {

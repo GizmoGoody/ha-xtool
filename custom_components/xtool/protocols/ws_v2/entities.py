@@ -30,6 +30,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.components.button import ButtonEntity
 from aiohttp import web
 from homeassistant.components.camera import Camera
+from homeassistant.components.image import ImageEntity
 from homeassistant.components.event import EventDeviceClass, EventEntity
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -85,6 +86,7 @@ from .camera_correction import (
     CALIBRATED_AREA_MM,
     CameraCalibration,
     CameraView,
+    calibration_overlay,
     correct_image,
     parse_calibration,
     perspective_image,
@@ -1686,35 +1688,44 @@ class _CameraDeviceEntity(XtoolEntity):
         return _camera_device_info(self.coordinator, self._device_camera)
 
 
-def _perspective_settings(coordinator: XtoolCoordinator) -> dict[str, bool]:
-    """Perspective correction on or off, by camera name (default on)."""
-    settings = getattr(coordinator, "_camera_perspective_on", None)
+PERSPECTIVE_UNCORRECTED = "uncorrected"
+PERSPECTIVE_ROTATED = "rotated"
+PERSPECTIVE_STRAIGHTENED = "straightened"
+PERSPECTIVE_OPTIONS = [
+    PERSPECTIVE_UNCORRECTED, PERSPECTIVE_ROTATED, PERSPECTIVE_STRAIGHTENED,
+]
+
+
+def _perspective_settings(coordinator: XtoolCoordinator) -> dict[str, str]:
+    """Perspective option by camera name (default Rotated)."""
+    settings = getattr(coordinator, "_camera_perspective", None)
     if settings is None:
         settings = {}
-        coordinator._camera_perspective_on = settings
+        coordinator._camera_perspective = settings
     return settings
 
 
-class _WSV2CameraPerspectiveSwitch(_CameraDeviceEntity, SwitchEntity, RestoreEntity):
-    """Correct the perspective of a camera that looks at the bed at an angle.
+class _WSV2CameraPerspectiveSelect(_CameraDeviceEntity, SelectEntity, RestoreEntity):
+    """How a camera that looks at the bed at an angle is shown.
 
-    On (the default), the picture is straight and square, as measured on
-    a cutting mat. Off, it is only turned upright. Kept by Home
-    Assistant; the laser is not involved.
+    Uncorrected: the photo as the camera takes it. Rotated (the default):
+    turned upright. Straightened: turned upright and its perspective
+    corrected, so a flat surface looks straight and square from above.
+    Kept by Home Assistant; the laser is not involved.
     """
 
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_translation_key = "perspective_correction"
+    _attr_translation_key = "perspective"
+    _attr_options = PERSPECTIVE_OPTIONS
 
     def __init__(
         self, coordinator: XtoolCoordinator, camera_key: str, camera_name: str,
     ) -> None:
         super().__init__(coordinator)
-        self._set_unique_id(f"{camera_key}_perspective_correction")
-        if not self._use_camera_device(camera_name):
-            self._attr_translation_key = f"{camera_key}_perspective_correction"
+        self._set_unique_id(f"{camera_key}_perspective")
+        self._use_camera_device(camera_name)
         self._camera_name = camera_name
-        self._attr_is_on = True
+        self._attr_current_option = PERSPECTIVE_ROTATED
 
     @property
     def available(self) -> bool:
@@ -1723,19 +1734,15 @@ class _WSV2CameraPerspectiveSwitch(_CameraDeviceEntity, SwitchEntity, RestoreEnt
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
-        if last is not None and last.state in ("on", "off"):
-            self._attr_is_on = last.state == "on"
-        _perspective_settings(self.coordinator)[self._camera_name] = self._attr_is_on
+        if last is not None and last.state in PERSPECTIVE_OPTIONS:
+            self._attr_current_option = last.state
+        _perspective_settings(self.coordinator)[self._camera_name] = (
+            self._attr_current_option
+        )
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        await self._set(True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self._set(False)
-
-    async def _set(self, on: bool) -> None:
-        self._attr_is_on = on
-        _perspective_settings(self.coordinator)[self._camera_name] = on
+    async def async_select_option(self, option: str) -> None:
+        self._attr_current_option = option
+        _perspective_settings(self.coordinator)[self._camera_name] = option
         self.async_write_ha_state()
         camera = _thumbnail_registry(self.coordinator).cameras.get(self._camera_name)
         if camera is not None:
@@ -2005,9 +2012,13 @@ class _WSV2Camera(_CameraDeviceEntity, Camera):
         if not self._uses_calibration:
             if self._perspective is None or self.hass is None:
                 return image
-            corrected = _perspective_settings(self.coordinator).get(self._camera_name, True)
+            option = _perspective_settings(self.coordinator).get(
+                self._camera_name, PERSPECTIVE_ROTATED,
+            )
+            if option == PERSPECTIVE_UNCORRECTED:
+                return image
             try:
-                if not corrected:
+                if option == PERSPECTIVE_ROTATED:
                     if self._rotation is None:
                         return image
                     return await self.hass.async_add_executor_job(
@@ -2523,11 +2534,6 @@ def build_wsv2_switches(coordinator: XtoolCoordinator) -> list[SwitchEntity]:
     ]
     if not model.is_read_only:
         entities.extend(baseline_switches)
-    entities.extend(
-        _WSV2CameraPerspectiveSwitch(coordinator, key, name)
-        for key, name in _camera_keys(coordinator)
-        if any(spec[0] == name for spec in getattr(model, "camera_perspectives", ()) or ())
-    )
     if model.has_flame_alarm:
         # Disabled by default in the entity registry — disabling
         # this switch means no flame alarm will be triggered per
@@ -2708,6 +2714,12 @@ def build_wsv2_numbers(coordinator: XtoolCoordinator) -> list[NumberEntity]:
 
 
 def build_wsv2_selects(coordinator: XtoolCoordinator) -> list[SelectEntity]:
+    model = coordinator.model
+    entities: list[SelectEntity] = [
+        _WSV2CameraPerspectiveSelect(coordinator, key, name)
+        for key, name in _camera_keys(coordinator)
+        if any(spec[0] == name for spec in getattr(model, "camera_perspectives", ()) or ())
+    ]
     # ``WSV2FlameAlarmSelect`` removed in v2.5.4 — firmware types
     # ``flameAlarm`` strictly as boolean, the writable switch already
     # covers it. ``WSV2FlameLevelSelect`` removed in v2.5.4 (firmware
@@ -2715,7 +2727,7 @@ def build_wsv2_selects(coordinator: XtoolCoordinator) -> list[SelectEntity]:
     # migrated to the Purifier accessory child device — the entity
     # surfaces only when an AP2 / AP2-Large / AP2-Max is currently
     # paired.
-    return []
+    return entities
 
 
 def build_wsv2_lights(coordinator: XtoolCoordinator) -> list[LightEntity]:
@@ -2802,6 +2814,56 @@ def build_wsv2_cameras(coordinator: XtoolCoordinator) -> list[Camera]:
                         "mdi:fire-alert")
         )
     return cameras
+
+
+class WSV2CalibrationImage(_CameraDeviceEntity, ImageEntity):
+    """The main camera's raw photo with its calibration grid drawn on it.
+
+    Diagnostic: shows the area Studio's camera calibration covers and
+    how the lens bends it. Made once after Home Assistant starts, from a
+    new photo and the laser's calibration file, when it is first shown.
+    Nothing on the laser changes.
+    """
+
+    _attr_translation_key = "calibration_image"
+    _attr_content_type = "image/jpeg"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: XtoolCoordinator) -> None:
+        _CameraDeviceEntity.__init__(self, coordinator)
+        ImageEntity.__init__(self, coordinator.hass)
+        self._set_unique_id("camera_main_calibration_image")
+        if not self._use_camera_device("main"):
+            self._attr_translation_key = "camera_main_calibration_image"
+        self._image: bytes | None = None
+        self._attr_image_last_updated = dt_util.utcnow()
+
+    async def async_image(self) -> bytes | None:
+        if self._image is not None:
+            return self._image
+        protocol = self.coordinator.protocol
+        raw = await protocol.camera_calibration_file()
+        calibration = parse_calibration(raw) if raw else None
+        if calibration is None:
+            return None
+        photo = await protocol.camera_snap("main")
+        if not photo:
+            return None
+        self._image = await self.hass.async_add_executor_job(
+            calibration_overlay, photo, calibration,
+        )
+        return self._image
+
+
+def build_wsv2_images(coordinator: XtoolCoordinator) -> list[ImageEntity]:
+    """The main camera's calibration image, where the laser has one."""
+    model = coordinator.model
+    if (
+        getattr(model, "has_camera_calibration", False)
+        and "main" in (getattr(model, "camera_names", ()) or ())
+    ):
+        return [WSV2CalibrationImage(coordinator)]
+    return []
 
 
 def build_wsv2_updates(coordinator: XtoolCoordinator) -> list[UpdateEntity]:
