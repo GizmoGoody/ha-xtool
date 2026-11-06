@@ -363,3 +363,80 @@ async def test_old_view_entity_ids_become_crop(hass: HomeAssistant, config_entry
     assert ids["height"] == "number.xtool_f2_ultra_uv_main_camera_crop_height"
     assert ids["center_x"] == "number.xtool_f2_ultra_uv_main_camera_crop_center_x"
     assert ids["center_y"] == "number.my_own_name"  # chosen by the user: kept
+
+
+def _perspective_switch(coordinator):
+    return next(
+        s for s in coordinator.build_switches()
+        if s.unique_id == f"{SERIAL}_camera_deep_perspective_correction"
+    )
+
+
+def test_perspective_switch_is_on_the_deep_camera_device(hass: HomeAssistant) -> None:
+    coordinator = _f2uv(hass)
+    switch = _perspective_switch(coordinator)
+    assert _identifiers(switch) == {("xtool", f"{SERIAL}:camera_deep")}
+    assert switch.translation_key == "perspective_correction"
+    assert switch.is_on is True
+    assert switch.available
+    ids = [s.unique_id for s in coordinator.build_switches() if "perspective" in s.unique_id]
+    assert ids == [f"{SERIAL}_camera_deep_perspective_correction"]
+
+
+def test_only_cameras_with_a_perspective_have_the_switch(hass: HomeAssistant) -> None:
+    from custom_components.xtool.protocols import DEVICE_MODELS
+
+    for key, model in DEVICE_MODELS.items():
+        coordinator = build_coordinator(hass, model)
+        has = any("perspective" in (s.unique_id or "") for s in coordinator.build_switches())
+        assert has is bool(getattr(model, "camera_perspectives", ())), key
+
+
+def _deep_photo() -> bytes:
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (4000, 3000), (200, 200, 200)).save(out, "JPEG")
+    return out.getvalue()
+
+
+async def test_switch_off_only_turns_the_picture_upright(hass: HomeAssistant) -> None:
+    from PIL import Image
+
+    coordinator = _f2uv(hass)
+    coordinator.protocol.camera_snap = AsyncMock(return_value=_deep_photo())
+    deep = _camera(coordinator, "deep")
+    deep.hass = hass
+    deep.async_write_ha_state = MagicMock()
+    switch = _perspective_switch(coordinator)
+    switch.async_write_ha_state = MagicMock()
+    from custom_components.xtool.protocols.ws_v2.entities import _thumbnail_registry
+
+    _thumbnail_registry(coordinator).cameras["deep"] = deep
+    on = Image.open(io.BytesIO(await deep.async_camera_image()))
+    assert on.size == (1000, 750)  # the perspective result
+    await switch.async_turn_off()
+    assert switch.is_on is False
+    # The picture was refreshed with a new photo, turned upright only.
+    assert coordinator.protocol.camera_snap.await_count == 2
+    off = Image.open(io.BytesIO(deep._last_snapshot))
+    assert off.size[0] == 1000 and off.size[1] == pytest.approx(750, abs=2)
+    deep.async_write_ha_state.assert_called()
+
+
+def test_upright_turn_has_no_empty_corners() -> None:
+    from PIL import Image
+
+    from custom_components.xtool.protocols.ws_v2.camera_correction import rotate_image
+
+    result = Image.open(io.BytesIO(rotate_image(_deep_photo(), 151.5)))
+    for corner in ((2, 2), (result.width - 3, 2), (2, result.height - 3), (result.width - 3, result.height - 3)):
+        assert min(result.getpixel(corner)) > 150
+
+
+@pytest.mark.parametrize(
+    "path", [ROOT / "strings.json", ROOT / "translations" / "en.json", ROOT / "translations" / "de.json"],
+)
+def test_switch_is_named(path: Path) -> None:
+    switches = json.loads(path.read_text(encoding="utf-8"))["entity"]["switch"]
+    assert "perspective_correction" in switches
