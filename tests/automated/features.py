@@ -56,6 +56,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "camera_photo_live_view": lambda: "MAX_SNAPSHOT_AGE" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     # F2 Ultra UV main camera straightened with the laser calibration
     "camera_calibration": lambda: (COMPONENT / "protocols" / "ws_v2" / "camera_correction.py").exists(),
+    # Per-camera thumbnail refresh interval number
+    "camera_thumbnail_refresh": lambda: "THUMBNAIL_REFRESH_DEFAULT" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
