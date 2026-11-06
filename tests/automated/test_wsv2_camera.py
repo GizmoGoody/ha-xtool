@@ -28,6 +28,8 @@ def _main_camera(hass: HomeAssistant):
     )
     coordinator = build_coordinator(hass, model)
     coordinator.protocol.camera_snap = AsyncMock(return_value=b"jpeg-1")
+    # No calibration: photos are served as taken.
+    coordinator.protocol.camera_calibration_file = AsyncMock(return_value=None)
     camera = next(
         c for c in coordinator.build_cameras() if c._camera_name == "main"
     )
