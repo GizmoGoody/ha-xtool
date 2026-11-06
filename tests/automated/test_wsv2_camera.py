@@ -99,3 +99,28 @@ async def test_photos_are_taken_one_at_a_time() -> None:
     )
     assert results == [b"main", b"deep"]
     assert most == 1
+
+
+async def test_live_view_ends_when_the_viewer_stops_reading(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from custom_components.xtool.protocols.ws_v2 import entities
+
+    if not hasattr(entities, "LIVE_WRITE_TIMEOUT"):
+        pytest.skip("branch lacks the live write timeout")
+
+    class StuckResponse:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def prepare(self, request) -> None:
+            return None
+
+        async def write(self, data: bytes) -> None:
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(entities.web, "StreamResponse", StuckResponse)
+    monkeypatch.setattr(entities, "LIVE_WRITE_TIMEOUT", 0.05)
+    camera, _ = _main_camera(hass)
+    await asyncio.wait_for(camera.handle_async_mjpeg_stream(object()), timeout=2)
+    assert camera.is_streaming is False
