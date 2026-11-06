@@ -151,18 +151,22 @@ def test_view_moves_and_widens_the_area() -> None:
     assert side[0] > 200 and side[1] < 60
 
 
-def test_rotate_keeps_shape_without_empty_corners() -> None:
+def test_deep_perspective_fills_the_result() -> None:
+    """The deep camera's correction gives 1000 x 750 with no empty corners, from a full or half-size photo."""
     from PIL import Image
 
-    from custom_components.xtool.protocols.ws_v2.camera_correction import rotate_image
+    from custom_components.xtool.protocols.ws_v2.camera_correction import perspective_image
+    from custom_components.xtool.protocols.ws_v2.models import F2_ULTRA_UV_DEEP_PERSPECTIVE
 
-    photo = Image.new("RGB", (800, 600), (255, 255, 255))
-    out = io.BytesIO()
-    photo.save(out, "JPEG")
-    turned = Image.open(io.BytesIO(rotate_image(out.getvalue(), 151.5)))
-    assert abs(turned.width / turned.height - 800 / 600) < 0.02
-    for corner in ((2, 2), (turned.width - 3, turned.height - 3)):
-        assert min(turned.getpixel(corner)) > 200
+    _, coefficients, source, size = F2_ULTRA_UV_DEEP_PERSPECTIVE
+    for width, height in (source, (source[0] // 2, source[1] // 2)):
+        photo = Image.new("RGB", (width, height), (255, 255, 255))
+        out = io.BytesIO()
+        photo.save(out, "JPEG")
+        result = Image.open(io.BytesIO(perspective_image(out.getvalue(), coefficients, source, size)))
+        assert result.size == (1000, 750)
+        for corner in ((2, 2), (997, 2), (2, 747), (997, 747)):
+            assert min(result.getpixel(corner)) > 200
 
 
 def test_view_numbers_for_the_main_camera(hass: HomeAssistant) -> None:
@@ -180,7 +184,7 @@ def test_view_numbers_for_the_main_camera(hass: HomeAssistant) -> None:
     } <= keys
 
 
-async def test_deep_camera_is_turned(hass: HomeAssistant) -> None:
+async def test_deep_camera_is_corrected(hass: HomeAssistant) -> None:
     from PIL import Image
 
     from custom_components.xtool.protocols import DEVICE_MODELS
@@ -195,5 +199,4 @@ async def test_deep_camera_is_turned(hass: HomeAssistant) -> None:
     deep = next(c for c in coordinator.build_cameras() if c._camera_name == "deep")
     deep.hass = hass
     image = Image.open(io.BytesIO(await deep.async_camera_image()))
-    assert image.size != (400, 300)
-    assert abs(image.width / image.height - 4 / 3) < 0.03
+    assert image.size == (1000, 750)
