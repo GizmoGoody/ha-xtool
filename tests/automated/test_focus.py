@@ -66,6 +66,17 @@ async def test_focus_read_only_reads() -> None:
     assert proto._latest["focus_thickness"] == 36.9
 
 
+async def test_focus_is_read_until_known_on_each_connection() -> None:
+    proto = _protocol()
+    assert proto._focus_known is False
+    proto.request = AsyncMock(return_value={})
+    await proto._poll_focus()
+    assert proto._focus_known is False  # no value yet: read again next poll
+    proto.request = AsyncMock(return_value={"value": 42.935})
+    await proto._poll_focus()
+    assert proto._focus_known is True
+
+
 async def test_focus_to_moves_like_studio_and_clamps() -> None:
     proto = _protocol()
     assert await proto.focus_to(12.74) == 12.7
@@ -143,6 +154,28 @@ async def test_focus_action_steps_and_limits(
     proto.focus_to.assert_awaited_once_with(pytest.approx(target))
 
 
+async def test_step_past_a_limit_says_where_it_stopped(hass: HomeAssistant, config_entry) -> None:
+    entity, proto = _focus_entity(hass, 2.0)
+    result = await entity.async_focus(step=-1.0, steps=5)
+    proto.focus_to.assert_awaited_once_with(pytest.approx(0.0))
+    assert result["focus_height"] == 0.0
+    assert result["message"] == (
+        "Stopped at 0.0 mm, the lower limit. "
+        "5 steps of -1.0 mm from 2.0 mm would have gone to -3.0 mm."
+    )
+    entity, proto = _focus_entity(hass, 149.0)
+    result = await entity.async_focus(step=2.5)
+    assert result["message"] == (
+        "Stopped at 150.0 mm, the upper limit. "
+        "1 step of +2.5 mm from 149.0 mm would have gone to 151.5 mm."
+    )
+
+
+async def test_move_within_the_limits_has_no_message(hass: HomeAssistant, config_entry) -> None:
+    entity, _ = _focus_entity(hass, 36.5)
+    assert await entity.async_focus(step=1.0) == {"focus_height": 37.5}
+
+
 async def test_focus_step_needs_a_known_height(hass: HomeAssistant, config_entry) -> None:
     entity, proto = _focus_entity(hass, None)
     with pytest.raises(HomeAssistantError):
@@ -175,8 +208,36 @@ def test_action_takes_a_step_or_a_thickness_not_both() -> None:
 async def test_action_is_registered(hass: HomeAssistant) -> None:
     from custom_components.xtool.services import async_setup_services
 
+    from homeassistant.core import SupportsResponse
+
     async_setup_services(hass)
     assert hass.services.has_service("xtool", "focus")
+    assert hass.services.supports_response("xtool", "focus") == SupportsResponse.OPTIONAL
+
+
+def test_action_offers_only_focus_heights() -> None:
+    """The target picker lists xTool distance numbers: only Focus height."""
+    from pathlib import Path
+
+    import yaml
+
+    import custom_components.xtool as xtool
+
+    services = yaml.safe_load((Path(xtool.__file__).parent / "services.yaml").read_text())
+    entity = services["focus"]["target"]["entity"]
+    assert entity == {"integration": "xtool", "domain": "number", "device_class": "distance"}
+
+
+def test_only_the_focus_height_is_a_distance_number(hass: HomeAssistant, config_entry) -> None:
+    from homeassistant.components.number import NumberDeviceClass
+
+    from custom_components.xtool.protocols import DEVICE_MODELS
+
+    for key, model in DEVICE_MODELS.items():
+        coordinator = build_coordinator(hass, model)
+        for number in coordinator.build_numbers():
+            if number.device_class == NumberDeviceClass.DISTANCE:
+                assert number.translation_key == "focus_height", (key, number.translation_key)
 
 
 def test_only_the_f2_ultra_uv_has_it(hass: HomeAssistant, config_entry) -> None:
