@@ -411,6 +411,9 @@ class WSV2Coordinator(XtoolCoordinator):
             XtoolStatus.SLEEPING,
             XtoolStatus.INITIALIZING,
             XtoolStatus.PROCESSING_READY,
+            XtoolStatus.FOCUSING,
+            XtoolStatus.WARMING_UP,
+            XtoolStatus.INTERRUPTED,
         }
         framing = {XtoolStatus.FRAMING}
         errors = {

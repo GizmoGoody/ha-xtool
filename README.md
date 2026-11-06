@@ -102,7 +102,7 @@ The available options are gated by the device's protocol family — only relevan
 
 | Entity | Description |
 |---|---|
-| Status | Off / Idle / Processing / Paused / Cleaning / Finished / Error / … Always available — shows "Off" when device is unreachable |
+| Status | Off / Idle / Processing / Paused / Cleaning / Finished / Error / … Always available — shows "Off" when device is unreachable. **F2 Ultra UV** also shows, as Studio does: Focusing (autofocus), Warming up (the UV laser is not ready yet), Interrupted (a job stopped by a power cut can continue) and Laser overheat |
 | Task ID | Active or last loaded job ID. Stays at the last value while idle (no reset on job end) |
 | Task time | Job elapsed time (seconds). On V2 firmware only emitted at end of job via `/work/result WORK_FINISHED` push — no live update during a job |
 | Last job time | Last completed job duration |
@@ -251,6 +251,7 @@ Connected BT accessories surface as their own **child devices** hanging off the 
 | Home laser head | Move laser head back to (0, 0) |
 | Z-axis homing | F2 Ultra UV. Triggers Studio's z-axis homing routine |
 | Measure distance | Trigger an IR distance measurement |
+| Continue interrupted job / Discard interrupted job | **F2 Ultra UV**, available only while Status is Interrupted: continue or discard the job a power cut stopped, as Studio's "Unfinished processing task detected" dialog does. Studio says to press the button on the laser after Continue |
 | Reboot | Soft reboot |
 | Sync time | Push HA local time to device |
 | Quit LightBurn | Leave LightBurn standby mode |

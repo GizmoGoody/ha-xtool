@@ -1311,6 +1311,43 @@ class _WSV2Button(XtoolEntity, ButtonEntity):
         await self._action()
 
 
+class _WSV2PowerResumeButton(_WSV2Button):
+    """Continue or discard a job stopped by a power cut.
+
+    Studio's "Unfinished processing task detected" dialog. Available
+    only while the laser reports such a job (Status Interrupted).
+    """
+
+    _resume_action = ""
+
+    @property
+    def available(self) -> bool:
+        return super().available and bool(
+            getattr(self.coordinator.protocol, "power_resume_available", False)
+        )
+
+    async def _action(self) -> None:
+        protocol = self.coordinator.protocol
+        if not protocol.power_resume_available:
+            raise HomeAssistantError("The laser reports no interrupted job.")
+        await protocol.power_resume(self._resume_action)
+        await self.coordinator.async_request_refresh()
+
+
+class WSV2PowerResumeContinue(_WSV2PowerResumeButton):
+    _resume_action = "start"
+
+    def __init__(self, coordinator: XtoolCoordinator) -> None:
+        super().__init__(coordinator, "power_resume_continue", "mdi:play-circle-outline")
+
+
+class WSV2PowerResumeDiscard(_WSV2PowerResumeButton):
+    _resume_action = "cancel"
+
+    def __init__(self, coordinator: XtoolCoordinator) -> None:
+        super().__init__(coordinator, "power_resume_discard", "mdi:delete-outline")
+
+
 class WSV2PauseJob(_WSV2Button):
     def __init__(self, coordinator: XtoolCoordinator) -> None:
         super().__init__(coordinator, "pause_job", "mdi:pause")
@@ -2026,6 +2063,9 @@ def build_wsv2_buttons(coordinator: XtoolCoordinator) -> list[ButtonEntity]:
         entities.append(WSV2HomeZ(coordinator))
     if coordinator.model.has_distance_measure:
         entities.append(WSV2MeasureDistance(coordinator))
+    if coordinator.model.has_power_resume and not coordinator.model.is_read_only:
+        entities.append(WSV2PowerResumeContinue(coordinator))
+        entities.append(WSV2PowerResumeDiscard(coordinator))
     # Z-axis homing button removed in v2.5.7: HA Core has no entity-
     # level action confirmation, only per-Lovelace-card
     # ``tap_action.confirmation``. The button physically moves the
