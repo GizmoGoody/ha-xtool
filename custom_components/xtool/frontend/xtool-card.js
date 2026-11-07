@@ -977,6 +977,10 @@ class XtoolCamera extends XtoolFeature {
       }
       .shot hui-image { display: block; }
       .shot hui-image[hidden] { display: none; }
+      /* A new picture loading over the shown one: in the layout, so Home
+         Assistant's image fetches it (it fetches only while it is on screen),
+         but not seen until it has loaded */
+      .shot hui-image.next { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
       .shot.cropping { cursor: crosshair; }
       .shot .area {
         position: absolute; pointer-events: none; box-sizing: border-box;
@@ -1054,12 +1058,15 @@ class XtoolCamera extends XtoolFeature {
       icon: CAMERA_ICONS[this._hass.entities?.[entityId]?.translation_key] ?? "mdi:camera",
       disabled: !this._usable(entityId),
       action: () => {
+        // A camera shown before shows its last picture, and a new one at once
+        const shownBefore = this._images.has(entityId) && entityId !== this._camera;
         this._picked = entityId;
         this._first = undefined;
         this._cropping = false;
         this._area.hidden = true;
         this._key = undefined;
         this._render();
+        if (shownBefore) this._reloadImage(entityId);
       },
     }));
     const crop = this._crop();
@@ -1096,7 +1103,12 @@ class XtoolCamera extends XtoolFeature {
       key: "perspective", label: `Perspective: ${name(stateObj.state)}. Tap for ${name(next)}`, text: name(stateObj.state),
       icon: PERSPECTIVE_ICONS[stateObj.state] ?? "mdi:perspective-less", color: "primary",
       disabled: stateObj.state === "unavailable" || !next,
-      action: () => this._hass.callService("select", "select_option", { entity_id: entityId, option: next }),
+      // The integration takes the new photo before the action ends: show it now
+      action: () => {
+        const camera = this._camera;
+        Promise.resolve(this._hass.callService("select", "select_option", { entity_id: entityId, option: next }))
+          .then(() => this._reloadImage(camera), () => {});
+      },
     };
   }
 
@@ -1222,27 +1234,36 @@ class XtoolCamera extends XtoolFeature {
     // this camera's, so the new image asks for a new one
     const addresses = this._hass._cameraTmbUrl;
     if (addresses) addresses[camera] = undefined;
+    // A reload still loading for this camera gives way to this one
+    this._next?.get(camera)?.remove();
+    this._next ??= new Map();
     const image = document.createElement("hui-image");
     Object.assign(image, { entity: camera, cameraImage: camera, fitMode: "cover", hass: this._hass, cameraView: this._view });
-    image.hidden = true;
+    image.classList.add("next");
     old.after(image);
+    this._next.set(camera, image);
     let done = false;
-    const swap = () => {
+    const finish = (loaded) => {
       if (done) return;
       done = true;
-      if (this._images.get(camera) !== old) {
+      if (this._next.get(camera) === image) this._next.delete(camera);
+      // Switched away and back, reloaded again, or no picture: keep the old one
+      if (!loaded || this._images.get(camera) !== old || !image.isConnected) {
         image.remove();
         return;
       }
+      image.classList.remove("next");
       old.remove();
       this._images.set(camera, image);
       this._showCamera();
     };
     Promise.resolve(image.updateComplete).then(() => {
-      image.shadowRoot?.addEventListener("load", swap, true);
-      if (image.shadowRoot?.querySelector("img")?.complete && image.shadowRoot.querySelector("img").naturalWidth) swap();
+      image.shadowRoot?.addEventListener("load", () => finish(true), true);
+      const img = image.shadowRoot?.querySelector("img");
+      if (img?.complete && img.naturalWidth) finish(true);
     });
-    setTimeout(swap, 10000);
+    // Home Assistant's image gives up on a picture after 10 s
+    setTimeout(() => finish(false), 10000);
   }
 
   _showHint() {
