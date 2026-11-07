@@ -152,9 +152,12 @@ const PHASES = {
   processing: ["processing", "working_api", "working_button"],
   paused: ["paused"],
   framing: ["framing", "measuring", "measure_area"],
+  focusing: ["focusing"],
+  warming: ["warming_up"],
   finished: ["finished"],
   sleeping: ["sleeping"],
   fire: ["error_fire_warning"],
+  overheat: ["laser_overheat"],
   error: ["error_limit", "error_laser_control", "error_laser_module", "error_tilt", "error_moving"],
   firmware: ["firmware_update"],
   off: ["off", "unavailable", "unknown"],
@@ -202,6 +205,7 @@ const LASER_COLORS = { uv: "#9b7bff", co2: "#ff7043", diode: "#42a5f5" };
 const PHASE_COLORS = {
   idle: "#9aa0a6", framing: "#29a3e0", paused: "#f5a623", finished: "#3fbf6a", sleeping: "#90a4ae",
   error: "#ef5350", fire: "#ff3d00", off: "#8a8a8a", firmware: "#4fc3f7",
+  focusing: "#26c6da", warming: "#ffb74d", overheat: "#ff5722",
 };
 const phaseColor = (phase, laser) => (phase === "processing" ? LASER_COLORS[laser] : PHASE_COLORS[phase]);
 
@@ -254,7 +258,10 @@ const PICTURE_CSS = `
 @keyframes br{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:.9;transform:scale(1.12)}}
 .k{transform-box:fill-box;transform-origin:50% 100%;animation:fl 1.1s ease-in-out infinite}
 @keyframes fl{0%,100%{transform:scaleY(1) skewX(0)}30%{transform:scaleY(1.06) skewX(-3deg)}60%{transform:scaleY(.95) skewX(2deg)}}
-.w{animation:fw 2s ease-in-out infinite}
+.fd{animation:fd 1.6s ease-in-out infinite}.fu{animation:fu 1.6s ease-in-out infinite}
+@keyframes fd{0%,100%{transform:translateY(-1.5px)}50%{transform:translateY(1px)}}
+@keyframes fu{0%,100%{transform:translateY(1.5px)}50%{transform:translateY(-1px)}}
+.w{animation:fw 2s ease-in-out infinite}.w2{animation-delay:.6s}.w3{animation-delay:1.2s}
 @keyframes fw{0%{transform:translateY(-2px);opacity:0}30%{opacity:1}70%{opacity:1}100%{transform:translateY(2px);opacity:0}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important}.z{opacity:1}.u{stroke-dashoffset:0}}`;
 
@@ -366,6 +373,24 @@ function statePicture(phase, color, { galvo = false, seed = 1, backing = false, 
     case "framing":
       body = `<rect x="3" y="3" width="18" height="18" rx=".5" stroke-width="1" stroke-dasharray="1.6 1.9" opacity=".45"/>` +
         (motion ? `<path d="M3 3h18v18H3z" pathLength="100" stroke-width="2.2" class="f"/>` : "");
+      break;
+    case "focusing":
+      // The head closes in on the surface from above and below
+      body = `<path d="M4 12h16" stroke-width="1.6"/>` +
+        `<path d="M12 3v5.5M9 6 12 9 15 6" stroke-width="1.8"${c("fd")}/>` +
+        `<path d="M12 21v-5.5M9 18 12 15 15 18" stroke-width="1.8"${c("fu")}/>`;
+      break;
+    case "warming":
+      // Heat rising
+      body = `<path d="M3.5 21h17" stroke-width="1.6" opacity=".6"/>` +
+        ["", " w2", " w3"].map((delay, i) => {
+          const x = 7 + i * 5;
+          return `<path d="M${x} 18c-1.6-2.2 1.6-3.8 0-6s1.6-3.8 0-6" stroke-width="1.7"${c(`w${delay}`)}/>`;
+        }).join("");
+      break;
+    case "overheat":
+      body = `<path d="M10 14.6V5a2 2 0 0 1 4 0v9.6a4 4 0 1 1-4 0z" stroke-width="1.7"/>` +
+        `<path d="M12 8v7.5" stroke-width="2"/><circle cx="12" cy="17.8" r="1.8" fill="${color}" stroke="none"${c("b")}/>`;
       break;
     case "sleeping":
       body = `<path d="M2.5 15.5h6l-6 6h6" stroke-width="1.8"${c("z")}/>` +
@@ -1943,6 +1968,7 @@ class XtoolCard extends HTMLElement {
     const options = {
       alarm: [
         [phase === "fire", "fire", error, "Fire warning"],
+        [phase === "overheat", "alarm", error, "Laser overheat"],
         [stateOf("alarm") === "on" || phase === "error", "alarm", error, "Alarm"],
       ],
       connection: [[!status || hass.states[status]?.state === "unavailable", "connection", "#616161", "Not connected"]],
