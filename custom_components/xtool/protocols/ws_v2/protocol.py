@@ -511,16 +511,18 @@ CONFIG_READ_KEYS: tuple[str, ...] = (
 )
 
 
-# Studio's ``uvReady`` and ``getPowerResume`` / ``setPowerResume``.
+# Studio's ``uvReady``.
 PATH_UV_LASER = "/v1/device/uv-laser"
-PATH_POWER_RESUME = "/v1/processing/powerResume"
+# The UV laser ready read is tried this many times after a connect
+# before it waits for the slow cadence (it can time out at boot).
+UV_READY_TRIES = 3
 # Studio waits up to 2 minutes for autofocus; Focusing ends after this
 # even if the finish push was missed.
 FOCUSING_TIMEOUT = 150.0
 # Statuses only the Status details produce.
 _STATUS_OVERLAYS = frozenset({
     XtoolStatus.FOCUSING, XtoolStatus.WARMING_UP,
-    XtoolStatus.INTERRUPTED, XtoolStatus.LASER_OVERHEAT,
+    XtoolStatus.LASER_OVERHEAT,
 })
 # Base statuses the details may replace (no job, no error).
 _STATUS_QUIET = frozenset({
@@ -645,8 +647,8 @@ class WSV2Protocol(XtoolProtocol):
 
         The laser's work mode stays the base. Laser overheat wins over
         everything; a job or an error wins over the rest. Otherwise
-        autofocus shows as Focusing, a job stopped by a power cut as
-        Interrupted, and a UV laser that is not ready yet as Warming up.
+        autofocus shows as Focusing, and a UV laser that is not ready
+        yet as Warming up.
         """
         if self._laser_overheat:
             return XtoolStatus.LASER_OVERHEAT
@@ -657,57 +659,28 @@ class WSV2Protocol(XtoolProtocol):
             and time.monotonic() - self._focusing_since < FOCUSING_TIMEOUT
         ):
             return XtoolStatus.FOCUSING
-        if self._power_resume:
-            return XtoolStatus.INTERRUPTED
         if self._uv_ready is False and base == XtoolStatus.IDLE:
             return XtoolStatus.WARMING_UP
         return base
 
-    @property
-    def power_resume_available(self) -> bool:
-        """A job stopped by a power cut can continue or be discarded."""
-        return self._power_resume
-
-    async def power_resume(self, action: str) -> None:
-        """Continue (``start``) or discard (``cancel``) that job.
-
-        Studio's ``setPowerResume`` from its "Unfinished processing
-        task detected" dialog.
-        """
-        if action not in ("start", "cancel"):
-            raise ValueError(action)
-        await self.request(
-            PATH_POWER_RESUME, "PUT", params={"action": action}, timeout=15.0,
-        )
-        self._power_resume = False
-
     async def _poll_status_reads(self) -> None:
-        """Read the UV laser ready flag and the power-loss resume job.
+        """Read whether the UV laser is ready, as Studio's ``uvReady``.
 
-        Studio reads both when it connects (``uvReady`` and
-        ``getPowerResume``); pushes keep the first one current.
+        Pushes keep it current after that. After a connect it is read on
+        each poll until it answers, up to ``UV_READY_TRIES`` times; the
+        laser can be too busy to answer while it boots.
         """
-        model = self._model
-        if getattr(model, "has_uv_laser_status", False):
-            try:
-                r = await self.request(PATH_UV_LASER, "GET", timeout=8.0)
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("V2 %s failed: %s", PATH_UV_LASER, err)
-            else:
-                if isinstance(r, dict) and r.get("uv_ready") is not None:
-                    self._uv_ready = str(r["uv_ready"]) == "1"
-        if getattr(model, "has_power_resume", False):
-            try:
-                r = await self.request(
-                    PATH_POWER_RESUME, "GET", params={"action": "query"},
-                    timeout=15.0,
-                )
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("V2 %s failed: %s", PATH_POWER_RESUME, err)
-            else:
-                if isinstance(r, dict) and "status" in r:
-                    self._power_resume = r.get("status") is True
-        self._status_reads_known = True
+        self._status_read_tries += 1
+        try:
+            r = await self.request(PATH_UV_LASER, "GET", timeout=8.0)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("V2 %s failed: %s", PATH_UV_LASER, err)
+        else:
+            if isinstance(r, dict) and r.get("uv_ready") is not None:
+                self._uv_ready = str(r["uv_ready"]) == "1"
+                self._status_reads_known = True
+        if self._status_read_tries >= UV_READY_TRIES:
+            self._status_reads_known = True
 
     def _note_status_push(self, module: Any, typ: Any) -> None:
         """Track the Status details from pushes, as Studio does."""
@@ -716,8 +689,6 @@ class WSV2Protocol(XtoolProtocol):
                 self._focusing_since = time.monotonic()
             elif typ in ("FOCUS_FINISHED", "FOCUS_STOPED", "FOCUS_STOPPED"):
                 self._focusing_since = None
-            elif typ == "WORK_STARTED":
-                self._power_resume = False
         elif module == "LASER_HEAD":
             if typ == "UV_PREPARE":
                 self._uv_ready = False
@@ -790,13 +761,12 @@ class WSV2Protocol(XtoolProtocol):
         self._config_read_known = False
         # Status details Studio tracks beside the work mode (F2 Ultra
         # UV): the UV laser is ready (None until read), it is too hot,
-        # autofocus started (monotonic time), and a job stopped by a
-        # power cut can continue.
+        # and autofocus started (monotonic time).
         self._uv_ready: bool | None = None
         self._laser_overheat = False
         self._focusing_since: float | None = None
-        self._power_resume = False
         self._status_reads_known = False
+        self._status_read_tries = 0
         # Engraving lens, Wi-Fi signal and what Studio calibrated
         # (F2 Ultra UV), read again on each connection.
         self._laser_info_known = False
@@ -908,11 +878,13 @@ class WSV2Protocol(XtoolProtocol):
         self._config_read_known = False
         # Read the focus height again on the next poll.
         self._focus_known = False
-        # Read again for each connection (after a power cut the laser
-        # reports an interrupted job and a cold UV laser).
+        # Read again for each connection: after a power cut the UV
+        # laser is cold, and a value from before the cut is stale.
+        self._uv_ready = None
         self._laser_overheat = False
         self._focusing_since = None
         self._status_reads_known = False
+        self._status_read_tries = 0
         self._laser_info_known = False
         self._assume_red_dot_on = True
         self._red_dot_reported = False
@@ -1961,6 +1933,11 @@ class WSV2Protocol(XtoolProtocol):
             ptype = url.removeprefix("/peripheral/")
             self._apply_peripheral_push(ptype, data, info, typ)
 
+        elif url == "/laser_head/status" and module == "LASER_HEAD":
+            # UV laser ready and laser temperature, followed by
+            # ``_note_status_push`` for the Status.
+            pass
+
         else:
             _LOGGER.debug("V2 unhandled push event: %s", event)
 
@@ -2468,10 +2445,9 @@ class WSV2Protocol(XtoolProtocol):
             self._poll_counter % 6 == 0 or not self._focus_known
         ):
             await self._poll_focus()
-        if (
-            getattr(model, "has_uv_laser_status", False)
-            or getattr(model, "has_power_resume", False)
-        ) and (self._poll_counter % 6 == 0 or not self._status_reads_known):
+        if getattr(model, "has_uv_laser_status", False) and (
+            self._poll_counter % 6 == 0 or not self._status_reads_known
+        ):
             await self._poll_status_reads()
         if getattr(model, "has_laser_info", False) and (
             self._poll_counter % 6 == 0 or not self._laser_info_known

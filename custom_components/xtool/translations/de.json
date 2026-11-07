@@ -121,7 +121,6 @@
           "measure_area": "Bereich messen",
           "focusing": "Fokussiert",
           "warming_up": "Aufwärmen",
-          "interrupted": "Unterbrochen",
           "laser_overheat": "Laser überhitzt",
           "unknown": "Unbekannt"
         }
@@ -843,12 +842,6 @@
       },
       "measure_distance": {
         "name": "Distanz messen"
-      },
-      "power_resume_continue": {
-        "name": "Unterbrochenen Auftrag fortsetzen"
-      },
-      "power_resume_discard": {
-        "name": "Unterbrochenen Auftrag verwerfen"
       },
       "quit_lightburn": {
         "name": "LightBurn-Modus verlassen"

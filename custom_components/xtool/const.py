@@ -70,7 +70,6 @@ class XtoolStatus(StrEnum):
     MEASURE_AREA = "measure_area"
     FOCUSING = "focusing"  # autofocus running
     WARMING_UP = "warming_up"  # UV laser not ready yet
-    INTERRUPTED = "interrupted"  # a job stopped by a power cut can continue
     LASER_OVERHEAT = "laser_overheat"
     UNKNOWN = "unknown"
 

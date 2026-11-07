@@ -200,9 +200,6 @@ class XtoolDeviceModel:
     # WS-V2 F2 Ultra UV: Status shows Focusing, Warming up (UV laser not
     # ready) and Laser overheat, read and pushed as Studio does.
     has_uv_laser_status: bool = False
-    # WS-V2 F2 Ultra UV: Studio's power-loss resume (Status Interrupted,
-    # with Continue / Discard buttons).
-    has_power_resume: bool = False
     # WS-V2 F2 Ultra UV: Engraving lens and Wi-Fi signal sensors, the
     # Calibration sensor (read only) and the flame record, read as
     # Studio reads them.
