@@ -28,7 +28,7 @@
  *   body behind the rest, with the features on the body in the Match, Flat
  *   or Console style, and
  * - an option to show or hide the features with a tap on the card, so it
- *   can collapse to the title,
+ *   can collapse to the title, and to collapse it while the machine is off,
  * - the job's progress, elapsed time and last job time, and the state of
  *   parts such as the exhaust and the red dot, as attributes the tile card's
  *   "State content" can show (see JOB_ATTRIBUTES).
@@ -2099,7 +2099,7 @@ const BADGE_PATHS = {
 };
 
 // Options this card adds to the tile card's
-const OWN_KEYS = ["style", "features_style", "pattern", "badges", "status_light", "progress", "features_toggle", "features_open"];
+const OWN_KEYS = ["style", "features_style", "pattern", "badges", "status_light", "progress", "collapsible", "expanded", "auto_collapse"];
 
 /** The tile card's own options (as its editor shows them). */
 function tileConfig(config) {
@@ -2109,13 +2109,13 @@ function tileConfig(config) {
 }
 
 /**
- * The tile card inside the card: with "Tap the card to show or hide the
- * features", a tap on the card does that instead of its Tap behavior, and
- * the features below the title are left out while they are hidden.
+ * The tile card inside the card: with Collapsible, a tap on the card shows
+ * or hides the features instead of its Tap behavior, and the features below
+ * the title are left out while they are hidden.
  */
 function innerTileConfig(config, open) {
   const tile = tileConfig(config);
-  if (config.features_toggle) {
+  if (config.collapsible) {
     tile.tap_action = { action: "fire-dom-event", xtool_card: "toggle" };
     // Collapsed, the card keeps what a tile card shows in its title row:
     // with features position "inline", the first feature, beside the title
@@ -2268,6 +2268,7 @@ class XtoolCard extends HTMLElement {
       const at = this._tapAt;
       this._tapAt = undefined;
       if (this._open && at && this._amongFeatures(at)) return;
+      this._autoCollapsed = false;
       this._setOpen(!this._open);
     });
     this._resize.observe(this._frame);
@@ -2313,7 +2314,9 @@ class XtoolCard extends HTMLElement {
     const edge = progressOptions(config).edge;
     if (!EDGES.some(([id]) => id === edge)) throw new Error(`Unknown progress edge: ${edge}`);
     this._config = { ...config, style };
-    this._open = !config.features_toggle ? true : this._storedOpen() ?? config.features_open !== false;
+    this._open = !config.collapsible ? true : this._storedOpen() ?? config.expanded !== false;
+    this._autoCollapsed = false;
+    this._wasOff = undefined;
     const tile = innerTileConfig(this._config, this._open);
     if (this._tile) {
       this._tile.setConfig(tile);
@@ -2348,6 +2351,7 @@ class XtoolCard extends HTMLElement {
     if (!this._config) return;
     this._job = this._jobState(hass);
     this._frame.classList.toggle("off", this._job.phase === "off");
+    this._followPower(this._job.phase === "off");
     if (this._tile) this._tile.hass = this._innerHass(hass);
     this._updateBadge();
     this._updateLight();
@@ -2412,10 +2416,29 @@ class XtoolCard extends HTMLElement {
     }
   }
 
-  _setOpen(open) {
+  /**
+   * With Collapse when off, the card collapses when the machine turns off
+   * (or is off when the card loads) and opens again when it turns back on,
+   * unless the card was tapped in between. The browser keeps the choice
+   * made by a tap, not this one.
+   */
+  _followPower(off) {
+    const was = this._wasOff;
+    this._wasOff = off;
+    if (!this._config.collapsible || this._config.auto_collapse === false || off === was) return;
+    if (off && this._open) {
+      this._autoCollapsed = true;
+      this._setOpen(false, false);
+    } else if (!off && this._autoCollapsed) {
+      this._autoCollapsed = false;
+      this._setOpen(true, false);
+    }
+  }
+
+  _setOpen(open, remember = true) {
     this._open = open;
     try {
-      window.localStorage.setItem(this._storageKey, open ? "1" : "0");
+      if (remember) window.localStorage.setItem(this._storageKey, open ? "1" : "0");
     } catch (err) {
       // Storage can be unavailable (private windows); the card still works
     }
@@ -3020,8 +3043,9 @@ class XtoolCardEditor extends HTMLElement {
       badges: v.badges ?? [],
       status_light: v.status_light !== false,
       progress: { ...PROGRESS_DEFAULTS, ...(v.progress ?? {}) },
-      features_toggle: !!v.features_toggle,
-      features_open: v.features_open !== false,
+      collapsible: !!v.collapsible,
+      expanded: v.expanded !== false,
+      auto_collapse: v.auto_collapse !== false,
     });
   }
 
@@ -3099,11 +3123,18 @@ class XtoolCardEditor extends HTMLElement {
         selector: select(FEATURES_STYLES),
       }] : []),
       {
-        name: "features_toggle", label: "Tap the card to show or hide the features",
-        helper: "While this is on, a tap on the card does this instead of its Tap behavior (under Interactions). Icon tap behavior still works.",
+        name: "collapsible", label: "Collapsible",
+        helper: "A tap on the card shows or hides the features, instead of its Tap behavior (under Interactions). Icon tap behavior still works.",
         selector: { boolean: {} },
       },
-      ...(c.features_toggle ? [{ name: "features_open", label: "Show features at load", selector: { boolean: {} } }] : []),
+      ...(c.collapsible ? [
+        { name: "expanded", label: "Expanded at load", selector: { boolean: {} } },
+        {
+          name: "auto_collapse", label: "Collapse when off",
+          helper: "Collapses when the machine turns off, and expands again when it turns on.",
+          selector: { boolean: {} },
+        },
+      ] : []),
       {
         name: "badges", label: "Badges (in priority order)",
         helper: "Listed in priority order: the first one that applies shows on the picture. Drag to change the order.",
@@ -3145,8 +3176,9 @@ class XtoolCardEditor extends HTMLElement {
       badges: Array.isArray(c.badges) ? c.badges : DEFAULT_BADGES,
       status_light: c.status_light !== false,
       progress: progressOptions(c),
-      features_toggle: !!c.features_toggle,
-      features_open: c.features_open !== false,
+      collapsible: !!c.collapsible,
+      expanded: c.expanded !== false,
+      auto_collapse: c.auto_collapse !== false,
     };
   }
 
@@ -3177,11 +3209,14 @@ function explicit(config) {
     c.pattern = Number.isFinite(c.pattern) ? c.pattern : DEFAULT_PATTERN;
   }
   c.status_light = c.status_light !== false;
-  // Whether the features show at load matters only when a tap shows or hides them
-  if (c.features_toggle) c.features_open = c.features_open !== false;
-  else {
-    delete c.features_toggle;
-    delete c.features_open;
+  // Expanded at load and Collapse when off matter only for a collapsible card
+  if (c.collapsible) {
+    c.expanded = c.expanded !== false;
+    c.auto_collapse = c.auto_collapse !== false;
+  } else {
+    delete c.collapsible;
+    delete c.expanded;
+    delete c.auto_collapse;
   }
   return c;
 }
