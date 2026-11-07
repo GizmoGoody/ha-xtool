@@ -139,7 +139,7 @@ for (const name of ["fan-preset-modes", "fan-speed", "numeric-input"]) {
 
 // ha-control-number-buttons: Home Assistant's number buttons. press(n) is a
 // tap on + (n > 0) or - (n < 0), which sends value-changed as Home Assistant's does
-window.defineNumberButtons = () => customElements.define("ha-control-number-buttons", class extends HTMLElement {
+window.defineNumberButtons = () => customElements.get("ha-control-number-buttons") || customElements.define("ha-control-number-buttons", class extends HTMLElement {
   connectedCallback() {
     this.style.cssText = "display:block;height:42px";
   }
@@ -151,7 +151,7 @@ window.defineNumberButtons = () => customElements.define("ha-control-number-butt
 });
 
 // ha-input: Home Assistant's input (its number entity row loads it)
-window.defineInput = () => customElements.define("ha-input", class extends HTMLElement {});
+window.defineInput = () => customElements.get("ha-input") || customElements.define("ha-input", class extends HTMLElement {});
 
 // hui-light-brightness-card-feature: Home Assistant's light brightness feature
 customElements.define("hui-light-brightness-card-feature", class extends HTMLElement {
