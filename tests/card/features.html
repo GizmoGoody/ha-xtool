@@ -283,7 +283,7 @@
     check("camera, crop", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "xtool", service: "camera", data: {
       crop_width: 100, crop_height: 150, crop_center_x: 0, crop_center_y: 25, entity_id: "camera.f2_main" } })
       && cropped.shadowRoot.querySelector(".corner").hidden && cropped.shadowRoot.querySelector(".hint").textContent === "",
-      "the second tap crops to the rectangle between them, in mm on the work surface");
+      `the second tap crops to the rectangle between them, in mm on the work surface (${JSON.stringify(lastCall(hass))}; ${JSON.stringify(img.getBoundingClientRect())})`);
     keyNamed(cropped, "crop_reset").click();
     check("camera, crop", JSON.stringify(lastCall(hass).data) === JSON.stringify({ crop_width: 200, crop_height: 200, crop_center_x: 0, crop_center_y: 0, entity_id: "camera.f2_main" }),
       "Reset: 200 x 200 mm, centered");
@@ -409,10 +409,6 @@
     focus = addFeature({ type: "custom:xtool-focus" }, { hass });
     await wait(50);
     check("focus", keyNamed(focus, "autofocus").disabled, "no Autofocus while the laser works");
-    focus = addFeature({ type: "custom:xtool-focus", show_input: true }, { hass: makeHass({ "sensor.f2_engraving_lens": "small" }) });
-    await wait(80);
-    check("focus, inner lens", keyNamed(focus, "autofocus").disabled && focus.shadowRoot.querySelector(".manual ha-control-number-buttons")?.disabled
-      && focus.shadowRoot.querySelector(".typed ha-input")?.disabled, "with the inner engraving lens: Autofocus, the buttons and the box are off, as in Studio");
     focus = addFeature({ type: "custom:xtool-focus", manual: "slider" }, { hass: makeHass() });
     await wait(50);
     const focusSlider = focus.shadowRoot.querySelector(".manual hui-card-feature");
@@ -433,6 +429,10 @@
     typed.value = "40";
     typed.dispatchEvent(new Event("change"));
     check("focus, input", lastCall(hass).data.entity_id === "number.f2_focus_height" && lastCall(hass).data.value === 40, "typing a height moves the head");
+    focus = addFeature({ type: "custom:xtool-focus", show_input: true }, { hass: makeHass({ "sensor.f2_engraving_lens": "small" }) });
+    await wait(80);
+    check("focus, inner lens", keyNamed(focus, "autofocus").disabled && focus.shadowRoot.querySelector(".manual ha-control-number-buttons")?.disabled
+      && focus.shadowRoot.querySelector(".typed ha-input")?.disabled, "with the inner engraving lens: Autofocus, the buttons and the box are off, as in Studio");
     const focusOptions = document.createElement("xtool-feature-editor");
     focusOptions.hass = hass;
     focusOptions.context = { entity_id: "sensor.f2_status" };
