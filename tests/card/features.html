@@ -488,14 +488,22 @@
     check("IF2 fan, unavailable", unseen.style.display === "" && keysOf(unseen).length > 0 && keysOf(unseen).every((k) => k.disabled),
       "kept in place, disabled, while the laser does not see the IF2");
 
-    // Focus: Autofocus, then - and + around a field to type the thickness, in one row
+    // Focus: Autofocus, then down and up around a field to type the thickness, in one row
     hass = makeHass();
     let focus = addFeature({ type: "custom:xtool-focus" }, { hass });
     await wait(50);
     const field = () => focus.shadowRoot.querySelector(".row .height input");
     check("focus", [...focus.shadowRoot.querySelector(".row").children].map((c) => c.dataset.key ?? c.className).join() === "autofocus,down,height,up"
       && field().value === "36.1" && !focus.shadowRoot.querySelector(".height .unit"),
-      "Autofocus, -, the thickness (36.1 mm) in a field, +");
+      "Autofocus, down, the thickness (36.1 mm) in a field, up");
+    const fiveKeys = addFeature({ type: "custom:xtool-peripherals", controls: ["power", "exhaust", "red_dot", "fill_light_front", "fill_light_back"] }, { hass });
+    await wait(50);
+    const widthOf = (feature, key) => keyNamed(feature, key).getBoundingClientRect().width;
+    check("focus", ["autofocus", "down", "up"].every((key) => Math.abs(widthOf(focus, key) - widthOf(fiveKeys, "power")) < 0.5)
+      && focus.shadowRoot.querySelector(".height").getBoundingClientRect().width > widthOf(focus, "up"),
+      `each button as wide as one of five Controls buttons, the field wider (${widthOf(focus, "up")}, ${widthOf(fiveKeys, "power")})`);
+    check("focus", keyNamed(focus, "down").querySelector("ha-icon")?.icon === "mdi:arrow-down" && keyNamed(focus, "up").querySelector("ha-icon")?.icon === "mdi:arrow-up",
+      "down and up arrows");
     keyNamed(focus, "autofocus").click();
     check("focus", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "button", service: "press", data: { entity_id: "button.f2_autofocus" } }),
       "Autofocus is pressed");

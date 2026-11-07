@@ -266,7 +266,10 @@
     const tileOf = (card) => card.shadowRoot.querySelector("hui-tile-card");
     check("status light", tileOf(content).getAttribute("xtool-light") === "slow" && tileOf(content).style.getPropertyValue("--xtool-light") === "#ffffff",
       "white, blinking slowly while it works");
-    check("status light", getComputedStyle(tileOf(content).shadowRoot.querySelector("ha-tile-icon")).borderRadius === "50%", "drawn on the tile's icon");
+    const ring = getComputedStyle(tileOf(content).shadowRoot.querySelector("ha-tile-icon"), "::after");
+    check("status light", ring.content !== "none" && ring.position === "absolute" && ring.zIndex === "1" && ring.borderRadius === "50%"
+      && ring.borderTopWidth === "3px" && ring.borderTopStyle === "solid",
+      `drawn on the tile's icon, 3 px wide, over the picture, so its shading does not darken it (${ring.borderTopWidth} ${ring.zIndex})`);
     check("status light", !tileOf(offStyled).hasAttribute("xtool-light"), "none while the laser is off");
     check("status light", tileOf(closedAtLoad).getAttribute("xtool-light") === "solid" && tileOf(closedAtLoad).style.getPropertyValue("--xtool-light") === "#ffffff",
       "the P2 ring light: white while idle");
