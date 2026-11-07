@@ -96,6 +96,7 @@ async def test_photos_are_taken_one_at_a_time() -> None:
         return name.encode()
 
     proto._camera_snap = snap
+    proto._connected = True
     results = await asyncio.gather(
         proto.camera_snap("main"), proto.camera_snap("deep"),
     )
