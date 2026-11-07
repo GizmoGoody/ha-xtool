@@ -10,10 +10,12 @@
  * - custom:xtool-safety       the safety checks; turning one off asks first
  * - custom:xtool-settings     buzzer reminders, device sleep and auto mode
  * - custom:xtool-accessories  the accessories' switches, such as the IF2's buzzer
- * - custom:xtool-camera       a camera, shown by Home Assistant's own image element, with buttons to switch
- * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: the tile card's own select options or fan features
- * Each finds its entities on the same device as the card's entity (the IF2
- * on the laser's accessory device).
+ * - custom:xtool-camera       a camera, shown by Home Assistant's own image element, with buttons to switch,
+ *                             and the shown camera's settings (main camera crop, deep camera perspective)
+ * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan in one row: the tile card's own fan or select features
+ * - custom:xtool-focus        Autofocus and the focus height: step buttons or a slider, and a box to type it
+ * Each finds its entities on the same device as the card's entity, or on
+ * the devices connected to it (the cameras' devices, the IF2's).
  *
  * custom:xtool-card is Home Assistant's tile card, wrapped: the tile card
  * still draws the name, state, actions and features. The xTool card adds:
@@ -73,13 +75,26 @@ const ROLES = {
   buzzer: [["beep_enable", "buzzer"], ["switch"]],
   device_sleep: [["device_sleep"], ["switch"]],
   exhaust_running: [["smoking_fan_running"], ["binary_sensor"]],
+  focus_height: [["focus_height"], ["number"]],
+  autofocus: [["autofocus"], ["button"]],
 };
-// The same, on the laser's accessory devices (the SafetyPro IF2 2.0)
+// The same, on the laser's accessory devices (the SafetyPro IF2 and IF2 2.0)
 const ACCESSORY_ROLES = {
-  if2_fan: [["accessory_ductfanv3_mode_speed"], ["select"]],
   if2_fan_entity: [["accessory_ductfanv3_fan"], ["fan"]],
+  if2_gear_select: [["accessory_ductfan_gear_select"], ["select"]],
   if2_buzzer: [["accessory_ductfanv3_buzzer", "accessory_ductfan_buzzer"], ["switch"]],
 };
+// A camera's own settings, on the camera's device (a laser with several
+// cameras gives each its own device), or on the laser's with the camera's
+// name in front
+const CAMERA_ROLES = {
+  crop_width: [["crop_width", "camera_main_crop_width"], ["number"]],
+  crop_height: [["crop_height", "camera_main_crop_height"], ["number"]],
+  crop_center_x: [["crop_center_x", "camera_main_crop_center_x"], ["number"]],
+  crop_center_y: [["crop_center_y", "camera_main_crop_center_y"], ["number"]],
+  perspective: [["perspective", "camera_deep_perspective"], ["select"]],
+};
+const CROP_ROLES = ["crop_width", "crop_height", "crop_center_x", "crop_center_y"];
 // The cameras, in the order the camera feature offers them
 const CAMERAS = [
   ["camera_main", "Main"], ["camera_deep", "Deep"], ["camera_overview", "Overview"], ["camera_closeup", "Close-up"],
@@ -114,30 +129,46 @@ function findRole(candidates, [keys, domains]) {
   return undefined;
 }
 
+/** The devices connected to a device (its cameras and accessories), by id. */
+function childDevices(hass, device) {
+  return Object.values(hass?.devices ?? {}).filter((d) => d.via_device_id === device).map((d) => d.id);
+}
+
 /**
- * The entity with this role on the same device as entityId (or, for an
- * accessory's role, on one of the laser's accessory devices), or undefined.
+ * The entity with this role on the same device as entityId, or undefined.
+ * A laser's role is looked for on the laser's device first, then on the
+ * devices connected to it (its cameras); an accessory's role on the
+ * connected devices only.
  */
 function sibling(hass, entityId, role) {
   const device = hass?.entities?.[entityId]?.device_id;
   if (!device) return undefined;
-  if (ROLES[role]) return findRole(deviceEntities(hass, device), ROLES[role]);
-  if (!ACCESSORY_ROLES[role] || !hass.devices) return undefined;
-  for (const d of Object.values(hass.devices)) {
-    if (d.via_device_id !== device) continue;
-    const found = findRole(deviceEntities(hass, d.id), ACCESSORY_ROLES[role]);
+  const spec = ROLES[role] ?? ACCESSORY_ROLES[role];
+  if (!spec) return undefined;
+  const devices = ROLES[role] ? [device, ...childDevices(hass, device)] : childDevices(hass, device);
+  for (const d of devices) {
+    const found = findRole(deviceEntities(hass, d), spec);
     if (found) return found;
   }
   return undefined;
 }
 
-const if2Fan = (hass, entityId) => sibling(hass, entityId, "if2_fan");
+/** The IF2's control: the IF2 2.0's fan, or the first IF2's gear select. */
+const if2Control = (hass, entityId) => sibling(hass, entityId, "if2_fan_entity") ?? sibling(hass, entityId, "if2_gear_select");
 
-/** The laser's cameras: [entity_id, label], in CAMERAS order. */
+/** The laser's cameras: [entity_id, label], in CAMERAS order, from its own and its camera devices. */
 function camerasOf(hass, entityId) {
-  const entities = deviceEntities(hass, hass?.entities?.[entityId]?.device_id);
+  const device = hass?.entities?.[entityId]?.device_id;
+  if (!device) return [];
+  const entities = [device, ...childDevices(hass, device)].flatMap((d) => deviceEntities(hass, d));
   return CAMERAS.map(([key, label]) => [entities.find((e) => e.translation_key === key && domainOf(e.entity_id) === "camera")?.entity_id, label])
     .filter(([id]) => id);
+}
+
+/** A camera's own setting (CAMERA_ROLES), on the camera's device. */
+function cameraSetting(hass, camera, role) {
+  const device = hass?.entities?.[camera]?.device_id;
+  return device ? findRole(deviceEntities(hass, device), CAMERA_ROLES[role]) : undefined;
 }
 
 const isXtool = (hass, entityId) => hass?.entities?.[entityId]?.platform === DOMAIN;
@@ -555,6 +586,72 @@ function performAction(host, service, entityId, confirmation) {
   });
 }
 
+// Home Assistant's features shown inside one of this card's, two to a row:
+// each in a .slide (measured for the Flat and Console styles), with the
+// entity's icon beside it when it has one
+const CONTROLS_CSS = `
+  .controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--feature-button-spacing, 12px); }
+  .controls:empty { display: none; }
+  .controls .cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .controls .cell.wide { grid-column: 1 / -1; }
+  .controls .cell > ha-icon { flex: none; --mdc-icon-size: 20px; color: var(--xtool-text, var(--secondary-text-color)); }
+  .controls .slide { display: block; flex: 1 1 0; min-width: 0; border-radius: var(--feature-border-radius, 12px); }
+`;
+
+/**
+ * A grid of Home Assistant's own features (hui-card-feature, the element the
+ * tile card shows every feature with). show() takes
+ * [{ feature, entityId, color, wide, icon }]: the features are made again
+ * only when the list changes, and get hass every time.
+ */
+class HaFeatureGrid {
+  constructor() {
+    this.element = document.createElement("div");
+    this.element.className = "controls";
+    this._features = [];
+  }
+
+  show(hass, controls) {
+    const key = JSON.stringify(controls.map(({ feature, entityId, wide, icon }) => [feature, entityId, !!wide, !!icon]));
+    if (key !== this._key) {
+      this._key = key;
+      // An odd one out at the end takes the whole row
+      const narrow = controls.filter((c) => !c.wide).length;
+      this._features = [];
+      this.element.replaceChildren(...controls.map((control, index) => {
+        const cell = document.createElement("div");
+        const last = controls.slice(index + 1).every((c) => c.wide);
+        cell.className = `cell${control.wide || (narrow % 2 && last && !control.wide) ? " wide" : ""}`;
+        const icon = control.icon && (hass.entities?.[control.entityId]?.icon ?? hass.states[control.entityId]?.attributes.icon);
+        if (icon) {
+          const el = document.createElement("ha-icon");
+          el.icon = icon;
+          el.setAttribute("icon", icon);
+          el.title = hass.states[control.entityId]?.attributes.friendly_name ?? "";
+          cell.append(el);
+        }
+        const slide = document.createElement("div");
+        slide.className = "slide";
+        const feature = document.createElement("hui-card-feature");
+        feature.feature = control.feature;
+        feature.context = { entity_id: control.entityId };
+        slide.append(feature);
+        cell.append(slide);
+        this._features.push([feature, control]);
+        return cell;
+      }));
+    }
+    for (const [feature] of this._features) {
+      const control = controls.find((c) => c.entityId === feature.context.entity_id);
+      if (control?.color) {
+        feature.color = control.color;
+        feature.style.setProperty("--feature-color", control.color);
+      }
+      feature.hass = hass;
+    }
+  }
+}
+
 /**
  * A row of buttons for one feature. Subclasses list the buttons in
  * _buttons(): { key, label, icon, text, color, pressed, disabled, action,
@@ -829,7 +926,9 @@ class XtoolCamera extends XtoolFeature {
         background: linear-gradient(to top, rgba(0, 0, 0, .6), rgba(0, 0, 0, 0));
       }
       .shot .time:empty { display: none; }
-      .row:empty { display: none; }`;
+      .row:empty { display: none; }
+      ${CONTROLS_CSS}
+      .row:not(:empty) + .controls { margin-top: var(--feature-button-spacing, 12px); }`;
     this._shot = document.createElement("button");
     this._shot.type = "button";
     this._shot.className = "shot";
@@ -841,6 +940,8 @@ class XtoolCamera extends XtoolFeature {
     });
     this.shadowRoot.prepend(style);
     this._row.before(this._shot);
+    this._controls = new HaFeatureGrid();
+    this._row.after(this._controls.element);
   }
 
   static getStubConfig() {
@@ -923,6 +1024,31 @@ class XtoolCamera extends XtoolFeature {
     this._shot.setAttribute("aria-label", `${camerasOf(this._hass, this._entityId).find(([id]) => id === this._camera)?.[1] ?? ""} camera: open`);
     this._watchPictures();
     this._showTime();
+    this._controls.show(this._hass, this._cameraControls());
+  }
+
+  /**
+   * The shown camera's own settings, as Home Assistant's features: the main
+   * camera's crop numbers (numeric input) and the deep camera's perspective
+   * (select options, as buttons).
+   */
+  _cameraControls() {
+    const hass = this._hass, camera = this._camera, c = this._config;
+    const key = hass.entities?.[camera]?.translation_key;
+    const controls = [];
+    if (key === "camera_main" && c.show_crop !== false) {
+      const roles = Array.isArray(c.crop_controls) ? c.crop_controls.filter((r) => CROP_ROLES.includes(r)) : CROP_ROLES;
+      const style = c.crop_style === "slider" ? "slider" : "buttons";
+      for (const role of roles) {
+        const entityId = cameraSetting(hass, camera, role);
+        if (entityId) controls.push({ feature: { type: "numeric-input", style }, entityId, color: NUMBER_ON, icon: true });
+      }
+    }
+    if (key === "camera_deep" && c.show_perspective !== false) {
+      const entityId = cameraSetting(hass, camera, "perspective");
+      if (entityId) controls.push({ feature: { type: "select-options", style: "buttons" }, entityId, color: SELECT_ON, wide: true });
+    }
+    return controls;
   }
 
   // The time shown is when the latest picture arrived in Home Assistant's image
@@ -1101,19 +1227,18 @@ class XtoolSafety extends XtoolFeature {
 }
 
 // ---------------------------------------------------------------------------
-// Feature: the SafetyPro IF2 inline fan, with Home Assistant's own features
-// (on the laser's accessory device), shown through hui-card-feature like
-// the fill light. Controls, a choice:
-// - Select options: the select options feature, as buttons, for the IF2's
-//   fan select: Auto Regular, Auto Quiet, Off and gears 1 to 4 in one row.
-// - Fan: the fan preset modes feature (Auto Regular, Auto Quiet) and the
-//   fan speed feature (Off, 1 to 4) for the IF2's fan, in two rows, as the
-//   tile card shows a fan.
+// Feature: the SafetyPro IF2 inline fan, in one row, with Home Assistant's
+// own features (on the laser's accessory device), shown through
+// hui-card-feature like the fill light:
+// - IF2 2.0: its fan, with the fan preset modes feature (Auto Regular and
+//   Auto Quiet, as icons or a dropdown) beside the fan speed feature (Off
+//   and the speeds), as the tile card shows a fan, but side by side.
+// - The first IF2: its gear select, with the select options feature as buttons.
 // ---------------------------------------------------------------------------
 const SELECT_ON = "var(--state-select-active-color, var(--state-active-color, var(--primary-color, #03a9f4)))";
+const NUMBER_ON = "var(--state-number-active-color, var(--state-active-color, var(--primary-color, #03a9f4)))";
 const FAN_ON = "var(--state-fan-active-color, var(--state-active-color, var(--primary-color, #03a9f4)))";
 const FAN_OFF = "var(--state-fan-inactive-color, var(--state-inactive-color, var(--disabled-color, #bdbdbd)))";
-const IF2_CONTROLS = [["select", "Select options (one row)"], ["fan", "Fan preset modes and speed (two rows)"]];
 const PRESET_STYLES = [["icons", "Icons"], ["dropdown", "Dropdown"]];
 
 class XtoolIf2Fan extends HTMLElement {
@@ -1124,10 +1249,13 @@ class XtoolIf2Fan extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this.shadowRoot.innerHTML = `<style>
       :host { display: block; }
-      .rows { display: flex; flex-direction: column; gap: var(--feature-button-spacing, 12px); }
-      .slide { display: block; border-radius: var(--feature-border-radius, 12px); }
-    </style><div class="rows"></div>`;
-    this._box = this.shadowRoot.querySelector(".rows");
+      .one { display: flex; gap: var(--feature-button-spacing, 12px); }
+      .slide { display: block; min-width: 0; border-radius: var(--feature-border-radius, 12px); }
+      .slide.presets { flex: 2 1 0; }
+      .slide.presets.dropdown { flex: 3 1 0; }
+      .slide.speed { flex: 5 1 0; }
+    </style><div class="one"></div>`;
+    this._box = this.shadowRoot.querySelector(".one");
     keepTaps(this);
   }
 
@@ -1155,24 +1283,29 @@ class XtoolIf2Fan extends HTMLElement {
     this._render();
   }
 
-  // The features to show: [{ feature, entityId, color }]
+  // The features to show, left to right: [{ feature, entityId, color, part }]
   _wanted() {
     const laser = this._context.entity_id, c = this._config;
     const usable = (id) => !!id && !!this._hass.states[id] && this._hass.states[id].state !== "unavailable";
-    if (c.control === "fan") {
-      const fan = sibling(this._hass, laser, "if2_fan_entity");
-      if (!usable(fan)) return [];
-      const color = this._hass.states[fan]?.state === "on" ? FAN_ON : FAN_OFF;
-      const presets = Array.isArray(c.preset_modes) ? { preset_modes: c.preset_modes } : {};
-      return [
-        { feature: { type: "fan-preset-modes", style: c.preset_style === "dropdown" ? "dropdown" : "icons", ...presets }, entityId: fan, color },
-        { feature: { type: "fan-speed" }, entityId: fan, color },
-      ];
+    const fan = sibling(this._hass, laser, "if2_fan_entity");
+    if (usable(fan)) {
+      const color = this._hass.states[fan].state === "on" ? FAN_ON : FAN_OFF;
+      const wanted = [];
+      const presets = this._hass.states[fan].attributes.preset_modes ?? [];
+      if (c.show_presets !== false && presets.length) {
+        const dropdown = c.preset_style === "dropdown";
+        wanted.push({
+          feature: { type: "fan-preset-modes", style: dropdown ? "dropdown" : "icons", ...(Array.isArray(c.preset_modes) ? { preset_modes: c.preset_modes } : {}) },
+          entityId: fan, color, part: dropdown ? "presets dropdown" : "presets",
+        });
+      }
+      wanted.push({ feature: { type: "fan-speed" }, entityId: fan, color, part: "speed" });
+      return wanted;
     }
-    const select = if2Fan(this._hass, laser);
+    const select = sibling(this._hass, laser, "if2_gear_select");
     if (!usable(select)) return [];
     const options = Array.isArray(c.options) ? { options: c.options } : {};
-    return [{ feature: { type: "select-options", style: "buttons", ...options }, entityId: select, color: SELECT_ON }];
+    return [{ feature: { type: "select-options", style: "buttons", ...options }, entityId: select, color: SELECT_ON, part: "speed" }];
   }
 
   _render() {
@@ -1180,7 +1313,7 @@ class XtoolIf2Fan extends HTMLElement {
     const wanted = this._wanted();
     // The laser does not see the IF2: nothing to show, and no room taken
     showFeature(this, wanted.length > 0);
-    const key = JSON.stringify(wanted.map(({ feature, entityId }) => [feature, entityId]));
+    const key = JSON.stringify(wanted.map(({ feature, entityId, part }) => [feature, entityId, part]));
     if (key !== this._key) {
       // Another choice or entity: new features (Home Assistant's feature
       // elements are made for one type)
@@ -1191,9 +1324,9 @@ class XtoolIf2Fan extends HTMLElement {
         el.context = { entity_id: entityId };
         return el;
       });
-      this._box.replaceChildren(...this._features.map((el) => {
+      this._box.replaceChildren(...this._features.map((el, i) => {
         const slide = document.createElement("div");
-        slide.className = "slide";
+        slide.className = `slide ${wanted[i].part}`;
         slide.append(el);
         return slide;
       }));
@@ -1207,6 +1340,189 @@ class XtoolIf2Fan extends HTMLElement {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Feature: focus (F2 Ultra UV). Autofocus, a button as on the laser, beside
+// the Focus height: Home Assistant's number buttons with the step chosen,
+// or its numeric input slider. Optionally a box to type the height, Home
+// Assistant's input as its number rows show it. Each change moves the head
+// (the laser refuses while it works; Home Assistant shows why).
+// ---------------------------------------------------------------------------
+const FOCUS_MANUAL = [["buttons", "Step buttons"], ["slider", "Slider"], ["none", "None"]];
+const FOCUS_STEP = 1;
+
+class XtoolFocus extends XtoolFeature {
+  static label = "Focus";
+
+  constructor() {
+    super();
+    const style = document.createElement("style");
+    style.textContent = `
+      .line { display: flex; gap: var(--feature-button-spacing, 12px); }
+      .line .row { flex: 0 0 auto; }
+      .line .row .key { flex: none; min-width: var(--feature-height, 42px); padding: 0 10px; }
+      .line.alone .row { flex: 1 1 auto; }
+      .line.alone .row .key { flex: 1 1 0; }
+      .manual { flex: 1 1 0; min-width: 0; height: var(--feature-height, 42px); border-radius: var(--feature-border-radius, 12px); }
+      .manual:empty, .typed:empty { display: none; }
+      .manual ha-control-number-buttons { display: block; height: 100%; }
+      .typed { display: block; margin-top: var(--feature-button-spacing, 12px); }
+      .typed ha-input { display: block; width: 100%; }
+      .loader { display: none; }`;
+    this.shadowRoot.prepend(style);
+    this._line = document.createElement("div");
+    this._line.className = "line";
+    this._row.replaceWith(this._line);
+    this._manual = document.createElement("div");
+    this._manual.className = "manual slide";
+    this._line.append(this._row, this._manual);
+    this._typed = document.createElement("div");
+    this._typed.className = "typed";
+    this._line.after(this._typed);
+  }
+
+  static getStubConfig() {
+    return { type: "custom:xtool-focus" };
+  }
+
+  get _height() {
+    return sibling(this._hass, this._entityId, "focus_height");
+  }
+
+  _buttons() {
+    const hass = this._hass, id = this._entityId;
+    const autofocus = sibling(hass, id, "autofocus");
+    showFeature(this, !!autofocus || !!this._height);
+    if (!autofocus) return [];
+    const status = statusOf(hass, id);
+    const phase = phaseOf(status ? hass.states[status]?.state : undefined);
+    // As in Studio: not while the laser works, frames, focuses or is off
+    const busy = ["processing", "paused", "framing", "focusing", "off", "firmware"].includes(phase);
+    return [{
+      key: "autofocus", label: "Autofocus", icon: "mdi:image-filter-center-focus", text: this._config.show_names ? "Autofocus" : "",
+      color: "primary", disabled: !this._usable(autofocus) || busy,
+      action: () => hass.callService("button", "press", { entity_id: autofocus }),
+    }];
+  }
+
+  _render() {
+    super._render();
+    if (!this._hass || !this._config || !this._context) return;
+    const manual = FOCUS_MANUAL.some(([id]) => id === this._config.manual) ? this._config.manual : "buttons";
+    const height = this._height;
+    this._line.classList.toggle("alone", manual === "none" || !height);
+    this._showManual(height && manual !== "none" ? manual : undefined);
+    this._showTyped(height && this._config.show_input ? height : undefined);
+  }
+
+  _setHeight(value) {
+    const height = this._height, stateObj = height ? this._hass.states[height] : undefined;
+    if (!stateObj || !Number.isFinite(value) || value === Number(stateObj.state)) return;
+    const { min = 0, max = 150 } = stateObj.attributes;
+    this._hass.callService("number", "set_value", { entity_id: height, value: Math.min(max, Math.max(min, value)) });
+  }
+
+  // Home Assistant's number buttons (loaded with its numeric input feature),
+  // or its numeric input feature itself as a slider
+  _showManual(manual) {
+    const height = this._height;
+    if (!manual) {
+      this._manual.replaceChildren();
+      this._manualKind = undefined;
+      return;
+    }
+    const stateObj = this._hass.states[height];
+    if (manual === "slider") {
+      if (this._manualKind !== `slider|${height}`) {
+        this._manualKind = `slider|${height}`;
+        this._slider = document.createElement("hui-card-feature");
+        this._slider.feature = { type: "numeric-input", style: "slider" };
+        this._slider.context = { entity_id: height };
+        this._manual.replaceChildren(this._slider);
+      }
+      this._slider.color = NUMBER_ON;
+      this._slider.style.setProperty("--feature-color", NUMBER_ON);
+      this._slider.hass = this._hass;
+      return;
+    }
+    if (!customElements.get("ha-control-number-buttons")) {
+      // Home Assistant's numeric input feature brings its number buttons:
+      // show one, unseen, until they are defined
+      if (!this._loader) {
+        this._loader = document.createElement("hui-card-feature");
+        this._loader.className = "loader";
+        this._loader.feature = { type: "numeric-input", style: "buttons" };
+        this._loader.context = { entity_id: height };
+        this._loader.hass = this._hass;
+        this.shadowRoot.append(this._loader);
+        customElements.whenDefined("ha-control-number-buttons").then(() => {
+          this._loader.remove();
+          this._render();
+        });
+      }
+      return;
+    }
+    if (this._manualKind !== `buttons|${height}`) {
+      this._manualKind = `buttons|${height}`;
+      this._buttonsEl = document.createElement("ha-control-number-buttons");
+      this._buttonsEl.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this._setHeight(Number(ev.detail?.value));
+      });
+      this._manual.replaceChildren(this._buttonsEl);
+    }
+    const step = Number(this._config.step) > 0 ? Number(this._config.step) : FOCUS_STEP;
+    Object.assign(this._buttonsEl, {
+      label: stateObj?.attributes.friendly_name ?? "Focus height",
+      value: Number.isFinite(Number(stateObj?.state)) ? Number(stateObj.state) : undefined,
+      min: stateObj?.attributes.min ?? 0, max: stateObj?.attributes.max ?? 150, step,
+      unit: stateObj?.attributes.unit_of_measurement, disabled: !this._usable(height), locale: this._hass.locale,
+    });
+  }
+
+  // Home Assistant's input (loaded with its number entity row), to type a height
+  _showTyped(height) {
+    if (!height) {
+      this._typed.replaceChildren();
+      this._input = undefined;
+      return;
+    }
+    if (!customElements.get("ha-input")) {
+      if (!this._inputLoading) {
+        this._inputLoading = true;
+        window.loadCardHelpers?.()
+          .then((helpers) => helpers.createRowElement({ entity: height }))
+          .then(() => customElements.whenDefined("ha-input"))
+          .then(() => this._render());
+      }
+      return;
+    }
+    const stateObj = this._hass.states[height];
+    if (!this._input || this._input.dataset.entity !== height) {
+      this._input = document.createElement("ha-input");
+      this._input.dataset.entity = height;
+      this._input.type = "number";
+      const unit = document.createElement("span");
+      unit.slot = "end";
+      this._input.append(unit);
+      this._input.addEventListener("change", (ev) => {
+        ev.stopPropagation();
+        this._setHeight(Number(this._input.value));
+      });
+      this._typed.replaceChildren(this._input);
+    }
+    Object.assign(this._input, {
+      label: stateObj?.attributes.friendly_name ?? "Focus height",
+      step: Number(stateObj?.attributes.step ?? 0.1), min: Number(stateObj?.attributes.min ?? 0), max: Number(stateObj?.attributes.max ?? 150),
+      disabled: !this._usable(height),
+    });
+    this._input.querySelector("span[slot=end]").textContent = stateObj?.attributes.unit_of_measurement ?? "";
+    // Not while it is being typed in
+    if (!this._input.matches(":focus-within") && stateObj && Number.isFinite(Number(stateObj.state))) {
+      this._input.value = Number(stateObj.state).toString();
+    }
+  }
+}
+
 const FEATURES = {
   "xtool-job": XtoolJob,
   "xtool-peripherals": XtoolPeripherals,
@@ -1216,6 +1532,7 @@ const FEATURES = {
   "xtool-accessories": XtoolAccessories,
   "xtool-camera": XtoolCamera,
   "xtool-if2-fan": XtoolIf2Fan,
+  "xtool-focus": XtoolFocus,
 };
 const FEATURE_TAGS = Object.keys(FEATURES);
 
@@ -1279,9 +1596,16 @@ const FEATURE_FORMS = {
     data: (c) => ({ controls: c.controls ?? controlOptions(hass, entityId, ACCESSORIES).map((o) => o.value), show_names: !!c.show_names }),
   }),
   "custom:xtool-camera": (hass, entityId) => {
-    const labels = camerasOf(hass, entityId).map(([, label]) => label);
+    const cameras = camerasOf(hass, entityId);
+    const labels = cameras.map(([, label]) => label);
+    const keyOf = (id) => hass?.entities?.[id]?.translation_key;
+    const main = cameras.find(([id]) => keyOf(id) === "camera_main")?.[0];
+    const deep = cameras.find(([id]) => keyOf(id) === "camera_deep")?.[0];
+    const crops = main ? CROP_ROLES.filter((role) => cameraSetting(hass, main, role)) : [];
+    const perspective = deep && cameraSetting(hass, deep, "perspective");
+    const cropLabel = (role) => hass.states[cameraSetting(hass, main, role)]?.attributes.friendly_name ?? role;
     return {
-      schema: [
+      schema: (c) => [
         { name: "camera", label: "Camera", selector: { select: { mode: "dropdown", options: labels } } },
         {
           name: "camera_view", label: "Camera view",
@@ -1294,62 +1618,85 @@ const FEATURE_FORMS = {
           helper: "Along the bottom of the picture, in the Auto view, in the card's Time format (under Content).",
           selector: { boolean: {} },
         },
+        ...(crops.length ? [
+          {
+            name: "show_crop", label: "Main camera crop",
+            helper: "Below the main camera's picture: the part of the work surface it shows, as Home Assistant's number controls.",
+            selector: { boolean: {} },
+          },
+          ...(c.show_crop !== false ? [
+            { name: "crop_style", label: "Crop controls", selector: select([["buttons", "Buttons"], ["slider", "Sliders"]]) },
+            {
+              name: "crop_controls", label: "Crop values",
+              selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: crops.map((role) => ({ value: role, label: cropLabel(role) })) } },
+            },
+          ] : []),
+        ] : []),
+        ...(perspective ? [{
+          name: "show_perspective", label: "Deep camera perspective",
+          helper: "Below the deep camera's picture: Uncorrected, Rotated or Straightened, as Home Assistant's select buttons.",
+          selector: { boolean: {} },
+        }] : []),
       ],
       data: (c) => ({
         camera: labels.includes(c.camera) ? c.camera : labels[0], camera_view: c.camera_view === "live" ? "live" : "auto",
         show_switch: c.show_switch !== false, show_time: !!c.show_time,
+        ...(crops.length ? {
+          show_crop: c.show_crop !== false, crop_style: c.crop_style === "slider" ? "slider" : "buttons",
+          crop_controls: Array.isArray(c.crop_controls) ? c.crop_controls : crops,
+        } : {}),
+        ...(perspective ? { show_perspective: c.show_perspective !== false } : {}),
       }),
     };
   },
   "custom:xtool-if2-fan": (hass, entityId) => {
-    const fanSelect = if2Fan(hass, entityId);
-    const options = fanSelect ? hass.states[fanSelect]?.attributes.options ?? [] : [];
     const fan = sibling(hass, entityId, "if2_fan_entity");
+    const gears = sibling(hass, entityId, "if2_gear_select");
     const presets = fan ? hass.states[fan]?.attributes.preset_modes ?? [] : [];
+    const options = gears ? hass.states[gears]?.attributes.options ?? [] : [];
     return {
-      schema: (c) => [
+      // As in Home Assistant's own editors: every choice, unless customized
+      schema: (c) => (fan ? [
         {
-          name: "control", label: "Controls",
-          helper: "Home Assistant's features. Select options: every choice as a button, in one row. Fan: the Auto modes and the speeds (Off, 1 to 4), in two rows, as the tile card shows a fan.",
-          selector: select(IF2_CONTROLS),
+          name: "show_presets", label: "Auto modes",
+          helper: "Home Assistant's fan features, in one row: the Auto modes beside the speeds (Off and 1 to 4).",
+          selector: { boolean: {} },
         },
-        // As in Home Assistant's own editors: every choice, unless customized
-        ...(c.control === "fan" ? [
+        ...(c.show_presets !== false ? [
           { name: "preset_style", label: "Auto modes style", selector: select(PRESET_STYLES) },
           { name: "customize_modes", label: "Customize Auto modes", selector: { boolean: {} } },
           ...(Array.isArray(c.preset_modes) ? [{
-            name: "preset_modes", label: "Auto modes",
+            name: "preset_modes", label: "Auto modes shown",
             helper: "Which Auto modes show, and in what order.",
             selector: { select: { multiple: true, reorder: true, options: presets } },
           }] : []),
-        ] : [
-          { name: "customize_options", label: "Customize choices", selector: { boolean: {} } },
-          ...(Array.isArray(c.options) ? [{
-            name: "options", label: "Choices",
-            helper: "Which of the fan's choices show as buttons, and in what order.",
-            selector: { select: { multiple: true, reorder: true, options } },
-          }] : []),
-        ]),
-      ],
-      data: (c) => ({
-        control: c.control === "fan" ? "fan" : "select",
-        ...(c.control === "fan"
-          ? {
-            preset_style: c.preset_style === "dropdown" ? "dropdown" : "icons",
-            customize_modes: Array.isArray(c.preset_modes), ...(Array.isArray(c.preset_modes) ? { preset_modes: c.preset_modes } : {}),
-          }
-          : { customize_options: Array.isArray(c.options), ...(Array.isArray(c.options) ? { options: c.options } : {}) }),
-      }),
-      // Turning Customize on starts with every choice; off removes the list
+        ] : []),
+      ] : [
+        { name: "customize_options", label: "Customize choices", selector: { boolean: {} } },
+        ...(Array.isArray(c.options) ? [{
+          name: "options", label: "Choices",
+          helper: "Which of the fan's choices show as buttons, and in what order.",
+          selector: { select: { multiple: true, reorder: true, options } },
+        }] : []),
+      ]),
+      data: (c) => (fan
+        ? {
+          show_presets: c.show_presets !== false, preset_style: c.preset_style === "dropdown" ? "dropdown" : "icons",
+          customize_modes: Array.isArray(c.preset_modes), ...(Array.isArray(c.preset_modes) ? { preset_modes: c.preset_modes } : {}),
+        }
+        : { customize_options: Array.isArray(c.options), ...(Array.isArray(c.options) ? { options: c.options } : {}) }),
+      // Turning Customize on starts with every choice; off removes the list.
+      // control: the two-row choice of earlier versions, no longer used
       save: (v) => {
-        const { customize_options: customOptions, customize_modes: customModes, ...c } = v;
-        if (c.control === "fan") {
+        const { customize_options: customOptions, customize_modes: customModes, control, ...c } = v;
+        if (fan) {
           delete c.options;
-          if (customModes) c.preset_modes = Array.isArray(c.preset_modes) ? c.preset_modes : presets;
+          if (customModes && c.show_presets !== false) c.preset_modes = Array.isArray(c.preset_modes) ? c.preset_modes : presets;
           else delete c.preset_modes;
         } else {
           delete c.preset_style;
           delete c.preset_modes;
+          delete c.show_presets;
           if (customOptions) c.options = Array.isArray(c.options) ? c.options : options;
           else delete c.options;
         }
@@ -1357,6 +1704,30 @@ const FEATURE_FORMS = {
       },
     };
   },
+  "custom:xtool-focus": () => ({
+    schema: (c) => [
+      {
+        name: "manual", label: "Manual focus",
+        helper: "Step buttons: Home Assistant's number buttons, moving by the step below. Slider: Home Assistant's numeric input slider.",
+        selector: select(FOCUS_MANUAL),
+      },
+      ...((c.manual ?? "buttons") === "buttons" ? [{
+        name: "step", label: "Step (mm)", selector: { number: { mode: "box", min: 0.1, max: 50, step: 0.1 } },
+      }] : []),
+      { name: "show_input", label: "Box to type the height", selector: { boolean: {} } },
+      { name: "show_names", label: "Show names", selector: { boolean: {} } },
+    ],
+    data: (c) => ({
+      manual: FOCUS_MANUAL.some(([id]) => id === c.manual) ? c.manual : "buttons",
+      ...((c.manual ?? "buttons") === "buttons" ? { step: Number(c.step) > 0 ? Number(c.step) : FOCUS_STEP } : {}),
+      show_input: !!c.show_input, show_names: !!c.show_names,
+    }),
+    save: (v) => {
+      const c = { ...v };
+      if (c.manual !== "buttons") delete c.step;
+      return c;
+    },
+  }),
 };
 
 class XtoolFeatureEditor extends HTMLElement {
@@ -2632,8 +3003,9 @@ if (!customElements.get(CARD_TYPE)) {
     },
     {
       type: "xtool-if2-fan", name: "xTool SafetyPro IF2 fan",
-      isSupported: (hass, context) => isXtool(hass, context?.entity_id) && !!if2Fan(hass, context.entity_id), configurable: true,
+      isSupported: (hass, context) => isXtool(hass, context?.entity_id) && !!if2Control(hass, context.entity_id), configurable: true,
     },
+    { type: "xtool-focus", name: "xTool focus", isSupported: has(["focus_height", "autofocus"]), configurable: true },
   );
 
   window.customCards = window.customCards || [];
