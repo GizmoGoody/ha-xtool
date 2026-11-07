@@ -244,13 +244,14 @@
     check("camera", image?.cameraImage === "camera.f2_main" && image.entity === "camera.f2_main" && image.cameraView === "auto" && image.hass === hass,
       "Home Assistant's image element shows the main camera, in the Auto view");
     check("camera", !camera.shadowRoot.querySelector(".shot > img"), "no picture of the card's own");
-    check("camera", keysOf(camera).map((k) => k.textContent).join() === "Main,Deep,Reset,Open", "buttons for both cameras, and Reset and Open for the main camera's crop");
+    const topKeys = (el) => [...el.shadowRoot.querySelectorAll(".row:not(.perspective) .key")];
+    check("camera", topKeys(camera).map((k) => k.textContent).join() === "Main,Deep,Crop,Reset", "buttons for both cameras, and Crop and Reset for the main camera");
     keyNamed(camera, "camera.f2_deep").click();
     await wait(50);
     const shown = () => [...camera.shadowRoot.querySelectorAll(".shot hui-image")].filter((i) => !i.hidden);
     check("camera", shown().length === 1 && shown()[0].cameraImage === "camera.f2_deep" && image.hidden && image.isConnected,
       "switching shows the deep camera's image; the main camera's stays, hidden, with its picture");
-    check("camera", keysOf(camera).map((k) => k.textContent).join() === "Main,Deep", "no Reset or Open for the deep camera");
+    check("camera", topKeys(camera).map((k) => k.textContent).join() === "Main,Deep", "no Crop or Reset for the deep camera");
     keyNamed(camera, "camera.f2_main").click();
     await wait(50);
     check("camera", shown()[0] === image && camera.shadowRoot.querySelectorAll(".shot hui-image").length === 2, "and switching back shows the same image again");
@@ -263,7 +264,7 @@
     const live = addFeature({ type: "custom:xtool-camera", camera: "Deep", camera_view: "live", show_switch: false }, { hass });
     await wait(80);
     check("camera, live", live.shadowRoot.querySelector("hui-image").cameraView === "live" && live.shadowRoot.querySelector("hui-image").cameraImage === "camera.f2_deep"
-      && keysOf(live).length === 0, "the chosen camera, live, without buttons");
+      && topKeys(live).length === 0, "the chosen camera, live, without camera buttons");
 
     const offCamera = addFeature({ type: "custom:xtool-camera" }, { hass: makeHass({ "sensor.f2_status": "off" }) });
     await wait(60);
@@ -332,8 +333,8 @@
       && keyNamed(cropped, "crop").getAttribute("aria-pressed") === "false",
       `the second tap crops to the rectangle between them, in mm on the work surface, and Crop turns off (${JSON.stringify(lastCall(hass).data)})`);
     await wait(30);
-    const shown = [...cropped.shadowRoot.querySelectorAll(".shot hui-image")].filter((i) => !i.hidden);
-    check("camera, crop", shown.length === 1 && shown[0] !== before && !before.isConnected,
+    const visible = [...cropped.shadowRoot.querySelectorAll(".shot hui-image")].filter((i) => !i.hidden);
+    check("camera, crop", visible.length === 1 && visible[0] !== before && !before.isConnected,
       "the new photo is shown at once: a new image replaces the old one");
     keyNamed(cropped, "crop_reset").click();
     check("camera, crop", JSON.stringify(lastCall(hass).data) === JSON.stringify({ crop_width: 200, crop_height: 200, crop_center_x: 0, crop_center_y: 0, entity_id: "camera.f2_main" }),
