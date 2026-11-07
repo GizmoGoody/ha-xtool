@@ -80,13 +80,13 @@
     check("peripherals, chosen", keysOf(row).map((k) => k.dataset.key).join() === "red_dot,power,autofocus" && keyNamed(row, "red_dot").textContent === "Red dot"
       && keyNamed(row, "red_dot").querySelector("ha-icon"), "the chosen controls, in the chosen order; the earlier Show names gives icons and names");
     check("peripherals, chosen", keyNamed(row, "autofocus").disabled, "no Autofocus while a job runs");
-    row = addFeature({ type: "custom:xtool-peripherals", controls: ["red_dot"], display: "names" }, { hass });
-    await wait(50);
-    check("show", keyNamed(row, "red_dot").textContent === "Red dot" && !keyNamed(row, "red_dot").querySelector("ha-icon"), "Show: Names, without icons");
     keyNamed(row, "power").click();
     await wait(20);
     check("peripherals, chosen", asking()?.title === "Turn off power?" && hass.calls.length === 0, "Power asks first while a job runs");
     asking().answer(false);
+    row = addFeature({ type: "custom:xtool-peripherals", controls: ["red_dot"], display: "names" }, { hass });
+    await wait(50);
+    check("show", keyNamed(row, "red_dot").textContent === "Red dot" && !keyNamed(row, "red_dot").querySelector("ha-icon"), "Show: Names, without icons");
 
     // The fill lights stay buttons in the peripherals feature: on or off only
     hass = makeHass();
