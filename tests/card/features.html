@@ -174,7 +174,7 @@
     check("settings", !asking() && JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "switch", service: "turn_on", data: { entity_id: "switch.f2_auto_mode" } }),
       "auto mode turns on and off with a tap, without asking");
 
-    // Accessories: their own feature, hidden while the laser does not see them
+    // Accessories: their own feature, disabled while the laser does not see them
     row = addFeature({ type: "custom:xtool-accessories" }, { hass });
     await wait(50);
     check("accessories", keysOf(row).map((k) => k.dataset.key).join() === "if2_buzzer" && row.style.display === "", "the IF2 buzzer");
@@ -182,7 +182,7 @@
     check("accessories", lastCall(hass).data.entity_id === "switch.if2_buzzer", "found on the accessory device");
     row = addFeature({ type: "custom:xtool-accessories" }, { hass: makeHass({ "switch.if2_buzzer": "unavailable" }) });
     await wait(50);
-    check("accessories", row.style.display === "none", "hidden while the IF2 is unavailable");
+    check("accessories", row.style.display === "" && keyNamed(row, "if2_buzzer")?.disabled, "kept in place, disabled, while the IF2 is unavailable");
 
     // Camera: Home Assistant's own image element, with buttons to switch cameras
     hass = makeHass();
@@ -207,10 +207,8 @@
 
     const offCamera = addFeature({ type: "custom:xtool-camera" }, { hass: makeHass({ "sensor.f2_status": "off" }) });
     await wait(60);
-    check("camera, off", offCamera.style.display === "none", "hidden while the laser is off");
-    offCamera.hass = makeHass();
-    await wait(60);
-    check("camera, off", offCamera.style.display === "", "shown again once it is on");
+    check("camera, off", offCamera.style.display === "" && offCamera.shadowRoot.querySelector(".shot hui-image")?.cameraImage === "camera.f2_main",
+      "kept in place while the laser is off: Home Assistant's image element shows the camera as it is");
 
     // The updated time: when Home Assistant's image shows a new picture
     const imageLoad = (feature) => feature.shadowRoot.querySelector("hui-image").shadowRoot.querySelector("img").dispatchEvent(new Event("load"));
@@ -343,11 +341,12 @@
     hass = makeHass();
     const noFan = addFeature({ type: "custom:xtool-if2-fan" }, { hass, entityId: "sensor.p2_status" });
     await wait(50);
-    check("IF2 fan", !noFan.shadowRoot.querySelector("hui-card-feature") && noFan.style.display === "none", "nothing for a laser without an IF2");
-    const unseen = addFeature({ type: "custom:xtool-if2-fan" }, { hass: makeHass({ "fan.if2_fan": "unavailable" }) });
+    check("IF2 fan", !noFan.shadowRoot.querySelector("hui-card-feature"), "nothing for a laser without an IF2");
+    const unseenHass = makeHass({ "fan.if2_fan": "unavailable" });
+    const unseen = addFeature({ type: "custom:xtool-if2-fan" }, { hass: unseenHass });
     await wait(50);
-    check("IF2 fan, unavailable", unseen.style.display === "none" && !unseen.shadowRoot.querySelector("hui-card-feature"),
-      "hidden while the laser does not see the IF2, with no empty row");
+    check("IF2 fan, unavailable", unseen.style.display === "" && [...unseen.shadowRoot.querySelectorAll("hui-card-feature")].map((f) => f.feature.type).join() === "fan-preset-modes,fan-speed",
+      "kept in place while the laser does not see the IF2: Home Assistant's features, which show it disabled");
 
     // Focus: Autofocus, beside Home Assistant's number buttons for the Focus height
     hass = makeHass({ "sensor.f2_status": "idle" });
@@ -404,7 +403,29 @@
     check("focus, options", !focusOptions.querySelector("ha-form").schema.some((s) => s.name === "step"), "a step only for the buttons");
     const p2Focus = addFeature({ type: "custom:xtool-focus" }, { hass, entityId: "sensor.p2_status" });
     await wait(50);
-    check("focus", p2Focus.style.display === "none", "nothing for a laser without focus controls");
+    check("focus", keysOf(p2Focus).length === 0 && !p2Focus.shadowRoot.querySelector(".manual").children.length, "nothing for a laser without focus controls");
+    const offFocus = addFeature({ type: "custom:xtool-focus" }, { hass: makeHass({ "sensor.f2_status": "off", "button.f2_autofocus": "unavailable", "number.f2_focus_height": "unavailable" }) });
+    await wait(50);
+    check("focus, off", offFocus.style.display === "" && keyNamed(offFocus, "autofocus")?.disabled && offFocus.shadowRoot.querySelector(".manual ha-control-number-buttons")?.disabled,
+      "kept in place, disabled, while the laser is off");
+
+    // Job: the buttons chosen, in order
+    hass = makeHass({ "sensor.f2_status": "processing" });
+    job = addFeature({ type: "custom:xtool-job", controls: ["cancel", "start", "pause"] }, { hass });
+    await wait(50);
+    check("job, chosen", keysOf(job).map((k) => k.dataset.key).join() === "cancel,resume,pause" && keyNamed(job, "resume").disabled && !keyNamed(job, "pause").disabled,
+      "Cancel, Start and Pause apart, in the chosen order; Start is off while the job runs");
+    job = addFeature({ type: "custom:xtool-job", controls: ["start_pause"] }, { hass: makeHass({ "sensor.f2_status": "paused" }) });
+    await wait(50);
+    check("job, chosen", keysOf(job).map((k) => k.textContent).join() === "Resume", "Start / Pause alone: Resume while paused");
+    const jobOptions = document.createElement("xtool-feature-editor");
+    jobOptions.hass = hass;
+    jobOptions.context = { entity_id: "sensor.f2_status" };
+    jobOptions.setConfig({ type: "custom:xtool-job" });
+    const jobForm = jobOptions.querySelector("ha-form");
+    check("job, options", jobForm.data.controls.join() === "start_pause,cancel"
+      && jobForm.schema[0].selector.select.options.map((o) => o.label).join() === "Start / Pause,Start,Pause,Cancel" && jobForm.schema[0].selector.select.reorder,
+      "Buttons: Start / Pause and Cancel by default, from Start / Pause, Start, Pause and Cancel, in order");
 
     // A laser without the parts: nothing to show
     hass = makeHass();
