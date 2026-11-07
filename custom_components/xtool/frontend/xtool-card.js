@@ -1633,7 +1633,6 @@ class XtoolFocus extends XtoolFeature {
       .height.disabled { opacity: .45; cursor: default; }
       .height .unit { flex: none; padding-right: 8px; color: var(--xtool-text, var(--secondary-text-color)); }`;
     this.shadowRoot.prepend(style);
-    this.style.setProperty("--feature-color", NUMBER_ON);
     this._field = document.createElement("label");
     this._field.className = "height";
     this._field.innerHTML = `<input type="text" inputmode="decimal" enterkeyhint="done"><span class="unit"></span>`;
@@ -1697,6 +1696,9 @@ class XtoolFocus extends XtoolFeature {
 
   _render() {
     super._render();
+    if (!this._hass || !this._config || !this._context) return;
+    // In the number color, as Home Assistant's number features
+    this.style.setProperty("--feature-color", NUMBER_ON);
     const height = this._height;
     if (!height) {
       this._field.remove();
