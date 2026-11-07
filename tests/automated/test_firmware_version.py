@@ -80,6 +80,8 @@ def _identity(firmware: str = "", serial: str = ""):
         main_firmware=firmware,
         mac_address="",
         hardware_version="",
+        sku="",
+        machine_style="",
     )
 
 
