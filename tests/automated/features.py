@@ -34,6 +34,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "config_read_key_list": lambda: "CONFIG_READ_KEYS" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
     # Issue #4: the IF2 2.0 fan is one fan entity using Studio's setFanGearV3 commands
     "if2_fan_v3": lambda: "def fan_v3_manual_mcode" in (COMPONENT / "protocols" / "accessories" / "duct_fan.py").read_text(encoding="utf-8"),
+    # The IF2 2.0 fan has one Auto preset; each job sets the Auto speed
+    "if2_fan_single_auto": lambda: "FANV3_PRESET_AUTO" in (COMPONENT / "protocols" / "accessories" / "duct_fan.py").read_text(encoding="utf-8"),
     # Issue #4: IF2 device page shows its firmware (and the post-run sensor has a name)
     "accessory_firmware_on_device": lambda: "def _firmware_version" in (COMPONENT / "protocols" / "accessories" / "entities.py").read_text(encoding="utf-8"),
     # Issue #4: fill-light brightness converts through Studio's 1-100 percentage
