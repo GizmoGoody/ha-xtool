@@ -24,7 +24,7 @@ const F2 = [
   ["switch.f2_flame", "flame_alarm_v2", "on"],
   ["switch.f2_gap", "gap_check", "on"],
   ["switch.f2_moved", "stops_when_moved", "on"],
-  ["switch.f2_auto_mode", "md_mode", "off"],
+  ["switch.f2_access_control", "md_mode", "off"],
   ["switch.f2_beep", "beep_enable", "on"],
   ["switch.f2_sleep", "device_sleep", "off"],
   ["binary_sensor.f2_alarm", "alarm", "off"],

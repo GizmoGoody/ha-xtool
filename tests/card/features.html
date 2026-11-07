@@ -155,13 +155,16 @@
     hass = makeHass({ "switch.f2_moved": "off" });
     row = addFeature({ type: "custom:xtool-safety" }, { hass });
     await wait(50);
-    check("safety", keysOf(row).map((k) => k.dataset.key).join() === "flame_alarm,enclosure_stop,moved_stop,safety_key", "the three checks and the safety key");
+    check("safety", keysOf(row).map((k) => k.dataset.key).join() === "flame_alarm,enclosure_stop,moved_stop,safety_key,access_control",
+      "the three checks, the safety key and Access control");
     let keyOpened;
     row.addEventListener("hass-more-info", (ev) => (keyOpened = ev.detail.entityId));
     keyNamed(row, "safety_key").click();
     check("safety", keyOpened === "binary_sensor.f2_safety_key" && hass.calls.length === 0 && keyNamed(row, "safety_key").getAttribute("aria-pressed") === "true",
       "the safety key is shown (in: green); a tap opens it, nothing is switched");
-    check("safety", !keyNamed(row, "auto_mode"), "auto mode is not a safety check");
+    const access = keyNamed(row, "access_control");
+    check("safety, access control", !access.classList.contains("fill") && access.style.getPropertyValue("--c") === "var(--green-color)" && access.getAttribute("aria-pressed") === "false",
+      "Access control off is plain, not a red warning");
     const moved = keyNamed(row, "moved_stop"), flame = keyNamed(row, "flame_alarm");
     check("safety", moved.classList.contains("fill") && moved.style.getPropertyValue("--c") === "var(--red-color)" && moved.getAttribute("aria-pressed") === "false",
       "a check that is off is red");
@@ -179,16 +182,45 @@
     asking().answer(true);
     check("safety", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "switch", service: "turn_off", data: { entity_id: "switch.f2_flame" } }),
       "confirming turns it off");
+    keyNamed(row, "access_control").click();
+    await wait(20);
+    check("safety, access control", asking()?.text.includes("autofocus, framing and starting from the machine are turned off") && asking().confirm_text === "Turn on",
+      "turning Access control on asks, and says what it turns off");
+    asking().answer(true);
+    check("safety, access control", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "switch", service: "turn_on", data: { entity_id: "switch.f2_access_control" } }),
+      "confirming turns it on");
+
+    // While Access control is on, what it turns off is unavailable
+    hass = makeHass({ "switch.f2_access_control": "on" });
+    row = addFeature({ type: "custom:xtool-safety" }, { hass });
+    await wait(50);
+    check("access control on", keyNamed(row, "access_control").getAttribute("aria-pressed") === "true", "on is pressed");
+    keyNamed(row, "access_control").click();
+    await wait(20);
+    check("access control on", asking()?.confirm_text === "Turn off", "turning it off asks");
+    asking().answer(false);
+    row = addFeature({ type: "custom:xtool-peripherals" }, { hass });
+    await wait(50);
+    check("access control on", keyNamed(row, "autofocus").disabled && !keyNamed(row, "power").disabled, "Autofocus in Controls is unavailable, the rest is not");
+    job = addFeature({ type: "custom:xtool-job", controls: ["start", "pause", "cancel"] }, { hass });
+    await wait(50);
+    check("access control on", keyNamed(job, "resume").disabled && keyNamed(job, "pause").disabled && !keyNamed(job, "cancel").disabled,
+      "no Start (from the machine) and no Pause, as in Studio; Cancel stays");
+    job = addFeature({ type: "custom:xtool-job", controls: ["pause"] }, { hass: makeHass({ "switch.f2_access_control": "on", "sensor.f2_status": "processing" }) });
+    await wait(50);
+    check("access control on", keyNamed(job, "pause").disabled, "no Pause while a job runs");
+    job = addFeature({ type: "custom:xtool-job", controls: ["start"] }, { hass: makeHass({ "switch.f2_access_control": "on", "sensor.f2_status": "paused" }) });
+    await wait(50);
+    check("access control on", !keyNamed(job, "resume").disabled, "a paused job can still be resumed");
 
     // Settings: the laser's own
     hass = makeHass();
     row = addFeature({ type: "custom:xtool-settings" }, { hass });
     await wait(50);
-    check("settings", keysOf(row).map((k) => k.dataset.key).join() === "buzzer,if2_buzzer,device_sleep,auto_mode", "buzzer reminders, the IF2 buzzer, device sleep, auto mode");
-    keyNamed(row, "auto_mode").click();
+    check("settings", keysOf(row).map((k) => k.dataset.key).join() === "buzzer,if2_buzzer,device_sleep", "buzzer reminders, the IF2 buzzer, device sleep");
+    keyNamed(row, "device_sleep").click();
     await wait(20);
-    check("settings", !asking() && JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "switch", service: "turn_on", data: { entity_id: "switch.f2_auto_mode" } }),
-      "auto mode turns on and off with a tap, without asking");
+    check("settings", !asking() && lastCall(hass).domain === "switch", "a setting turns on and off with a tap, without asking");
 
     // No Accessories feature: the IF2 buzzer is in Configuration
     check("accessories", !window.customCardFeatures.some((f) => f.type === "xtool-accessories") && !customElements.get("xtool-accessories")
@@ -384,14 +416,17 @@
     check("IF2 fan, unavailable", unseen.style.display === "" && unseen.shadowRoot.querySelector("ha-control-select")?.disabled,
       "kept in place, disabled, while the laser does not see the IF2");
 
-    // Focus: - and + around a field to type the Focus height, in one row
+    // Focus: Autofocus, then - and + around a field to type the thickness, in one row
     hass = makeHass();
     let focus = addFeature({ type: "custom:xtool-focus" }, { hass });
     await wait(50);
     const field = () => focus.shadowRoot.querySelector(".row .height input");
-    check("focus", [...focus.shadowRoot.querySelector(".row").children].map((c) => c.dataset.key ?? c.className).join() === "down,height,up"
-      && field().value === "36.1" && focus.shadowRoot.querySelector(".height .unit").textContent === "mm" && !keyNamed(focus, "autofocus"),
-      "-, the height (36.1 mm) in a field, +; no Autofocus (it is in Controls)");
+    check("focus", [...focus.shadowRoot.querySelector(".row").children].map((c) => c.dataset.key ?? c.className).join() === "autofocus,down,height,up"
+      && field().value === "36.1" && focus.shadowRoot.querySelector(".height .unit").textContent === "mm",
+      "Autofocus, -, the thickness (36.1 mm) in a field, +");
+    keyNamed(focus, "autofocus").click();
+    check("focus", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "button", service: "press", data: { entity_id: "button.f2_autofocus" } }),
+      "Autofocus is pressed");
     keyNamed(focus, "up").click();
     check("focus", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "number", service: "set_value", data: { entity_id: "number.f2_focus_height", value: 36.2 } }),
       "+ moves the head up by the step (0.1 mm)");
@@ -399,32 +434,35 @@
     check("focus", lastCall(hass).data.value === 36, "- moves it down");
     field().value = "40,5";
     field().dispatchEvent(new Event("change"));
-    check("focus, typed", lastCall(hass).data.value === 40.5, "typing a height moves the head there (a decimal comma works)");
+    check("focus, typed", lastCall(hass).data.value === 40.5, "typing a thickness focuses there (a decimal comma works)");
     const calls = hass.calls.length;
     field().value = "abc";
     field().dispatchEvent(new Event("change"));
     check("focus, typed", hass.calls.length === calls && field().value === "36.1", "something that is not a number is put back");
-    focus = addFeature({ type: "custom:xtool-focus", step: 0.5 }, { hass: makeHass({ "number.f2_focus_height": "149.8" }) });
+    focus = addFeature({ type: "custom:xtool-focus", step: 0.5 }, { hass: makeHass({ "number.f2_focus_height": "149.95" }) });
     await wait(50);
     const focusHass = focus._hass;
     keyNamed(focus, "up").click();
-    check("focus", lastCall(focusHass).data.value === 150, "the step chosen, kept within the height's range");
+    check("focus", lastCall(focusHass).data.value === 150, "always 0.1 mm a step, kept within the height's range");
+    check("focus, options", !customElements.get("xtool-focus").getConfigElement
+      && !window.customCardFeatures.find((f) => f.type === "xtool-focus").configurable, "no options");
     focus = addFeature({ type: "custom:xtool-focus" }, { hass: makeHass({ "sensor.f2_engraving_lens": "small" }) });
     await wait(50);
-    check("focus, inner lens", keyNamed(focus, "up").disabled && keyNamed(focus, "down").disabled && field().disabled,
-      "with the inner engraving lens: -, + and the field are off, as in Studio");
-    const focusOptions = document.createElement("xtool-feature-editor");
-    focusOptions.hass = hass;
-    focusOptions.context = { entity_id: "sensor.f2_status" };
-    focusOptions.setConfig({ type: "custom:xtool-focus" });
-    check("focus, options", focusOptions.querySelector("ha-form").schema.map((s) => s.name).join() === "step"
-      && focusOptions.querySelector("ha-form").data.step === 0.1, "Step (0.1 mm by default)");
+    check("focus, inner lens", focus.style.display === "none" && keysOf(focus).length === 0,
+      "with the inner engraving lens there is no focusing, so the feature is not shown");
+    focus = addFeature({ type: "custom:xtool-focus" }, { hass: makeHass({ "sensor.f2_status": "processing" }) });
+    await wait(50);
+    check("focus, busy", keyNamed(focus, "autofocus").disabled && !keyNamed(focus, "up").disabled, "no Autofocus while a job runs");
+    focus = addFeature({ type: "custom:xtool-focus" }, { hass: makeHass({ "switch.f2_access_control": "on" }) });
+    await wait(50);
+    check("focus, access control", keyNamed(focus, "autofocus").disabled && !keyNamed(focus, "up").disabled && !field().disabled,
+      "no Autofocus while Access control is on; the thickness can still be set");
     const p2Focus = addFeature({ type: "custom:xtool-focus" }, { hass, entityId: "sensor.p2_status" });
     await wait(50);
     check("focus", keysOf(p2Focus).length === 0 && !p2Focus.shadowRoot.querySelector(".height input"), "nothing for a laser without focus controls");
     const offFocus = addFeature({ type: "custom:xtool-focus" }, { hass: makeHass({ "sensor.f2_status": "off", "number.f2_focus_height": "unavailable" }) });
     await wait(50);
-    check("focus, off", offFocus.style.display === "" && keyNamed(offFocus, "up")?.disabled && offFocus.shadowRoot.querySelector(".height input")?.disabled,
+    check("focus, off", offFocus.style.display === "" && keyNamed(offFocus, "up")?.disabled && keyNamed(offFocus, "autofocus")?.disabled && offFocus.shadowRoot.querySelector(".height input")?.disabled,
       "kept in place, disabled, while the laser is off");
 
     // Job: the buttons chosen, in order
