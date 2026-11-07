@@ -2382,6 +2382,15 @@ class WSV2Protocol(XtoolProtocol):
         # ``/v1/device/runningStatus`` (same response shape).
         await self._poll_runtime_status(state)
 
+        # A sleeping laser wakes when it is asked for its settings: an
+        # F2 Ultra UV left Sleep 0.35 s after a configs read, while the
+        # runtime, peripheral and accessory reads left it asleep. Studio
+        # does not read the settings of a sleeping laser either. So the
+        # slow reads wait while it sleeps, and run on the first poll
+        # after it wakes (the counter starts again at 0).
+        asleep = self._latest.get("status") == XtoolStatus.SLEEPING
+        slow = not asleep and self._poll_counter % 6 == 0
+
         # 2. Peripheral aggregate via /v1/peripheral/param?type=...
         # Build the type list dynamically from the model's capability
         # flags so we don't hammer the device with queries it has no
@@ -2486,21 +2495,21 @@ class WSV2Protocol(XtoolProtocol):
         # every 30 s at 5 s base interval). Push events keep the values
         # fresh between polls. ``_poll_configs`` is overridable: P2S V2
         # firmware uses ``/v1/config/get`` with a kv-list body.
-        if self._poll_counter % 6 == 0:
+        if slow:
             await self._poll_configs()
         # The focus height is read on the same slow cadence, and also on
         # every poll until it is known (after each connect), so it shows
         # soon after the laser powers on.
         if model is not None and getattr(model, "has_focus_control", False) and (
-            self._poll_counter % 6 == 0 or not self._focus_known
+            slow or (not asleep and not self._focus_known)
         ):
             await self._poll_focus()
         if getattr(model, "has_uv_laser_status", False) and (
-            self._poll_counter % 6 == 0 or not self._status_reads_known
+            slow or (not asleep and not self._status_reads_known)
         ):
             await self._poll_status_reads()
         if getattr(model, "has_laser_info", False) and (
-            self._poll_counter % 6 == 0 or not self._laser_info_known
+            slow or (not asleep and not self._laser_info_known)
         ):
             await self._poll_laser_info()
 
@@ -2508,7 +2517,8 @@ class WSV2Protocol(XtoolProtocol):
         # poll once cached as unsupported (GS006, P2S, DT001 don't
         # expose ``/v1/device/statistics``).
         if (
-            self._poll_counter % 12 == 0
+            not asleep
+            and self._poll_counter % 12 == 0
             and self.PATH_STATISTICS not in self._unsupported_endpoints
         ):
             try:
@@ -2608,7 +2618,7 @@ class WSV2Protocol(XtoolProtocol):
         # arrive via push frames `/temperature/alarm`, `/laser_head/alarm`
         # etc.).
         if (
-            self._poll_counter % 6 == 0
+            slow
             and self.PATH_ALARMS not in self._unsupported_endpoints
         ):
             try:
@@ -2630,7 +2640,7 @@ class WSV2Protocol(XtoolProtocol):
             elif isinstance(alarms, list):
                 self._latest["alarm_present"] = bool(alarms)
 
-        self._poll_counter += 1
+        self._poll_counter = 0 if asleep else self._poll_counter + 1
 
         # 7. Push-cached values (overrule poll if newer)
         self._apply_latest_to_state(state)
