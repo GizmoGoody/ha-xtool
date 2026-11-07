@@ -738,8 +738,13 @@ class XtoolFeature extends HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// Feature: the job
+// Feature: the job. The buttons are chosen in the options, in order:
+// Start (Resume when paused), Start / Pause (Pause while the job runs),
+// Pause and Cancel. Start / Pause and Cancel by default.
 // ---------------------------------------------------------------------------
+const JOB_CONTROLS = [["start_pause", "Start / Pause"], ["start", "Start"], ["pause", "Pause"], ["cancel", "Cancel"]];
+const JOB_DEFAULT = ["start_pause", "cancel"];
+
 class XtoolJob extends XtoolFeature {
   static label = "Job";
 
@@ -758,19 +763,18 @@ class XtoolJob extends XtoolFeature {
     const pause = sibling(hass, id, "pause"), resume = sibling(hass, id, "resume"), cancel = sibling(hass, id, "cancel");
     const press = (entityId) => () => hass.callService("button", "press", { entity_id: entityId });
     const running = phase === "processing" || phase === "framing";
-    const buttons = [];
-    if (running) {
-      buttons.push({ key: "pause", label: "Pause the job", icon: "mdi:pause", text: "Pause", color: "amber",
-        disabled: !this._usable(pause) || phase !== "processing", action: press(pause) });
-    } else {
-      const paused = phase === "paused";
-      buttons.push({ key: "resume", label: paused ? "Resume the job" : "Start the job", icon: "mdi:play",
-        text: paused ? "Resume" : "Start", color: "green",
-        disabled: !this._usable(resume) || ["off", "sleeping", "firmware"].includes(phase), action: press(resume) });
-    }
-    buttons.push({ key: "cancel", label: "Cancel the job", icon: "mdi:stop", text: "Cancel", color: "red",
-      disabled: !this._usable(cancel) || !(running || phase === "paused"), action: () => this._cancel(cancel) });
-    return buttons;
+    const paused = phase === "paused";
+    const pauseButton = { key: "pause", label: "Pause the job", icon: "mdi:pause", text: "Pause", color: "amber",
+      disabled: !this._usable(pause) || phase !== "processing", action: press(pause) };
+    const startButton = { key: "resume", label: paused ? "Resume the job" : "Start the job", icon: "mdi:play",
+      text: paused ? "Resume" : "Start", color: "green",
+      disabled: !this._usable(resume) || running || ["off", "sleeping", "firmware"].includes(phase), action: press(resume) };
+    const cancelButton = { key: "cancel", label: "Cancel the job", icon: "mdi:stop", text: "Cancel", color: "red",
+      disabled: !this._usable(cancel) || !(running || paused), action: () => this._cancel(cancel) };
+    const controls = Array.isArray(this._config.controls) ? this._config.controls : JOB_DEFAULT;
+    return controls.map((control) => ({
+      start_pause: running ? pauseButton : startButton, start: startButton, pause: pauseButton, cancel: cancelButton,
+    })[control]).filter((b) => b && sibling(hass, id, { pause: "pause", resume: "resume", cancel: "cancel" }[b.key]));
   }
 
   _cancel(entityId) {
@@ -1521,8 +1525,15 @@ const controlOptions = (hass, entityId, list) =>
 
 const FEATURE_FORMS = {
   "custom:xtool-job": () => ({
-    schema: [{ name: "confirm_cancel", label: "Ask before cancelling a job", selector: { boolean: {} } }],
-    data: (c) => ({ confirm_cancel: c.confirm_cancel !== false }),
+    schema: [
+      {
+        name: "controls", label: "Buttons",
+        helper: "In order. Start / Pause is one button: Pause while the job runs, Start (or Resume) otherwise.",
+        selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: JOB_CONTROLS.map(([value, label]) => ({ value, label })) } },
+      },
+      { name: "confirm_cancel", label: "Ask before cancelling a job", selector: { boolean: {} } },
+    ],
+    data: (c) => ({ controls: Array.isArray(c.controls) ? c.controls : JOB_DEFAULT, confirm_cancel: c.confirm_cancel !== false }),
   }),
   "custom:xtool-peripherals": (hass, entityId) => ({
     schema: [
