@@ -7,12 +7,12 @@
  * - custom:xtool-peripherals  power, the exhaust fan, fill lights (on or off), red dot
  *                             and other parts; a fan's icon turns while it runs
  * - custom:xtool-fill-light   one fill light's brightness: the tile card's own light brightness feature
- * - custom:xtool-safety       the safety checks; turning one off asks first
- * - custom:xtool-settings     the Configuration switches: buzzer reminders, the IF2 buzzer, device sleep, auto mode
+ * - custom:xtool-safety       the safety checks, the safety key and Access control; turning a check off asks first
+ * - custom:xtool-settings     the Configuration switches: buzzer reminders, the IF2 buzzer, device sleep
  * - custom:xtool-camera       a camera, shown by Home Assistant's own image element, with buttons to switch;
  *                             tap two corners on the main camera's picture to crop it; the deep camera's perspective
  * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: Off, Auto and its speeds in one control
- * - custom:xtool-focus        the focus height in Home Assistant's number buttons; tap the height to type one
+ * - custom:xtool-focus        Autofocus, then - and + around the thickness to focus on, which can be typed
  * Each finds its entities on the same device as the card's entity, or on
  * the devices connected to it (the cameras' devices, the IF2's).
  *
@@ -65,7 +65,7 @@ const ROLES = {
   flame_alarm: [["flame_alarm_v2", "flame_alarm"], ["switch"]],
   enclosure_stop: [["gap_check"], ["switch"]],
   moved_stop: [["stops_when_moved", "move_stop"], ["switch"]],
-  auto_mode: [["md_mode"], ["switch"]],
+  access_control: [["md_mode"], ["switch"]],
   alarm: [["alarm"], ["binary_sensor"]],
   cover_open: [["cover_open"], ["binary_sensor"]],
   safety_key: [["machine_lock"], ["binary_sensor"]],
@@ -585,7 +585,7 @@ const PART_ATTRIBUTES = [
   ["power", "power", "Power on", "Power off"],
   ["buzzer_reminders", "buzzer", "Buzzer on", "Buzzer off"],
   ["device_sleep", "device_sleep", "Sleep on", "Sleep off"],
-  ["auto_mode", "auto_mode", "Auto mode on", "Auto mode off"],
+  ["access_control", "access_control", "Access control on", "Access control off"],
   ["safety_key", "safety_key", "Safety key in", "Safety key out"],
   ["if2_buzzer", "if2_buzzer", "IF2 buzzer on", "IF2 buzzer off"],
 ];
@@ -877,11 +877,14 @@ class XtoolJob extends XtoolFeature {
     const press = (entityId) => () => hass.callService("button", "press", { entity_id: entityId });
     const running = phase === "processing" || phase === "framing";
     const paused = phase === "paused";
+    // With Access control on, Studio offers no Pause and no start from the machine
+    const controlled = accessControlOn(hass, id);
     const pauseButton = { key: "pause", label: "Pause the job", icon: "mdi:pause", text: "Pause", color: "amber",
-      disabled: !this._usable(pause) || phase !== "processing", action: press(pause) };
+      disabled: !this._usable(pause) || phase !== "processing" || controlled, action: press(pause) };
     const startButton = { key: "resume", label: paused ? "Resume the job" : "Start the job", icon: "mdi:play",
       text: paused ? "Resume" : "Start", color: "green",
-      disabled: !this._usable(resume) || running || ["off", "sleeping", "firmware"].includes(phase), action: press(resume) };
+      disabled: !this._usable(resume) || running || ["off", "sleeping", "firmware"].includes(phase) || (controlled && !paused),
+      action: press(resume) };
     const cancelButton = { key: "cancel", label: "Cancel the job", icon: "mdi:stop", text: "Cancel", color: "red",
       disabled: !this._usable(cancel) || !(running || paused), action: () => this._cancel(cancel) };
     const controls = Array.isArray(this._config.controls) ? this._config.controls : JOB_DEFAULT;
@@ -933,7 +936,6 @@ const SETTINGS = [
   { role: "buzzer", label: "Buzzer reminders", icon: "mdi:volume-high", color: "teal" },
   { role: "if2_buzzer", label: "IF2 buzzer", icon: "mdi:bell-ring", color: "teal" },
   { role: "device_sleep", label: "Device sleep", icon: "mdi:power-sleep", color: "indigo" },
-  { role: "auto_mode", label: "Auto mode (access control)", icon: "mdi:key-variant", color: "deep-purple" },
 ];
 
 /** A row of on/off buttons for the parts in the class's list. */
@@ -952,7 +954,8 @@ class XtoolToggles extends XtoolFeature {
       const on = hass.states[entityId]?.state === "on";
       return {
         key: item.role, label: item.label, icon: item.icon, text: item.label,
-        color: item.color, pressed: item.press ? false : on, disabled: !this._usable(entityId) || (item.busy && busy),
+        color: item.color, pressed: item.press ? false : on,
+        disabled: !this._usable(entityId) || (item.busy && busy) || (item.role === "autofocus" && accessControlOn(hass, id)),
         // A fan that is on turns (on by default); these fans have no speed
         spin: item.fan && on && this._config.animate_fan !== false ? 1.2 : undefined,
         action: () => this._toggle(item, entityId, on),
@@ -1427,7 +1430,21 @@ const SAFETY = [
     warning: "The laser keeps working if the machine is moved or tilted during a job.",
   },
   { role: "safety_key", label: "Safety key", icon: "mdi:key", indicator: true },
+  {
+    role: "access_control", label: "Access control", icon: "mdi:shield-key", optional: true,
+    warning: "Jobs no longer need the access control check before they start.",
+    enabling: "Each job then needs the access control check before it starts, and autofocus, framing and starting from the machine are turned off.",
+  },
 ];
+
+/**
+ * Whether Access control is on: autofocus, framing and starting a job from
+ * the machine are then off, as in Studio, so the card shows them unavailable.
+ */
+function accessControlOn(hass, entityId) {
+  const control = sibling(hass, entityId, "access_control");
+  return !!control && hass.states[control]?.state === "on";
+}
 
 class XtoolSafety extends XtoolFeature {
   static label = "Safety";
@@ -1451,9 +1468,10 @@ class XtoolSafety extends XtoolFeature {
         label: item.indicator
           ? `${item.label}: ${on ? "in" : state === "off" ? "removed" : "unknown"}`
           : `${item.label}: ${on ? "on" : state === "off" ? "off" : "unknown"}`,
-        // On (the key in): green. Off (the key removed): red, so it stands out
-        text: item.label, color: state === "off" ? "red" : "green", pressed: on,
-        fill: state === "off", disabled: !this._usable(entityId),
+        // On (the key in): green. Off (the key removed): red, so it stands out.
+        // Access control is optional: off is not a warning
+        text: item.label, color: item.optional ? "green" : state === "off" ? "red" : "green", pressed: on,
+        fill: !item.optional && state === "off", disabled: !this._usable(entityId),
         action: () => this._toggle(item, entityId, on),
       };
     });
@@ -1464,7 +1482,8 @@ class XtoolSafety extends XtoolFeature {
       fire(this, "hass-more-info", { entityId });
       return;
     }
-    const confirmation = on ? { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, confirm_text: "Turn off" } : undefined;
+    const confirmation = on ? { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, confirm_text: "Turn off" }
+      : item.enabling ? { title: `Turn on ${item.label.toLowerCase()}?`, text: item.enabling, confirm_text: "Turn on" } : undefined;
     performAction(this, `switch.${on ? "turn_off" : "turn_on"}`, entityId, confirmation);
   }
 }
@@ -1601,22 +1620,26 @@ class XtoolIf2Fan extends HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// Feature: focus (F2 Ultra UV), in one half-width row: - and + buttons that
-// move the head by the step chosen, around the Focus height in a field you
-// can type in (Enter or leaving the field moves the head there). Each change
-// moves the head (the laser refuses while it works; Home Assistant shows
-// why). Off with the inner engraving lens, as in Studio. Autofocus is in the
-// Controls feature.
+// Feature: focus (F2 Ultra UV), in one half-width row: Autofocus, then - and
+// + (0.1 mm a step) around the material thickness the laser is focused on,
+// in a field: type a thickness and press Enter to focus there, as Studio's
+// manual focus does. Each change moves the head (the laser refuses while it
+// works; Home Assistant shows why). Unavailable while the laser is off, as
+// Home Assistant's features are. With the inner engraving lens there is no
+// focusing (the job sets the height, as in Studio), so the feature shows
+// nothing.
 // ---------------------------------------------------------------------------
 const FOCUS_STEP = 0.1;
 
 class XtoolFocus extends XtoolFeature {
+  static display = "icons";
   static label = "Focus";
 
   constructor() {
     super();
     const style = document.createElement("style");
     style.textContent = `
+      .row { gap: 6px; }
       .row .key { flex: none; width: var(--feature-height, 42px); padding: 0; }
       .height {
         position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 2px;
@@ -1658,10 +1681,6 @@ class XtoolFocus extends XtoolFeature {
     return { type: "custom:xtool-focus" };
   }
 
-  static getConfigElement() {
-    return document.createElement("xtool-feature-editor");
-  }
-
   get _height() {
     return sibling(this._hass, this._entityId, "focus_height");
   }
@@ -1677,18 +1696,25 @@ class XtoolFocus extends XtoolFeature {
     return !["small", "none"].includes(state);
   }
 
-  get _step() {
-    return Number(this._config.step) > 0 ? Number(this._config.step) : FOCUS_STEP;
-  }
-
   _buttons() {
-    const height = this._height, stateObj = height ? this._hass.states[height] : undefined;
-    if (!height) return [];
+    const hass = this._hass, id = this._entityId;
+    const height = this._height, stateObj = height ? hass.states[height] : undefined;
+    if (!height || !this._surfaceLens) return [];
     const value = Number(stateObj?.state);
-    const usable = this._usable(height) && this._surfaceLens && Number.isFinite(value);
+    const usable = this._usable(height) && Number.isFinite(value);
     const { min = 0, max = 150 } = stateObj?.attributes ?? {};
-    const step = this._step;
+    const step = FOCUS_STEP;
+    const autofocus = sibling(hass, id, "autofocus");
+    const status = statusOf(hass, id);
+    // As in Studio: no Autofocus while the laser works, frames, focuses or is
+    // off, or while Access control is on
+    const busy = BUSY_PHASES.includes(phaseOf(status ? hass.states[status]?.state : undefined));
     return [
+      ...(autofocus ? [{
+        key: "autofocus", label: "Autofocus", icon: "mdi:image-filter-center-focus", color: "primary",
+        disabled: !this._usable(autofocus) || busy || accessControlOn(hass, id),
+        action: () => hass.callService("button", "press", { entity_id: autofocus }),
+      }] : []),
       { key: "down", label: "Decrease", icon: "mdi:minus", disabled: !usable || value <= min, action: () => this._setHeight(Math.round((value - step) * 10) / 10) },
       { key: "up", label: "Increase", icon: "mdi:plus", disabled: !usable || value >= max, action: () => this._setHeight(Math.round((value + step) * 10) / 10) },
     ];
@@ -1700,14 +1726,18 @@ class XtoolFocus extends XtoolFeature {
     // In the number color, as Home Assistant's number features
     this.style.setProperty("--feature-color", NUMBER_ON);
     const height = this._height;
-    if (!height) {
+    // The inner engraving lens: no focusing, so nothing is shown
+    this.style.display = height && !this._surfaceLens ? "none" : "";
+    if (!height || !this._surfaceLens) {
       this._field.remove();
       return;
     }
-    if (this._field.parentNode !== this._row || this._row.children[1] !== this._field) this._row.insertBefore(this._field, this._row.children[1] ?? null);
+    // The field goes between - and +
+    const up = this._row.querySelector('[data-key="up"]');
+    if (this._field.nextSibling !== up) this._row.insertBefore(this._field, up);
     const stateObj = this._hass.states[height];
     const value = Number(stateObj?.state);
-    const usable = this._usable(height) && this._surfaceLens;
+    const usable = this._usable(height);
     this._shown = Number.isFinite(value) ? String(value) : "";
     this._input.disabled = !usable;
     this._field.classList.toggle("disabled", !usable);
@@ -1878,15 +1908,6 @@ const FEATURE_FORMS = {
       },
     };
   },
-  "custom:xtool-focus": () => ({
-    schema: [
-      {
-        name: "step", label: "Step (mm)", helper: "How far - and + move the head. Tap the height to type one.",
-        selector: { number: { mode: "box", min: 0.1, max: 50, step: 0.1 } },
-      },
-    ],
-    data: (c) => ({ step: Number(c.step) > 0 ? Number(c.step) : FOCUS_STEP }),
-  }),
 };
 
 class XtoolFeatureEditor extends HTMLElement {
@@ -3195,7 +3216,7 @@ if (!customElements.get(CARD_TYPE)) {
       type: "xtool-if2-fan", name: "xTool SafetyPro IF2 fan",
       isSupported: (hass, context) => isXtool(hass, context?.entity_id) && !!if2Control(hass, context.entity_id), configurable: true,
     },
-    { type: "xtool-focus", name: "xTool focus", isSupported: has(["focus_height"]), configurable: true },
+    { type: "xtool-focus", name: "xTool focus", isSupported: has(["focus_height"]) },
   );
 
   window.customCards = window.customCards || [];
