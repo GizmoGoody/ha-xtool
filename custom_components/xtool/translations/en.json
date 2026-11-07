@@ -618,6 +618,9 @@
       }
     },
     "number": {
+      "auto_power_off": {
+        "name": "Auto power-off"
+      },
       "camera_thumbnail_refresh": {
         "name": "Camera thumbnail refresh interval"
       },

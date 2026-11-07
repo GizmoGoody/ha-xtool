@@ -72,6 +72,11 @@
         "state": { "off": "mdi:laptop-off" }
       }
     },
+    "number": {
+      "auto_power_off": {
+        "default": "mdi:timer-off-outline"
+      }
+    },
     "select": {
       "perspective": {
         "default": "mdi:perspective-less",

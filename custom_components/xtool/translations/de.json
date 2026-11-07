@@ -576,6 +576,9 @@
       }
     },
     "number": {
+      "auto_power_off": {
+        "name": "Automatisch ausschalten"
+      },
       "camera_thumbnail_refresh": {
         "name": "Kamera Vorschaubild-Aktualisierungsintervall"
       },

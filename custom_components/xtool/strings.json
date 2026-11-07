@@ -239,6 +239,7 @@
       "md_mode": { "name": "Access control" }
     },
     "number": {
+      "auto_power_off": { "name": "Auto power-off" },
       "focus_height": { "name": "Focus height" },
       "camera_thumbnail_refresh": { "name": "Camera thumbnail refresh interval" },
       "thumbnail_refresh": { "name": "Thumbnail refresh interval" },
