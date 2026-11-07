@@ -310,21 +310,23 @@ function lightOf(hass, entityId, state) {
 // Drawn on the tile card's icon, from inside the tile card (as the window's
 // title text is); if Home Assistant renames that part, there is no ring. The
 // tile card gives its icon 6 px of padding around the 36 px circle, for a
-// larger tap area; the ring is 2 px wide, inside that circle's edge (an
-// outline drawn inward, over the icon's background), so it is never larger
-// than the icon.
+// larger tap area; the ring is 3 px wide, inside that circle's edge, so it
+// is never larger than the icon. It is drawn over the icon, as the last
+// thing in it: an outline is drawn under the state picture, whose shading
+// darkens it.
 const ICON_PADDING = "6px";
 const LIGHT_SHEET = `
-  :host([xtool-light]) ha-tile-icon {
-    border-radius: 50%;
-    outline: 2px solid var(--xtool-light); outline-offset: calc(-2px - ${ICON_PADDING});
+  :host([xtool-light]) ha-tile-icon { position: relative; }
+  :host([xtool-light]) ha-tile-icon::after {
+    content: ""; position: absolute; inset: ${ICON_PADDING}; z-index: 1; pointer-events: none;
+    border-radius: 50%; border: 3px solid var(--xtool-light);
   }
-  :host([xtool-light="slow"]) ha-tile-icon { animation: xtool-light-blink 2s step-end infinite; }
-  :host([xtool-light="fast"]) ha-tile-icon { animation: xtool-light-blink .6s step-end infinite; }
-  :host([xtool-light="breathe"]) ha-tile-icon { animation: xtool-light-breathe 3s ease-in-out infinite; }
-  @keyframes xtool-light-blink { 50% { outline-color: transparent; } }
-  @keyframes xtool-light-breathe { 50% { outline-color: transparent; } }
-  @media (prefers-reduced-motion: reduce) { :host([xtool-light]) ha-tile-icon { animation: none; } }`;
+  :host([xtool-light="slow"]) ha-tile-icon::after { animation: xtool-light-blink 2s step-end infinite; }
+  :host([xtool-light="fast"]) ha-tile-icon::after { animation: xtool-light-blink .6s step-end infinite; }
+  :host([xtool-light="breathe"]) ha-tile-icon::after { animation: xtool-light-breathe 3s ease-in-out infinite; }
+  @keyframes xtool-light-blink { 50% { border-color: transparent; } }
+  @keyframes xtool-light-breathe { 50% { border-color: transparent; } }
+  @media (prefers-reduced-motion: reduce) { :host([xtool-light]) ha-tile-icon::after { animation: none; } }`;
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -1610,8 +1612,8 @@ class XtoolIf2Fan extends XtoolFeature {
 }
 
 // ---------------------------------------------------------------------------
-// Feature: focus (F2 Ultra UV), in one half-width row: Autofocus, then - and
-// + (0.1 mm a step) around the material thickness the laser is focused on,
+// Feature: focus (F2 Ultra UV), in one half-width row: Autofocus, then down
+// and up (0.1 mm a step) around the material thickness the laser is focused on,
 // in a field: type a thickness and press Enter to focus there, as Studio's
 // manual focus does. Each change moves the head (the laser refuses while it
 // works; Home Assistant shows why). Unavailable while the laser is off, as
@@ -1629,8 +1631,9 @@ class XtoolFocus extends XtoolFeature {
     super();
     const style = document.createElement("style");
     style.textContent = `
-      .row { gap: 6px; }
-      .row .key { flex: none; width: var(--feature-height, 42px); padding: 0; }
+      /* Each button as wide as one of five in a row (as in Controls), so the
+         field has the rest */
+      .row .key { flex: none; width: calc((100% - 4 * var(--feature-button-spacing, 12px)) / 5); padding: 0; }
       .height {
         position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 2px;
         border-radius: var(--feature-border-radius, 12px); overflow: hidden; cursor: text;
@@ -1703,8 +1706,8 @@ class XtoolFocus extends XtoolFeature {
         disabled: !this._usable(autofocus) || busy || accessControlOn(hass, id),
         action: () => hass.callService("button", "press", { entity_id: autofocus }),
       }] : []),
-      { key: "down", label: "Decrease", icon: "mdi:minus", disabled: !usable || value <= min, action: () => this._setHeight(Math.round((value - step) * 10) / 10) },
-      { key: "up", label: "Increase", icon: "mdi:plus", disabled: !usable || value >= max, action: () => this._setHeight(Math.round((value + step) * 10) / 10) },
+      { key: "down", label: "Decrease", icon: "mdi:arrow-down", disabled: !usable || value <= min, action: () => this._setHeight(Math.round((value - step) * 10) / 10) },
+      { key: "up", label: "Increase", icon: "mdi:arrow-up", disabled: !usable || value >= max, action: () => this._setHeight(Math.round((value + step) * 10) / 10) },
     ];
   }
 
@@ -1720,7 +1723,7 @@ class XtoolFocus extends XtoolFeature {
       this._field.remove();
       return;
     }
-    // The field goes between - and +
+    // The field goes between down and up
     const up = this._row.querySelector('[data-key="up"]');
     if (this._field.nextSibling !== up) this._row.insertBefore(this._field, up);
     const stateObj = this._hass.states[height];
