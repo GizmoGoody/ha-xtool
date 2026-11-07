@@ -108,3 +108,16 @@ def test_the_device_page_shows_the_sku(hass, config_entry) -> None:
     assert XtoolEntity(coordinator).device_info["model_id"] == "P0101000393"
     coordinator.sku = "P0101000396251108100069"
     assert XtoolEntity(coordinator).device_info["model_id"] == "P0101000396 (EU)"
+
+
+def test_disabled_by_default(hass, config_entry) -> None:
+    from custom_components.xtool.protocols.ws_v2.entities import build_wsv2_switches
+
+    from .conftest import build_coordinator
+
+    coordinator = build_coordinator(hass, _model("F2UltraUV"))
+    coordinator.sku = "P0101000396251108100069"
+    switch = next(e for e in build_wsv2_switches(coordinator) if e.translation_key == "md_mode")
+    assert switch.entity_registry_enabled_default is False
+    coordinator.sku = "P0101000393251108100069"
+    assert not [e for e in build_wsv2_switches(coordinator) if e.translation_key == "md_mode"]
