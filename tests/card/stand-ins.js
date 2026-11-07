@@ -4,8 +4,9 @@
  *
  * They use Home Assistant's element names and structure. The hass object
  * holds two lasers as the integration registers them: an F2 Ultra UV (WS-V2,
- * no progress sensor) with a SafetyPro IF2 2.0 on an accessory device, and
- * a P2 with a progress sensor.
+ * no progress sensor), with each camera and its settings on its own device
+ * and a SafetyPro IF2 2.0 on an accessory device, and a P2 with a progress
+ * sensor.
  */
 
 // [entity_id, translation_key, state, attributes]
@@ -29,12 +30,22 @@ const F2 = [
   ["binary_sensor.f2_alarm", "alarm", "off"],
   ["binary_sensor.f2_safety_key", "machine_lock", "on"],
   ["sensor.f2_task_time", "task_time", "1132"],
-  ["camera.f2_main", "camera_main", "idle", { entity_picture: "/api/camera_proxy/camera.f2_main?token=a" }],
-  ["camera.f2_deep", "camera_deep", "idle", { entity_picture: "/api/camera_proxy/camera.f2_deep?token=b" }],
   ["update.f2_firmware", "firmware", "off"],
+  ["number.f2_focus_height", "focus_height", "36.1", { min: 0, max: 150, step: 0.1, unit_of_measurement: "mm", mode: "box" }],
+  ["button.f2_autofocus", "autofocus", "unknown"],
+];
+const F2_MAIN_CAMERA = [
+  ["camera.f2_main", "camera_main", "idle", { entity_picture: "/api/camera_proxy/camera.f2_main?token=a" }],
+  ["number.f2_main_crop_width", "crop_width", "200", { min: 0, max: 460, step: 1, unit_of_measurement: "mm", icon: "mdi:arrow-expand-horizontal" }],
+  ["number.f2_main_crop_height", "crop_height", "200", { min: 0, max: 460, step: 1, unit_of_measurement: "mm", icon: "mdi:arrow-expand-vertical" }],
+  ["number.f2_main_crop_center_x", "crop_center_x", "0", { min: -200, max: 200, step: 1, unit_of_measurement: "mm", icon: "mdi:arrow-left-right" }],
+  ["number.f2_main_crop_center_y", "crop_center_y", "0", { min: -200, max: 200, step: 1, unit_of_measurement: "mm", icon: "mdi:arrow-up-down" }],
+];
+const F2_DEEP_CAMERA = [
+  ["camera.f2_deep", "camera_deep", "idle", { entity_picture: "/api/camera_proxy/camera.f2_deep?token=b" }],
+  ["select.f2_deep_perspective", "perspective", "straightened", { options: ["uncorrected", "rotated", "straightened"] }],
 ];
 const IF2 = [
-  ["select.if2_fan", "accessory_ductfanv3_mode_speed", "Auto Quiet", { options: ["Auto Regular", "Auto Quiet", "Off", "1", "2", "3", "4"] }],
   ["switch.if2_buzzer", "accessory_ductfanv3_buzzer", "off"],
   ["fan.if2_fan", "accessory_ductfanv3_fan", "on", { preset_modes: ["Auto Regular", "Auto Quiet"], percentage_step: 25, percentage: 50 }],
   ["sensor.if2_speed", "accessory_ductfanv3_current_speed", "60"],
@@ -60,6 +71,8 @@ window.makeHass = (changes = {}) => {
     entities: {},
     devices: {
       dev_f2: { id: "dev_f2", model: "xTool F2 Ultra UV", via_device_id: null },
+      dev_f2_main: { id: "dev_f2_main", model: "xTool F2 Ultra UV Main camera", via_device_id: "dev_f2" },
+      dev_f2_deep: { id: "dev_f2_deep", model: "xTool F2 Ultra UV Deep camera", via_device_id: "dev_f2" },
       dev_if2: { id: "dev_if2", model: "xTool SafetyPro IF2 2.0", via_device_id: "dev_f2" },
       dev_p2: { id: "dev_p2", model: "xTool P2", via_device_id: null },
     },
@@ -71,7 +84,7 @@ window.makeHass = (changes = {}) => {
     },
   };
   const started = new Date(Date.now() - 728000).toISOString();  // 12:08 ago
-  for (const [device, list] of [["dev_f2", F2], ["dev_if2", IF2], ["dev_p2", P2]]) {
+  for (const [device, list] of [["dev_f2", F2], ["dev_f2_main", F2_MAIN_CAMERA], ["dev_f2_deep", F2_DEEP_CAMERA], ["dev_if2", IF2], ["dev_p2", P2]]) {
     for (const [entity_id, translation_key, state, attributes = {}] of list) {
       hass.entities[entity_id] = { entity_id, device_id: device, platform: "xtool", translation_key };
       hass.states[entity_id] = { entity_id, state, attributes: { friendly_name: entity_id, ...attributes }, last_changed: started };
@@ -111,6 +124,34 @@ customElements.define("hui-select-options-card-feature", class extends HTMLEleme
     this.style.cssText = "display:block;height:42px";
   }
 });
+
+// Home Assistant's fan and numeric input features: a 42 px block. The
+// numeric input feature brings Home Assistant's number buttons, as its
+// module does
+for (const name of ["fan-preset-modes", "fan-speed", "numeric-input"]) {
+  customElements.define(`hui-${name}-card-feature`, class extends HTMLElement {
+    connectedCallback() {
+      this.style.cssText = "display:block;height:42px";
+      if (name === "numeric-input" && !customElements.get("ha-control-number-buttons")) setTimeout(() => window.defineNumberButtons(), 10);
+    }
+  });
+}
+
+// ha-control-number-buttons: Home Assistant's number buttons. press(n) is a
+// tap on + (n > 0) or - (n < 0), which sends value-changed as Home Assistant's does
+window.defineNumberButtons = () => customElements.define("ha-control-number-buttons", class extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = "display:block;height:42px";
+  }
+
+  press(n) {
+    const value = Math.round((this.value + n * this.step) * 1000) / 1000;
+    this.dispatchEvent(new CustomEvent("value-changed", { detail: { value: Math.min(this.max, Math.max(this.min, value)) } }));
+  }
+});
+
+// ha-input: Home Assistant's input (its number entity row loads it)
+window.defineInput = () => customElements.define("ha-input", class extends HTMLElement {});
 
 // hui-light-brightness-card-feature: Home Assistant's light brightness feature
 customElements.define("hui-light-brightness-card-feature", class extends HTMLElement {
@@ -339,6 +380,12 @@ window.loadCardHelpers = async () => ({
     // A picture card brings hui-image with it, as in Home Assistant
     if (config.type === "picture-entity" && !customElements.get("hui-image")) setTimeout(() => window.defineHuiImage(), 10);
     return document.createElement(config.type === "tile" ? "hui-tile-card" : "div");
+  },
+  // An entity row: a number row brings Home Assistant's input with it
+  createRowElement: (config) => {
+    window.cardHelperCalls.push({ row: config });
+    if (!customElements.get("ha-input")) setTimeout(() => window.defineInput(), 10);
+    return document.createElement("div");
   },
 });
 
