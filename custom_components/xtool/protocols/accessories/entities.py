@@ -347,7 +347,7 @@ class _AccessoryFan(_AccessoryEntity, FanEntity):
 
     - off is Manual Off,
     - percentage 25/50/75/100 is Manual gear 1-4,
-    - the presets are Studio's Auto modes (regular and quiet).
+    - the preset Auto is Studio's Auto, where each job sets the gear.
 
     In Auto the IF2 spins only from job start until the post-run time
     ends. The entity is on only then, at the gear the IF2 reports, and
@@ -417,17 +417,11 @@ class _AccessoryFan(_AccessoryEntity, FanEntity):
 
     @property
     def preset_mode(self) -> str | None:
-        from .duct_fan import FANV3_AUTO, FANV3_PRESET_REGULAR
+        from .duct_fan import FANV3_AUTO, FANV3_PRESET_AUTO
 
-        f = self._fields()
-        if f is None or self._mode() != FANV3_AUTO:
+        if self._fields() is None or self._mode() != FANV3_AUTO:
             return None
-        preset = f.get("auto_submode")
-        if preset in self._attr_preset_modes:
-            return str(preset)
-        # Auto set before any gear was seen (for example from Studio
-        # while HA was not running) shows as the regular preset.
-        return FANV3_PRESET_REGULAR
+        return FANV3_PRESET_AUTO
 
     def _handle_coordinator_update(self) -> None:
         gear = self._spinning_gear()
@@ -456,17 +450,19 @@ class _AccessoryFan(_AccessoryEntity, FanEntity):
         await self._set_gear(int(round(percentage / 25)))
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        from .duct_fan import FANV3_AUTO, FANV3_AUTO_GEAR, fan_v3_auto_mcode
-
-        mcode = fan_v3_auto_mcode(preset_mode)
-        if mcode is None:
-            raise HomeAssistantError(f"Unknown preset mode {preset_mode}")
-        await _passthrough_write(self, mcode)
-        self._remember(
-            mode_class=FANV3_AUTO,
-            auto_gear=FANV3_AUTO_GEAR[preset_mode],
-            auto_submode=preset_mode,
+        from .duct_fan import (
+            FANV3_AUTO, FANV3_AUTO_DEFAULT_GEAR, FANV3_PRESET_AUTO, fan_v3_auto_mcode,
         )
+
+        if preset_mode != FANV3_PRESET_AUTO:
+            raise HomeAssistantError(f"Unknown preset mode {preset_mode}")
+        # Keep the gear the IF2 has; the next job sets its own
+        f = self._fields() or {}
+        gear = f.get("auto_gear")
+        if not (isinstance(gear, int) and 1 <= gear <= 4):
+            gear = FANV3_AUTO_DEFAULT_GEAR
+        await _passthrough_write(self, fan_v3_auto_mcode(gear))
+        self._remember(mode_class=FANV3_AUTO, auto_gear=gear)
 
     async def async_turn_on(
         self,
