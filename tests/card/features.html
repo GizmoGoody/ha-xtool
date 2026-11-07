@@ -384,69 +384,47 @@
     check("IF2 fan, unavailable", unseen.style.display === "" && unseen.shadowRoot.querySelector("ha-control-select")?.disabled,
       "kept in place, disabled, while the laser does not see the IF2");
 
-    // Focus: Autofocus, beside Home Assistant's number buttons for the Focus height
-    hass = makeHass({ "sensor.f2_status": "idle" });
+    // Focus: - and + around a field to type the Focus height, in one row
+    hass = makeHass();
     let focus = addFeature({ type: "custom:xtool-focus" }, { hass });
     await wait(50);
-    check("focus", keysOf(focus).map((k) => k.dataset.key).join() === "autofocus" && !keyNamed(focus, "autofocus").disabled, "an Autofocus key");
-    keyNamed(focus, "autofocus").click();
-    check("focus", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "button", service: "press", data: { entity_id: "button.f2_autofocus" } }),
-      "which presses the laser's Autofocus button");
-    let buttons = focus.shadowRoot.querySelector(".manual ha-control-number-buttons");
-    check("focus", !!buttons && buttons.value === 36.1 && buttons.step === 0.1 && buttons.min === 0 && buttons.max === 150 && buttons.unit === "mm",
-      "Home Assistant's number buttons, loaded with its numeric input feature, stepping by 0.1 mm");
-    check("focus", !focus.shadowRoot.querySelector(".loader"), "the feature that loaded them is gone");
-    buttons.press(1);
-    check("focus", lastCall(hass).service === "set_value" && lastCall(hass).data.entity_id === "number.f2_focus_height" && lastCall(hass).data.value === 36.2,
-      "+ moves the head up by the step");
-    focus = addFeature({ type: "custom:xtool-focus", step: 0.5 }, { hass: makeHass({ "sensor.f2_status": "idle", "number.f2_focus_height": "149.8" }) });
+    const field = () => focus.shadowRoot.querySelector(".row .height input");
+    check("focus", [...focus.shadowRoot.querySelector(".row").children].map((c) => c.dataset.key ?? c.className).join() === "down,height,up"
+      && field().value === "36.1" && focus.shadowRoot.querySelector(".height .unit").textContent === "mm" && !keyNamed(focus, "autofocus"),
+      "-, the height (36.1 mm) in a field, +; no Autofocus (it is in Controls)");
+    keyNamed(focus, "up").click();
+    check("focus", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "number", service: "set_value", data: { entity_id: "number.f2_focus_height", value: 36.2 } }),
+      "+ moves the head up by the step (0.1 mm)");
+    keyNamed(focus, "down").click();
+    check("focus", lastCall(hass).data.value === 36, "- moves it down");
+    field().value = "40,5";
+    field().dispatchEvent(new Event("change"));
+    check("focus, typed", lastCall(hass).data.value === 40.5, "typing a height moves the head there (a decimal comma works)");
+    const calls = hass.calls.length;
+    field().value = "abc";
+    field().dispatchEvent(new Event("change"));
+    check("focus, typed", hass.calls.length === calls && field().value === "36.1", "something that is not a number is put back");
+    focus = addFeature({ type: "custom:xtool-focus", step: 0.5 }, { hass: makeHass({ "number.f2_focus_height": "149.8" }) });
     await wait(50);
-    buttons = focus.shadowRoot.querySelector(".manual ha-control-number-buttons");
     const focusHass = focus._hass;
-    buttons.press(1);
-    check("focus", buttons.step === 0.5 && lastCall(focusHass).data.value === 150, "the step chosen, kept within the height's range");
-    hass = makeHass({ "sensor.f2_status": "processing" });
-    focus = addFeature({ type: "custom:xtool-focus" }, { hass });
+    keyNamed(focus, "up").click();
+    check("focus", lastCall(focusHass).data.value === 150, "the step chosen, kept within the height's range");
+    focus = addFeature({ type: "custom:xtool-focus" }, { hass: makeHass({ "sensor.f2_engraving_lens": "small" }) });
     await wait(50);
-    check("focus", keyNamed(focus, "autofocus").disabled, "no Autofocus while the laser works");
-    focus = addFeature({ type: "custom:xtool-focus", manual: "slider" }, { hass: makeHass() });
-    await wait(50);
-    const focusSlider = focus.shadowRoot.querySelector(".manual hui-card-feature");
-    check("focus, slider", focusSlider?.feature.type === "numeric-input" && focusSlider.feature.style === "slider" && focusSlider.context.entity_id === "number.f2_focus_height",
-      "or Home Assistant's numeric input slider");
-    focus = addFeature({ type: "custom:xtool-focus", manual: "none", display: "both" }, { hass: makeHass() });
-    await wait(50);
-    check("focus, none", !focus.shadowRoot.querySelector(".manual").children.length && keyNamed(focus, "autofocus").textContent.includes("Autofocus"),
-      "or Autofocus alone, with its name");
-    window.cardHelperCalls.length = 0;
-    hass = makeHass();
-    focus = addFeature({ type: "custom:xtool-focus", show_input: true }, { hass });
-    await wait(80);
-    const typed = focus.shadowRoot.querySelector(".typed ha-input");
-    check("focus, input", window.cardHelperCalls.some((c) => c.row?.entity === "number.f2_focus_height") && !!typed
-      && typed.value === "36.1" && typed.querySelector("span[slot=end]").textContent === "mm",
-      "Home Assistant's input, loaded with its number entity row, with the height and its unit");
-    typed.value = "40";
-    typed.dispatchEvent(new Event("change"));
-    check("focus, input", lastCall(hass).data.entity_id === "number.f2_focus_height" && lastCall(hass).data.value === 40, "typing a height moves the head");
-    focus = addFeature({ type: "custom:xtool-focus", show_input: true }, { hass: makeHass({ "sensor.f2_engraving_lens": "small" }) });
-    await wait(80);
-    check("focus, inner lens", keyNamed(focus, "autofocus").disabled && focus.shadowRoot.querySelector(".manual ha-control-number-buttons")?.disabled
-      && focus.shadowRoot.querySelector(".typed ha-input")?.disabled, "with the inner engraving lens: Autofocus, the buttons and the box are off, as in Studio");
+    check("focus, inner lens", keyNamed(focus, "up").disabled && keyNamed(focus, "down").disabled && field().disabled,
+      "with the inner engraving lens: -, + and the field are off, as in Studio");
     const focusOptions = document.createElement("xtool-feature-editor");
     focusOptions.hass = hass;
     focusOptions.context = { entity_id: "sensor.f2_status" };
     focusOptions.setConfig({ type: "custom:xtool-focus" });
-    check("focus, options", focusOptions.querySelector("ha-form").schema.map((s) => s.name).join() === "manual,step,show_input,display"
-      && focusOptions.querySelector("ha-form").data.step === 0.1, "Manual focus, Step (0.1 mm), the box and Show");
-    focusOptions.setConfig({ type: "custom:xtool-focus", manual: "slider" });
-    check("focus, options", !focusOptions.querySelector("ha-form").schema.some((s) => s.name === "step"), "a step only for the buttons");
+    check("focus, options", focusOptions.querySelector("ha-form").schema.map((s) => s.name).join() === "step"
+      && focusOptions.querySelector("ha-form").data.step === 0.1, "Step (0.1 mm by default)");
     const p2Focus = addFeature({ type: "custom:xtool-focus" }, { hass, entityId: "sensor.p2_status" });
     await wait(50);
-    check("focus", keysOf(p2Focus).length === 0 && !p2Focus.shadowRoot.querySelector(".manual").children.length, "nothing for a laser without focus controls");
-    const offFocus = addFeature({ type: "custom:xtool-focus" }, { hass: makeHass({ "sensor.f2_status": "off", "button.f2_autofocus": "unavailable", "number.f2_focus_height": "unavailable" }) });
+    check("focus", keysOf(p2Focus).length === 0 && !p2Focus.shadowRoot.querySelector(".height input"), "nothing for a laser without focus controls");
+    const offFocus = addFeature({ type: "custom:xtool-focus" }, { hass: makeHass({ "sensor.f2_status": "off", "number.f2_focus_height": "unavailable" }) });
     await wait(50);
-    check("focus, off", offFocus.style.display === "" && keyNamed(offFocus, "autofocus")?.disabled && offFocus.shadowRoot.querySelector(".manual ha-control-number-buttons")?.disabled,
+    check("focus, off", offFocus.style.display === "" && keyNamed(offFocus, "up")?.disabled && offFocus.shadowRoot.querySelector(".height input")?.disabled,
       "kept in place, disabled, while the laser is off");
 
     // Job: the buttons chosen, in order
