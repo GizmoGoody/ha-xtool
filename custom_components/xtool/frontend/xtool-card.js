@@ -2166,15 +2166,28 @@ class XtoolCard extends HTMLElement {
       // The feature this card's fill light and IF2 fan show is measured with them
       if (FEATURE_TAGS.includes(wrap.getRootNode()?.host?.localName)) continue;
       this._watchAdded(wrap.shadowRoot);
+      // A feature's cell moves when one before it grows (a camera picture
+      // that has just loaded) or when the grid finds its columns
+      this._watchSize(wrap);
       const inner = wrap.shadowRoot ?? wrap;
       const ours = findDeep(inner, FEATURE_TAGS.join(", "));
+      // Home Assistant's features inside this card's draw late, in their
+      // own shadow roots: watch those too, so the areas follow them
+      this._watchAdded(ours?.shadowRoot);
       const keys = ours ? [...(ours.shadowRoot?.querySelectorAll(".key, .shot, .slide") ?? [])] : [];
       const element = [...inner.children].find((c) => c.tagName !== "STYLE");
       for (const key of keys.length ? keys : [element]) {
         // A Home Assistant feature inside one of this card's: its own control
-        const el = key?.classList?.contains("slide") ? haControlOf(key) : key;
+        const slide = key?.classList?.contains("slide");
+        if (slide) {
+          const feature = key.querySelector("hui-card-feature");
+          this._watchAdded(feature?.shadowRoot);
+          for (const child of feature?.shadowRoot?.children ?? []) this._watchAdded(child.shadowRoot);
+        }
+        const el = slide ? haControlOf(key) : key;
         const b = el && this._box(el);
         if (!b) continue;
+        this._watchSize(el);
         areas.push({ ...b, radius: featureRadius(el, b.h) });
       }
     }
@@ -2235,6 +2248,19 @@ class XtoolCard extends HTMLElement {
       this._areasTimer = setTimeout(() => this._layout(), 0);
     });
     this._mutations.observe(root, { childList: true, subtree: true });
+  }
+
+  // Draw again when a measured control changes size (a slider that has
+  // just drawn, a font that has just loaded)
+  _watchSize(el) {
+    this._sized ??= new WeakSet();
+    if (this._sized.has(el)) return;
+    this._sized.add(el);
+    this._sizes ??= new ResizeObserver(() => {
+      clearTimeout(this._areasTimer);
+      this._areasTimer = setTimeout(() => this._layout(), 0);
+    });
+    this._sizes.observe(el);
   }
 
   _drawAreas() {
