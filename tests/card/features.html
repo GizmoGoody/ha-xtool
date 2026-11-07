@@ -257,14 +257,16 @@
     check("camera", topKeys(camera).map((k) => k.textContent).join() === "Main,Deep,Crop", "buttons for both cameras, and Crop for the main camera");
     keyNamed(camera, "camera.f2_deep").click();
     await wait(50);
-    const shown = () => [...camera.shadowRoot.querySelectorAll(".shot hui-image")].filter((i) => !i.hidden);
+    const shown = () => [...camera.shadowRoot.querySelectorAll(".shot hui-image:not(.next)")].filter((i) => !i.hidden);
     check("camera", shown().length === 1 && shown()[0].cameraImage === "camera.f2_deep" && image.hidden && image.isConnected,
       "switching shows the deep camera's image; the main camera's stays, hidden, with its picture");
     check("camera", topKeys(camera).map((k) => k.textContent).join() === "Main,Deep,straightened",
       "for the deep camera: no Crop or Reset, and its perspective in the same row");
     keyNamed(camera, "camera.f2_main").click();
-    await wait(50);
-    check("camera", shown()[0] === image && camera.shadowRoot.querySelectorAll(".shot hui-image").length === 2, "and switching back shows the same image again");
+    check("camera", shown()[0] === image, "and switching back shows its last picture again at once");
+    await wait(150);
+    check("camera", shown()[0] !== image && !image.isConnected && camera.shadowRoot.querySelectorAll(".shot hui-image").length === 2,
+      "then a new one, in its place");
     keyNamed(camera, "camera.f2_deep").click();
     await wait(50);
     let opened;
@@ -286,9 +288,8 @@
     imageLoad(camera);
     check("camera, time", camera.shadowRoot.querySelector(".time").textContent === "", "no time unless chosen");
     const stamped = addFeature({ type: "custom:xtool-camera", show_time: true }, { hass });
-    await wait(60);
     check("camera, time", !stamped.shadowRoot.querySelector(".time hui-timestamp-display"), "no time before a picture arrives");
-    imageLoad(stamped);
+    await wait(60);
     const element = stamped.shadowRoot.querySelector(".time hui-timestamp-display");
     check("camera, time", !!element && element.ts instanceof Date && element.format === undefined && element.hass === hass
       && stamped.shadowRoot.querySelector(".time").textContent === "Updated ", "Home Assistant's timestamp display, in its default format outside the xTool card");
@@ -349,11 +350,12 @@
       crop_width: 100, crop_height: 120, crop_center_x: 0, crop_center_y: 0, entity_id: "camera.f2_main" } })
       && area.hidden && cropped.shadowRoot.querySelector(".hint").textContent === "",
       `the opposite corner crops to the rectangle between them, in mm on the work surface (${JSON.stringify(lastCall(hass).data)})`);
-    await wait(30);
+    await wait(150);
     const visible = [...cropped.shadowRoot.querySelectorAll(".shot hui-image")].filter((i) => !i.hidden);
     check("camera, crop", hass._cameraTmbUrl["camera.f2_main"] === undefined && hass._cameraTmbUrl["camera.f2_deep"] !== undefined,
       "the main camera's stored picture address is dropped, so the new image asks for a new one");
-    check("camera, crop", visible.length === 1 && visible[0] !== before && !before.isConnected,
+    check("camera, crop", visible.length === 1 && visible[0] !== before && !before.isConnected && visible[0].loads === 1
+      && !visible[0].classList.contains("next"),
       "the new photo is shown at once: a new image replaces the old one");
     // The crop is in effect (Home Assistant has the new numbers): Crop stays on
     const croppedHass = makeHass({ "number.f2_main_crop_width": "100", "number.f2_main_crop_height": "120" });
@@ -390,9 +392,22 @@
       && cropped.shadowRoot.querySelectorAll(".row").length === 1 && perspectiveKey.textContent === "straightened"
       && !perspectiveKey.hasAttribute("aria-pressed") && perspectiveKey.title === "Perspective: straightened. Tap for uncorrected",
       "the deep camera's perspective is one key in the camera row, showing the one chosen");
+    const deepBefore = cropped.shadowRoot.querySelector(".shot hui-image:not([hidden])");
     perspectiveKey.click();
+    await wait(150);
+    const deepAfter = cropped.shadowRoot.querySelector(".shot hui-image:not([hidden])");
+    check("camera, perspective", deepAfter !== deepBefore && !deepBefore.isConnected && deepAfter.loads === 1 && deepAfter.cameraImage === "camera.f2_deep",
+      "after a perspective change the new photo shows at once");
     check("camera, perspective", JSON.stringify(lastCall(croppedHass)) === JSON.stringify({ domain: "select", service: "select_option", data: { entity_id: "select.f2_deep_perspective", option: "uncorrected" } }),
       "a tap steps to the next (after the last, the first)");
+    const mainBefore = cropped._images.get("camera.f2_main");
+    keyNamed(cropped, "camera.f2_main").click();
+    check("camera, switch", cropped.shadowRoot.querySelector(".shot hui-image:not([hidden]):not(.next)") === mainBefore,
+      "switching back shows the camera's last picture at once");
+    await wait(150);
+    const mainAfter = cropped.shadowRoot.querySelector(".shot hui-image:not([hidden])");
+    check("camera, switch", mainAfter !== mainBefore && mainAfter.loads === 1 && mainAfter.cameraImage === "camera.f2_main",
+      "and then a new photo");
     const iconCamera = addFeature({ type: "custom:xtool-camera", camera: "Deep", display: "icons" }, { hass });
     await wait(60);
     check("camera, show", keysOf(iconCamera).length === 3 && keyNamed(iconCamera, "perspective").querySelector("ha-icon").icon === "mdi:perspective-less"

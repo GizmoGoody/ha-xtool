@@ -110,14 +110,36 @@ customElements.define("hui-timestamp-display", class extends HTMLElement {});
 
 // hui-image: Home Assistant's image element (its picture cards load it); a
 // page can leave it out (window.noHuiImage) to check that the card loads it
+// As Home Assistant's, it fetches its picture only while it is on screen
+// (not hidden), and loads counts the pictures it fetched.
+const PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 window.defineHuiImage = () => customElements.define("hui-image", class extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" }).innerHTML = '<div><img alt="" style="display:block;width:100%;aspect-ratio:4/3"></div>';
     const img = this.shadowRoot.querySelector("img");
-    Object.defineProperty(img, "naturalWidth", { value: 400 });
-    Object.defineProperty(img, "naturalHeight", { value: 300 });
+    this.loads = 0;
+    Object.defineProperty(img, "naturalWidth", { get: () => (this.loads ? 400 : 0) });
+    Object.defineProperty(img, "naturalHeight", { get: () => (this.loads ? 300 : 0) });
     this.updateComplete = Promise.resolve();
+    // Counted before anyone else hears the picture load
+    this.shadowRoot.addEventListener("load", () => (this.loads += 1), true);
+    this._img = img;
+  }
+
+  // Home Assistant's uses an IntersectionObserver; the test browser runs on
+  // virtual time, where those are late, so this checks the layout instead
+  connectedCallback() {
+    const look = () => {
+      if (!this.isConnected || this.loads) return;
+      if (this.checkVisibility()) this._img.src = PIXEL;
+      else this._look = setTimeout(look, 10);
+    };
+    look();
+  }
+
+  disconnectedCallback() {
+    clearTimeout(this._look);
   }
 });
 if (!window.noHuiImage) window.defineHuiImage();
