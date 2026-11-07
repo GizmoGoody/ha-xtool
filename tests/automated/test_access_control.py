@@ -92,3 +92,16 @@ def test_the_switch_follows_it() -> None:
     assert "if coordinator.access_control_supported is not False:" in entities
     init = (root / "__init__.py").read_text(encoding="utf-8")
     assert 'coordinator.sku = entry.data.get("sku", "")' in init
+
+
+def test_the_device_page_shows_the_sku(hass, config_entry) -> None:
+    from custom_components.xtool.entity import XtoolEntity
+
+    from .conftest import build_coordinator
+
+    coordinator = build_coordinator(hass, _model("F2UltraUV"))
+    assert XtoolEntity(coordinator).device_info.get("model_id") is None
+    coordinator.sku = "P0101000393251108100069"
+    assert XtoolEntity(coordinator).device_info["model_id"] == "P0101000393"
+    coordinator.sku = "P0101000396251108100069"
+    assert XtoolEntity(coordinator).device_info["model_id"] == "P0101000396 (EU)"
