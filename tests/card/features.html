@@ -204,11 +204,11 @@
     check("access control on", keyNamed(row, "autofocus").disabled && !keyNamed(row, "power").disabled, "Autofocus in Controls is unavailable, the rest is not");
     job = addFeature({ type: "custom:xtool-job", controls: ["start", "pause", "cancel"] }, { hass });
     await wait(50);
-    check("access control on", keyNamed(job, "resume").disabled && keyNamed(job, "pause").disabled && !keyNamed(job, "cancel").disabled,
-      "no Start (from the machine) and no Pause, as in Studio; Cancel stays");
-    job = addFeature({ type: "custom:xtool-job", controls: ["pause"] }, { hass: makeHass({ "switch.f2_access_control": "on", "sensor.f2_status": "processing" }) });
+    check("access control on", keyNamed(job, "resume").disabled && keyNamed(job, "pause").disabled,
+      "no Start (from the machine) and no Pause, as in Studio");
+    job = addFeature({ type: "custom:xtool-job", controls: ["pause", "cancel"] }, { hass: makeHass({ "switch.f2_access_control": "on", "sensor.f2_status": "processing" }) });
     await wait(50);
-    check("access control on", keyNamed(job, "pause").disabled, "no Pause while a job runs");
+    check("access control on", keyNamed(job, "pause").disabled && !keyNamed(job, "cancel").disabled, "no Pause while a job runs; Cancel stays");
     job = addFeature({ type: "custom:xtool-job", controls: ["start"] }, { hass: makeHass({ "switch.f2_access_control": "on", "sensor.f2_status": "paused" }) });
     await wait(50);
     check("access control on", !keyNamed(job, "resume").disabled, "a paused job can still be resumed");
