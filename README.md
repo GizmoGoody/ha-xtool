@@ -348,15 +348,17 @@ Tile features (they also work in a plain tile card for an xTool entity):
 
 | Feature | Controls |
 |---|---|
-| xTool job | Start or Resume, Pause, Cancel (asks first, in Home Assistant's confirmation dialog) |
+| xTool job | The buttons you choose, in your order: Start / Pause (one button: Pause while the job runs, Start or Resume otherwise), Start, Pause and Cancel (asks first, in Home Assistant's confirmation dialog). Start / Pause and Cancel by default |
 | xTool peripherals | Power (smart plug), exhaust fan, fill lights (on or off), red dot, cooling fan, cover lock. A fan's icon turns while it runs (*Animate fan*) |
 | xTool fill light brightness | The tile card's own light brightness feature, for one fill light. Add it once for each light |
 | xTool safety checks | Flame alarm, stops when enclosure opened, stops when moved. A check that is on is green, one that is off is red. Turning one off always asks first, in Home Assistant's confirmation dialog |
 | xTool settings | Buzzer reminders, device sleep, auto mode |
-| xTool accessories | The switches of accessories the laser connects, such as the IF2 buzzer. Hidden while the laser does not see the accessory |
-| xTool camera | The camera's picture, shown by Home Assistant's own image element (Auto: snapshots; Live: the stream), tap to open it, with buttons to switch cameras and, as an option, the time the picture was last updated, in the card's own Time format (under Content). Below it, the shown camera's settings as the tile card's own features: the main camera's crop (width, height, center X and Y, as buttons or sliders) and the deep camera's perspective (Uncorrected, Rotated, Straightened). Hidden while the laser is off |
-| xTool SafetyPro IF2 fan | One row. IF2 2.0: the tile card's own fan preset modes (Auto Regular, Auto Quiet, as icons or a dropdown) beside its fan speed feature (Off and 1 to 4). IF2: the select options feature, every gear as a button. As in Home Assistant's own feature editors, every choice shows unless you turn on Customize. Hidden while the laser does not see the IF2 |
+| xTool accessories | The switches of accessories the laser connects, such as the IF2 buzzer. |
+| xTool camera | The camera's picture, shown by Home Assistant's own image element (Auto: snapshots; Live: the stream), tap to open it, with buttons to switch cameras and, as an option, the time the picture was last updated, in the card's own Time format (under Content). Below it, the shown camera's settings as the tile card's own features: the main camera's crop (width, height, center X and Y, as buttons or sliders) and the deep camera's perspective (Uncorrected, Rotated, Straightened) |
+| xTool SafetyPro IF2 fan | One row. IF2 2.0: the tile card's own fan preset modes (Auto Regular, Auto Quiet, as icons or a dropdown) beside its fan speed feature (Off and 1 to 4). IF2: the select options feature, every gear as a button. As in Home Assistant's own feature editors, every choice shows unless you turn on Customize |
 | xTool focus | **F2 Ultra UV.** Autofocus, beside the focus height: Home Assistant's number buttons, moving by the step you choose (1 mm by default), or its slider. As an option, a box to type the height. Autofocus is off while the laser works, frames or focuses |
+
+Like Home Assistant's own features, each feature keeps its place while its entities are unavailable (the laser off, or the IF2 not connected) and shows disabled, so the card keeps the same layout.
 
 Each feature shows only the controls the laser has.
 

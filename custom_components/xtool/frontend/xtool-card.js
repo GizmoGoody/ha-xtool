@@ -558,16 +558,6 @@ const FEATURE_CSS = `
   ${KEY_CSS}
 `;
 
-/**
- * Show or hide a feature. A hidden feature takes no room: the cell Home
- * Assistant's features grid holds it in (hui-card-feature) is hidden with it,
- * so no gap is left and the card gets shorter.
- */
-function showFeature(el, shown) {
-  el.style.display = shown ? "" : "none";
-  const cell = el.getRootNode?.()?.host;
-  if (cell?.localName === "hui-card-feature") cell.style.display = shown ? "" : "none";
-}
 
 /**
  * Perform an action through Home Assistant's own action handling, as a
@@ -748,8 +738,13 @@ class XtoolFeature extends HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// Feature: the job
+// Feature: the job. The buttons are chosen in the options, in order:
+// Start (Resume when paused), Start / Pause (Pause while the job runs),
+// Pause and Cancel. Start / Pause and Cancel by default.
 // ---------------------------------------------------------------------------
+const JOB_CONTROLS = [["start_pause", "Start / Pause"], ["start", "Start"], ["pause", "Pause"], ["cancel", "Cancel"]];
+const JOB_DEFAULT = ["start_pause", "cancel"];
+
 class XtoolJob extends XtoolFeature {
   static label = "Job";
 
@@ -768,19 +763,18 @@ class XtoolJob extends XtoolFeature {
     const pause = sibling(hass, id, "pause"), resume = sibling(hass, id, "resume"), cancel = sibling(hass, id, "cancel");
     const press = (entityId) => () => hass.callService("button", "press", { entity_id: entityId });
     const running = phase === "processing" || phase === "framing";
-    const buttons = [];
-    if (running) {
-      buttons.push({ key: "pause", label: "Pause the job", icon: "mdi:pause", text: "Pause", color: "amber",
-        disabled: !this._usable(pause) || phase !== "processing", action: press(pause) });
-    } else {
-      const paused = phase === "paused";
-      buttons.push({ key: "resume", label: paused ? "Resume the job" : "Start the job", icon: "mdi:play",
-        text: paused ? "Resume" : "Start", color: "green",
-        disabled: !this._usable(resume) || ["off", "sleeping", "firmware"].includes(phase), action: press(resume) });
-    }
-    buttons.push({ key: "cancel", label: "Cancel the job", icon: "mdi:stop", text: "Cancel", color: "red",
-      disabled: !this._usable(cancel) || !(running || phase === "paused"), action: () => this._cancel(cancel) });
-    return buttons;
+    const paused = phase === "paused";
+    const pauseButton = { key: "pause", label: "Pause the job", icon: "mdi:pause", text: "Pause", color: "amber",
+      disabled: !this._usable(pause) || phase !== "processing", action: press(pause) };
+    const startButton = { key: "resume", label: paused ? "Resume the job" : "Start the job", icon: "mdi:play",
+      text: paused ? "Resume" : "Start", color: "green",
+      disabled: !this._usable(resume) || running || ["off", "sleeping", "firmware"].includes(phase), action: press(resume) };
+    const cancelButton = { key: "cancel", label: "Cancel the job", icon: "mdi:stop", text: "Cancel", color: "red",
+      disabled: !this._usable(cancel) || !(running || paused), action: () => this._cancel(cancel) };
+    const controls = Array.isArray(this._config.controls) ? this._config.controls : JOB_DEFAULT;
+    return controls.map((control) => ({
+      start_pause: running ? pauseButton : startButton, start: startButton, pause: pauseButton, cancel: cancelButton,
+    })[control]).filter((b) => b && sibling(hass, id, { pause: "pause", resume: "resume", cancel: "cancel" }[b.key]));
   }
 
   _cancel(entityId) {
@@ -882,19 +876,12 @@ class XtoolSettings extends XtoolToggles {
   }
 }
 
-// Hidden while no accessory can be used (the laser does not see it)
 class XtoolAccessories extends XtoolToggles {
   static label = "Accessories";
   static list = ACCESSORIES;
 
   static getStubConfig() {
     return { type: "custom:xtool-accessories" };
-  }
-
-  _buttons() {
-    const buttons = super._buttons();
-    showFeature(this, buttons.some((b) => !b.disabled));
-    return buttons;
   }
 }
 
@@ -967,11 +954,7 @@ class XtoolCamera extends XtoolFeature {
   }
 
   _buttons() {
-    const status = statusOf(this._hass, this._entityId);
-    const off = phaseOf(status ? this._hass.states[status]?.state : undefined) === "off";
     const cameras = camerasOf(this._hass, this._entityId);
-    // The laser is off, or no camera can be used: no picture and no buttons
-    showFeature(this, !off && cameras.some(([id]) => this._usable(id)));
     const current = this._currentCamera(cameras);
     if (current !== this._camera) {
       this._camera = current;
@@ -1286,9 +1269,10 @@ class XtoolIf2Fan extends HTMLElement {
   // The features to show, left to right: [{ feature, entityId, color, part }]
   _wanted() {
     const laser = this._context.entity_id, c = this._config;
-    const usable = (id) => !!id && !!this._hass.states[id] && this._hass.states[id].state !== "unavailable";
+    // While the laser does not see the IF2, its features show disabled, as Home Assistant draws them
+    const exists = (id) => !!id && !!this._hass.states[id];
     const fan = sibling(this._hass, laser, "if2_fan_entity");
-    if (usable(fan)) {
+    if (exists(fan)) {
       const color = this._hass.states[fan].state === "on" ? FAN_ON : FAN_OFF;
       const wanted = [];
       const presets = this._hass.states[fan].attributes.preset_modes ?? [];
@@ -1303,7 +1287,7 @@ class XtoolIf2Fan extends HTMLElement {
       return wanted;
     }
     const select = sibling(this._hass, laser, "if2_gear_select");
-    if (!usable(select)) return [];
+    if (!exists(select)) return [];
     const options = Array.isArray(c.options) ? { options: c.options } : {};
     return [{ feature: { type: "select-options", style: "buttons", ...options }, entityId: select, color: SELECT_ON, part: "speed" }];
   }
@@ -1311,8 +1295,6 @@ class XtoolIf2Fan extends HTMLElement {
   _render() {
     if (!this._hass || !this._config || !this._context) return;
     const wanted = this._wanted();
-    // The laser does not see the IF2: nothing to show, and no room taken
-    showFeature(this, wanted.length > 0);
     const key = JSON.stringify(wanted.map(({ feature, entityId, part }) => [feature, entityId, part]));
     if (key !== this._key) {
       // Another choice or entity: new features (Home Assistant's feature
@@ -1391,7 +1373,6 @@ class XtoolFocus extends XtoolFeature {
   _buttons() {
     const hass = this._hass, id = this._entityId;
     const autofocus = sibling(hass, id, "autofocus");
-    showFeature(this, !!autofocus || !!this._height);
     if (!autofocus) return [];
     const status = statusOf(hass, id);
     const phase = phaseOf(status ? hass.states[status]?.state : undefined);
@@ -1544,8 +1525,15 @@ const controlOptions = (hass, entityId, list) =>
 
 const FEATURE_FORMS = {
   "custom:xtool-job": () => ({
-    schema: [{ name: "confirm_cancel", label: "Ask before cancelling a job", selector: { boolean: {} } }],
-    data: (c) => ({ confirm_cancel: c.confirm_cancel !== false }),
+    schema: [
+      {
+        name: "controls", label: "Buttons",
+        helper: "In order. Start / Pause is one button: Pause while the job runs, Start (or Resume) otherwise.",
+        selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: JOB_CONTROLS.map(([value, label]) => ({ value, label })) } },
+      },
+      { name: "confirm_cancel", label: "Ask before cancelling a job", selector: { boolean: {} } },
+    ],
+    data: (c) => ({ controls: Array.isArray(c.controls) ? c.controls : JOB_DEFAULT, confirm_cancel: c.confirm_cancel !== false }),
   }),
   "custom:xtool-peripherals": (hass, entityId) => ({
     schema: [
@@ -2563,28 +2551,15 @@ class XtoolCard extends HTMLElement {
       // The feature this card's fill light and IF2 fan show is measured with them
       if (FEATURE_TAGS.includes(wrap.getRootNode()?.host?.localName)) continue;
       this._watchAdded(wrap.shadowRoot);
-      // A feature's cell moves when one before it grows (a camera picture
-      // that has just loaded) or when the grid finds its columns
-      this._watchSize(wrap);
       const inner = wrap.shadowRoot ?? wrap;
       const ours = findDeep(inner, FEATURE_TAGS.join(", "));
-      // Home Assistant's features inside this card's draw late, in their
-      // own shadow roots: watch those too, so the areas follow them
-      this._watchAdded(ours?.shadowRoot);
       const keys = ours ? [...(ours.shadowRoot?.querySelectorAll(".key, .shot, .slide") ?? [])] : [];
       const element = [...inner.children].find((c) => c.tagName !== "STYLE");
       for (const key of keys.length ? keys : [element]) {
         // A Home Assistant feature inside one of this card's: its own control
-        const slide = key?.classList?.contains("slide");
-        if (slide) {
-          const feature = key.querySelector("hui-card-feature");
-          this._watchAdded(feature?.shadowRoot);
-          for (const child of feature?.shadowRoot?.children ?? []) this._watchAdded(child.shadowRoot);
-        }
-        const el = slide ? haControlOf(key) : key;
+        const el = key?.classList?.contains("slide") ? haControlOf(key) : key;
         const b = el && this._box(el);
         if (!b) continue;
-        this._watchSize(el);
         areas.push({ ...b, radius: featureRadius(el, b.h) });
       }
     }
@@ -2645,19 +2620,6 @@ class XtoolCard extends HTMLElement {
       this._areasTimer = setTimeout(() => this._layout(), 0);
     });
     this._mutations.observe(root, { childList: true, subtree: true });
-  }
-
-  // Draw again when a measured control changes size (a slider that has
-  // just drawn, a font that has just loaded)
-  _watchSize(el) {
-    this._sized ??= new WeakSet();
-    if (this._sized.has(el)) return;
-    this._sized.add(el);
-    this._sizes ??= new ResizeObserver(() => {
-      clearTimeout(this._areasTimer);
-      this._areasTimer = setTimeout(() => this._layout(), 0);
-    });
-    this._sizes.observe(el);
   }
 
   _drawAreas() {
