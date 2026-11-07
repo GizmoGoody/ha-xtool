@@ -234,7 +234,7 @@
 
     // One channel for each Home Assistant control inside the card's features
     const channels = [...haInside.shadowRoot.querySelectorAll(".area.console")];
-    check("console, Home Assistant features inside", channels.length === 3, `one channel each: the fill light, the Auto modes and the speeds (${channels.length})`);
+    check("console, Home Assistant features inside", channels.length === 2, `one channel each: the fill light and the IF2 fan (${channels.length})`);
     check("console, Home Assistant features inside", channels.every((a) => Math.abs(parseFloat(a.style.height) - 48) <= 1),
       `fitted to the 42 px control (${channels.map((a) => a.style.height).join(", ")})`);
 
@@ -243,5 +243,14 @@
     check("state content", /processing · 12:0\d · Exhaust running · Red dot off/.test(info), `elapsed time and parts (${info})`);
     const finishedInfo = pictures.finished.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-info").textContent;
     check("finished", finishedInfo === "finished · 18:52", `the last job's time (${finishedInfo})`);
+
+    // The machine's status light, as a ring around the picture (the F2 Ultra UV: white)
+    const tileOf = (card) => card.shadowRoot.querySelector("hui-tile-card");
+    check("status light", tileOf(content).getAttribute("xtool-light") === "slow" && tileOf(content).style.getPropertyValue("--xtool-light") === "#ffffff",
+      "white, blinking slowly while it works");
+    check("status light", getComputedStyle(tileOf(content).shadowRoot.querySelector("ha-tile-icon")).borderRadius === "50%", "drawn on the tile's icon");
+    check("status light", !tileOf(offStyled).hasAttribute("xtool-light"), "none while the laser is off");
+    check("status light", tileOf(closedAtLoad).getAttribute("xtool-light") === "solid" && tileOf(closedAtLoad).style.getPropertyValue("--xtool-light") === "#ffffff",
+      "the P2 ring light: white while idle");
   });
 </script>

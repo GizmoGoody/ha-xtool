@@ -47,7 +47,7 @@ const F2_DEEP_CAMERA = [
 ];
 const IF2 = [
   ["switch.if2_buzzer", "accessory_ductfanv3_buzzer", "off"],
-  ["fan.if2_fan", "accessory_ductfanv3_fan", "on", { preset_modes: ["Auto Regular", "Auto Quiet"], percentage_step: 25, percentage: 50 }],
+  ["fan.if2_fan", "accessory_ductfanv3_fan", "on", { preset_modes: ["Auto Regular", "Auto Quiet"], percentage_step: 25, percentage: 50, preset_mode: null }],
   ["sensor.if2_speed", "accessory_ductfanv3_current_speed", "60"],
 ];
 const P2 = [
@@ -119,9 +119,24 @@ window.defineHuiImage = () => customElements.define("hui-image", class extends H
 if (!window.noHuiImage) window.defineHuiImage();
 
 // hui-select-options-card-feature: Home Assistant's select options feature
+// (it brings Home Assistant's segmented control, as its module does)
 customElements.define("hui-select-options-card-feature", class extends HTMLElement {
   connectedCallback() {
     this.style.cssText = "display:block;height:42px";
+    if (!customElements.get("ha-control-select")) setTimeout(() => window.defineControlSelect(), 10);
+  }
+});
+
+// ha-control-select: Home Assistant's segmented control. choose(value) is a
+// tap on an option, which sends value-changed as Home Assistant's does
+window.defineControlSelect = () => customElements.get("ha-control-select") || customElements.define("ha-control-select", class extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = "display:block;height:42px";
+  }
+
+  choose(value) {
+    if (this.disabled) return;
+    this.dispatchEvent(new CustomEvent("value-changed", { detail: { value } }));
   }
 });
 
@@ -133,6 +148,7 @@ for (const name of ["fan-preset-modes", "fan-speed", "numeric-input"]) {
     connectedCallback() {
       this.style.cssText = "display:block;height:42px";
       if (name === "numeric-input" && !customElements.get("ha-control-number-buttons")) setTimeout(() => window.defineNumberButtons(), 10);
+      if (name === "fan-speed" && !customElements.get("ha-control-select")) setTimeout(() => window.defineControlSelect(), 10);
     }
   });
 }

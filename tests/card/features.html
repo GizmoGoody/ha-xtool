@@ -58,8 +58,12 @@
     hass = makeHass({ "sensor.f2_status": "idle" });
     let row = addFeature({ type: "custom:xtool-peripherals" }, { hass });
     await wait(50);
-    check("peripherals", keysOf(row).map((k) => k.dataset.key).join() === "power,exhaust,fill_light_front,fill_light_back,red_dot",
-      "every part the F2 Ultra UV has, in order");
+    check("peripherals", keysOf(row).map((k) => k.dataset.key).join() === "power,exhaust,fill_light_front,fill_light_back,red_dot,autofocus",
+      "every control the F2 Ultra UV has, in order, Autofocus last");
+    check("peripherals", keyNamed(row, "power").querySelector("ha-icon") && !keyNamed(row, "power").querySelector("span"), "icons by default");
+    keyNamed(row, "autofocus").click();
+    check("peripherals", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "button", service: "press", data: { entity_id: "button.f2_autofocus" } }),
+      "Autofocus is pressed, not toggled");
     check("peripherals", keyNamed(row, "exhaust").getAttribute("aria-pressed") === "true" && keyNamed(row, "red_dot").getAttribute("aria-pressed") === "false",
       "on and off shown");
     keyNamed(row, "exhaust").click();
@@ -71,10 +75,14 @@
     await wait(20);
     check("peripherals", !asking() && lastCall(hass).data.entity_id === "switch.f2_power", "Power turns off without asking while idle");
     hass = makeHass({ "sensor.f2_status": "processing" });
-    row = addFeature({ type: "custom:xtool-peripherals", controls: ["red_dot", "power"], show_names: true }, { hass });
+    row = addFeature({ type: "custom:xtool-peripherals", controls: ["red_dot", "power", "autofocus"], show_names: true }, { hass });
     await wait(50);
-    check("peripherals, chosen", keysOf(row).map((k) => k.dataset.key).join() === "red_dot,power" && keyNamed(row, "red_dot").textContent === "Red dot",
-      "the chosen parts, in the chosen order, with names");
+    check("peripherals, chosen", keysOf(row).map((k) => k.dataset.key).join() === "red_dot,power,autofocus" && keyNamed(row, "red_dot").textContent === "Red dot"
+      && keyNamed(row, "red_dot").querySelector("ha-icon"), "the chosen controls, in the chosen order; the earlier Show names gives icons and names");
+    check("peripherals, chosen", keyNamed(row, "autofocus").disabled, "no Autofocus while a job runs");
+    row = addFeature({ type: "custom:xtool-peripherals", controls: ["red_dot"], display: "names" }, { hass });
+    await wait(50);
+    check("show", keyNamed(row, "red_dot").textContent === "Red dot" && !keyNamed(row, "red_dot").querySelector("ha-icon"), "Show: Names, without icons");
     keyNamed(row, "power").click();
     await wait(20);
     check("peripherals, chosen", asking()?.title === "Turn off power?" && hass.calls.length === 0, "Power asks first while a job runs");
@@ -99,6 +107,9 @@
     options.setConfig({ type: "custom:xtool-peripherals" });
     const optionNames = options.querySelector("ha-form").schema.map((s) => s.name);
     check("fill lights as buttons", !optionNames.includes("dim_lights") && optionNames.includes("animate_fan"), `the options have no dimming (${optionNames.join(", ")})`);
+    const showField = options.querySelector("ha-form").schema.find((s) => s.name === "display");
+    check("show", !optionNames.includes("show_names") && showField?.selector.select.options.map((o) => o.label).join() === "Icons,Names,Icons and names"
+      && options.querySelector("ha-form").data.display === "icons", "Show: Icons (the default), Names, or Icons and names");
 
     // Fill light brightness: Home Assistant's own light brightness feature, for the chosen fill light
     hass = makeHass();
@@ -144,7 +155,12 @@
     hass = makeHass({ "switch.f2_moved": "off" });
     row = addFeature({ type: "custom:xtool-safety" }, { hass });
     await wait(50);
-    check("safety", keysOf(row).map((k) => k.dataset.key).join() === "flame_alarm,enclosure_stop,moved_stop", "the three checks");
+    check("safety", keysOf(row).map((k) => k.dataset.key).join() === "flame_alarm,enclosure_stop,moved_stop,safety_key", "the three checks and the safety key");
+    let keyOpened;
+    row.addEventListener("hass-more-info", (ev) => (keyOpened = ev.detail.entityId));
+    keyNamed(row, "safety_key").click();
+    check("safety", keyOpened === "binary_sensor.f2_safety_key" && hass.calls.length === 0 && keyNamed(row, "safety_key").getAttribute("aria-pressed") === "true",
+      "the safety key is shown (in: green); a tap opens it, nothing is switched");
     check("safety", !keyNamed(row, "auto_mode"), "auto mode is not a safety check");
     const moved = keyNamed(row, "moved_stop"), flame = keyNamed(row, "flame_alarm");
     check("safety", moved.classList.contains("fill") && moved.style.getPropertyValue("--c") === "var(--red-color)" && moved.getAttribute("aria-pressed") === "false",
@@ -168,13 +184,18 @@
     hass = makeHass();
     row = addFeature({ type: "custom:xtool-settings" }, { hass });
     await wait(50);
-    check("settings", keysOf(row).map((k) => k.dataset.key).join() === "buzzer,device_sleep,auto_mode", "buzzer reminders, device sleep, auto mode; no accessories");
+    check("settings", keysOf(row).map((k) => k.dataset.key).join() === "buzzer,if2_buzzer,device_sleep,auto_mode", "buzzer reminders, the IF2 buzzer, device sleep, auto mode");
     keyNamed(row, "auto_mode").click();
     await wait(20);
     check("settings", !asking() && JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "switch", service: "turn_on", data: { entity_id: "switch.f2_auto_mode" } }),
       "auto mode turns on and off with a tap, without asking");
 
-    // Accessories: their own feature, disabled while the laser does not see them
+    // Accessories: no longer offered (the IF2 buzzer is in Configuration); cards that have it keep working
+    check("accessories", !window.customCardFeatures.some((f) => f.type === "xtool-accessories")
+      && window.customCardFeatures.find((f) => f.type === "xtool-peripherals").name === "xTool controls"
+      && window.customCardFeatures.find((f) => f.type === "xtool-safety").name === "xTool safety"
+      && window.customCardFeatures.find((f) => f.type === "xtool-settings").name === "xTool configuration",
+      "the picker offers xTool controls, xTool safety and xTool configuration, and no xTool accessories");
     row = addFeature({ type: "custom:xtool-accessories" }, { hass });
     await wait(50);
     check("accessories", keysOf(row).map((k) => k.dataset.key).join() === "if2_buzzer" && row.style.display === "", "the IF2 buzzer");
@@ -246,12 +267,19 @@
     check("camera, crop", [...cropped.shadowRoot.querySelectorAll(".controls ha-icon")].map((i) => i.icon).join() === "mdi:arrow-expand-horizontal,mdi:arrow-expand-vertical,mdi:arrow-left-right,mdi:arrow-up-down",
       "each with its entity's icon");
     keyNamed(cropped, "camera.f2_deep").click();
-    await wait(20);
-    const perspectiveFeatures = [...cropped.shadowRoot.querySelectorAll(".controls hui-card-feature")];
-    check("camera, perspective", perspectiveFeatures.length === 1 && perspectiveFeatures[0].context.entity_id === "select.f2_deep_perspective"
-      && perspectiveFeatures[0].feature.type === "select-options" && perspectiveFeatures[0].feature.style === "buttons"
-      && perspectiveFeatures[0].parentElement.parentElement.classList.contains("wide"),
-      "the deep camera shows its perspective instead, as select buttons across the row");
+    await wait(60);
+    const perspective = cropped.shadowRoot.querySelector(".perspective ha-control-select");
+    check("camera, perspective", !cropped.shadowRoot.querySelector(".controls hui-card-feature") && perspective?.value === "straightened"
+      && perspective.options.map((o) => o.value).join() === "uncorrected,rotated,straightened" && perspective.options.every((o) => !o.icon)
+      && !perspective.hideOptionLabel, "the deep camera shows its perspective instead: Home Assistant's segmented control, with names");
+    perspective.choose("rotated");
+    check("camera, perspective", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "select", service: "select_option", data: { entity_id: "select.f2_deep_perspective", option: "rotated" } }),
+      "a tap selects the option");
+    const iconCamera = addFeature({ type: "custom:xtool-camera", camera: "Deep", display: "icons" }, { hass });
+    await wait(60);
+    const iconPerspective = iconCamera.shadowRoot.querySelector(".perspective ha-control-select");
+    check("camera, show", iconPerspective?.hideOptionLabel && iconPerspective.options.every((o) => o.icon?.icon)
+      && keysOf(iconCamera).every((k) => k.querySelector("ha-icon") && !k.querySelector("span")), "Show: Icons, for the camera buttons and the perspective");
     const sliders = addFeature({ type: "custom:xtool-camera", crop_style: "slider", crop_controls: ["crop_center_x", "crop_width"] }, { hass });
     await wait(50);
     cropFeatures = [...sliders.shadowRoot.querySelectorAll(".controls hui-card-feature")];
@@ -268,46 +296,41 @@
     cameraOptions.setConfig({ type: "custom:xtool-camera", show_crop: false });
     check("camera, options", !cameraOptions.querySelector("ha-form").schema.some((s) => s.name === "crop_style"), "the crop style only while the crop is shown");
 
-    // IF2 2.0 fan: Home Assistant's fan preset modes and fan speed features, in one row
+    // IF2 2.0 fan: one control, Off, Auto and 1 to 4 (Home Assistant's segmented control)
     hass = makeHass();
     let fan = addFeature({ type: "custom:xtool-if2-fan" }, { hass });
-    await wait(50);
-    let fanFeatures = [...fan.shadowRoot.querySelectorAll("hui-card-feature")];
-    check("IF2 fan", fanFeatures.map((f) => f.feature.type).join() === "fan-preset-modes,fan-speed"
-      && fanFeatures.every((f) => f.context.entity_id === "fan.if2_fan" && f.hass === hass),
-      "the fan preset modes and fan speed features, for the IF2's fan entity");
-    check("IF2 fan", fanFeatures[0].feature.style === "icons" && !("preset_modes" in fanFeatures[0].feature), "the Auto modes as icons, all of them");
-    check("IF2 fan", fanFeatures[0].color.includes("--state-fan-active-color"), "in the fan's colors");
-    const one = fan.shadowRoot.querySelector(".one");
-    check("IF2 fan", one?.children.length === 2 && getComputedStyle(one).display === "flex"
-      && Math.abs(one.children[0].getBoundingClientRect().top - one.children[1].getBoundingClientRect().top) < 1,
-      "side by side, in one row");
-    check("IF2 fan", !fan.shadowRoot.querySelector(".key"), "drawn by Home Assistant; no buttons of the card's own");
-    fan = addFeature({ type: "custom:xtool-if2-fan", preset_style: "dropdown", preset_modes: ["Auto Quiet"] }, { hass });
-    await wait(50);
-    const presetFeature = fan.shadowRoot.querySelector("hui-card-feature");
-    check("IF2 fan", presetFeature.feature.style === "dropdown" && presetFeature.feature.preset_modes.join() === "Auto Quiet", "the chosen style and Auto modes");
-    fan = addFeature({ type: "custom:xtool-if2-fan", show_presets: false }, { hass });
-    await wait(50);
-    check("IF2 fan", [...fan.shadowRoot.querySelectorAll("hui-card-feature")].map((f) => f.feature.type).join() === "fan-speed", "only the speeds, without the Auto modes");
-    fan = addFeature({ type: "custom:xtool-if2-fan", control: "fan" }, { hass });
-    await wait(50);
-    check("IF2 fan", fan.shadowRoot.querySelectorAll("hui-card-feature").length === 2, "an earlier version's control option changes nothing");
+    await wait(60);
+    let fanControl = fan.shadowRoot.querySelector("ha-control-select");
+    check("IF2 fan", fanControl?.options.map((o) => o.label).join() === "Off,Auto,1,2,3,4" && fanControl.value === "2" && !fanControl.hideOptionLabel
+      && !fan.shadowRoot.querySelector("hui-card-feature:not([style*='none'])"), "one control: Off, Auto, 1 to 4, with names; at speed 2");
+    check("IF2 fan", fan.style.getPropertyValue("--feature-color").includes("--state-fan-active-color"), "in the fan's colors");
+    fanControl.choose("auto");
+    check("IF2 fan", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "fan", service: "set_preset_mode", data: { entity_id: "fan.if2_fan", preset_mode: "Auto Regular" } }),
+      "Auto sets Auto Regular");
+    fanControl.choose("4");
+    check("IF2 fan", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "fan", service: "set_percentage", data: { entity_id: "fan.if2_fan", percentage: 100 } }),
+      "4 sets 100 %");
+    fanControl.choose("off");
+    check("IF2 fan", lastCall(hass).service === "turn_off", "Off turns the fan off");
+    fan = addFeature({ type: "custom:xtool-if2-fan", auto_preset: "Auto Quiet", display: "icons" }, { hass: makeHass({ "fan.if2_fan": { attributes: { preset_mode: "Auto Quiet" } } }) });
+    await wait(60);
+    fanControl = fan.shadowRoot.querySelector("ha-control-select");
+    check("IF2 fan", fanControl.value === "auto" && fanControl.hideOptionLabel && fanControl.options.every((o) => o.icon?.icon), "in Auto: Auto chosen; Show: Icons");
+    fanControl.choose("auto");
+    check("IF2 fan", true, "");
     const fanOptions = document.createElement("xtool-feature-editor");
     fanOptions.hass = hass;
     fanOptions.context = { entity_id: "sensor.f2_status" };
-    fanOptions.setConfig({ type: "custom:xtool-if2-fan", control: "fan" });
-    const fanNames = fanOptions.querySelector("ha-form").schema.map((s) => s.name);
-    check("IF2 fan, options", fanNames.join() === "show_presets,preset_style,customize_modes", `the fan's options (${fanNames.join(", ")})`);
+    fanOptions.setConfig({ type: "custom:xtool-if2-fan", control: "fan", preset_style: "dropdown" });
+    const fanForm = fanOptions.querySelector("ha-form");
+    check("IF2 fan, options", fanForm.schema.map((s) => s.name).join() === "display,auto_preset" && fanForm.data.auto_preset === "Auto Regular"
+      && fanForm.data.display === "names", `Show and the Auto mode Auto sets (${fanForm.schema.map((s) => s.name).join(", ")})`);
     let savedFan;
     fanOptions.addEventListener("config-changed", (ev) => (savedFan = ev.detail.config));
-    fanOptions.querySelector("ha-form").dispatchEvent(new CustomEvent("value-changed", { detail: { value: { show_presets: true, preset_style: "icons", customize_modes: true, control: "fan" } } }));
-    check("IF2 fan, options", savedFan.preset_modes?.join() === "Auto Regular,Auto Quiet" && !("control" in savedFan) && !("customize_modes" in savedFan),
-      "turning Customize on starts with every Auto mode; the old control option is dropped");
-    check("IF2 fan, options", fanOptions.querySelector("ha-form").schema.map((s) => s.name).join() === "show_presets,preset_style,customize_modes,preset_modes",
-      "then lists them, to remove or reorder");
+    fanForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { display: "both", auto_preset: "Auto Quiet", control: "fan" } } }));
+    check("IF2 fan, options", savedFan.auto_preset === "Auto Quiet" && !("control" in savedFan), "saved; the earlier options dropped");
 
-    // The first IF2: its gear select, as Home Assistant's select buttons
+    // The first IF2: its gear select, in the same control
     const firstIf2 = () => {
       const h = makeHass();
       delete h.entities["fan.if2_fan"];
@@ -317,36 +340,24 @@
       return h;
     };
     hass = firstIf2();
-    fan = addFeature({ type: "custom:xtool-if2-fan" }, { hass });
-    await wait(50);
-    let fanFeature = fan.shadowRoot.querySelector("hui-card-feature");
-    check("first IF2", fan.shadowRoot.querySelectorAll("hui-card-feature").length === 1 && fanFeature.context.entity_id === "select.if2_gear"
-      && fanFeature.feature.type === "select-options" && fanFeature.feature.style === "buttons" && !("options" in fanFeature.feature),
-      "Home Assistant's select options feature, as buttons, with every choice");
     fan = addFeature({ type: "custom:xtool-if2-fan", options: ["Off", "4"] }, { hass });
-    await wait(50);
-    check("first IF2", fan.shadowRoot.querySelector("hui-card-feature").feature.options.join() === "Off,4", "only the chosen choices, in order");
-    const gearOptions = document.createElement("xtool-feature-editor");
-    gearOptions.hass = hass;
-    gearOptions.context = { entity_id: "sensor.f2_status" };
-    gearOptions.setConfig({ type: "custom:xtool-if2-fan" });
-    check("first IF2", gearOptions.querySelector("ha-form").schema.map((s) => s.name).join() === "customize_options", "the editor offers Customize choices");
-    let savedGear;
-    gearOptions.addEventListener("config-changed", (ev) => (savedGear = ev.detail.config));
-    gearOptions.querySelector("ha-form").dispatchEvent(new CustomEvent("value-changed", { detail: { value: { customize_options: true } } }));
-    check("first IF2", savedGear.options?.join() === "Off,1,2,3,4", "turning Customize on starts with every choice");
+    await wait(60);
+    fanControl = fan.shadowRoot.querySelector("ha-control-select");
+    check("first IF2", fanControl?.options.map((o) => o.value).join() === "Off,4" && fanControl.value === "2", "the chosen gears, in the same control");
+    fanControl.choose("4");
+    check("first IF2", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "select", service: "select_option", data: { entity_id: "select.if2_gear", option: "4" } }),
+      "a tap selects the gear");
     check("feature picker", window.customCardFeatures.find((f) => f.type === "xtool-if2-fan").isSupported(hass, { entity_id: "sensor.f2_status" }),
       "offered for the first IF2");
 
     hass = makeHass();
     const noFan = addFeature({ type: "custom:xtool-if2-fan" }, { hass, entityId: "sensor.p2_status" });
     await wait(50);
-    check("IF2 fan", !noFan.shadowRoot.querySelector("hui-card-feature"), "nothing for a laser without an IF2");
-    const unseenHass = makeHass({ "fan.if2_fan": "unavailable" });
-    const unseen = addFeature({ type: "custom:xtool-if2-fan" }, { hass: unseenHass });
-    await wait(50);
-    check("IF2 fan, unavailable", unseen.style.display === "" && [...unseen.shadowRoot.querySelectorAll("hui-card-feature")].map((f) => f.feature.type).join() === "fan-preset-modes,fan-speed",
-      "kept in place while the laser does not see the IF2: Home Assistant's features, which show it disabled");
+    check("IF2 fan", !noFan.shadowRoot.querySelector("ha-control-select"), "nothing for a laser without an IF2");
+    const unseen = addFeature({ type: "custom:xtool-if2-fan" }, { hass: makeHass({ "fan.if2_fan": "unavailable" }) });
+    await wait(60);
+    check("IF2 fan, unavailable", unseen.style.display === "" && unseen.shadowRoot.querySelector("ha-control-select")?.disabled,
+      "kept in place, disabled, while the laser does not see the IF2");
 
     // Focus: Autofocus, beside Home Assistant's number buttons for the Focus height
     hass = makeHass({ "sensor.f2_status": "idle" });
@@ -357,11 +368,11 @@
     check("focus", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "button", service: "press", data: { entity_id: "button.f2_autofocus" } }),
       "which presses the laser's Autofocus button");
     let buttons = focus.shadowRoot.querySelector(".manual ha-control-number-buttons");
-    check("focus", !!buttons && buttons.value === 36.1 && buttons.step === 1 && buttons.min === 0 && buttons.max === 150 && buttons.unit === "mm",
-      "Home Assistant's number buttons, loaded with its numeric input feature, stepping by 1 mm");
+    check("focus", !!buttons && buttons.value === 36.1 && buttons.step === 0.1 && buttons.min === 0 && buttons.max === 150 && buttons.unit === "mm",
+      "Home Assistant's number buttons, loaded with its numeric input feature, stepping by 0.1 mm");
     check("focus", !focus.shadowRoot.querySelector(".loader"), "the feature that loaded them is gone");
     buttons.press(1);
-    check("focus", lastCall(hass).service === "set_value" && lastCall(hass).data.entity_id === "number.f2_focus_height" && lastCall(hass).data.value === 37.1,
+    check("focus", lastCall(hass).service === "set_value" && lastCall(hass).data.entity_id === "number.f2_focus_height" && lastCall(hass).data.value === 36.2,
       "+ moves the head up by the step");
     focus = addFeature({ type: "custom:xtool-focus", step: 0.5 }, { hass: makeHass({ "sensor.f2_status": "idle", "number.f2_focus_height": "149.8" }) });
     await wait(50);
@@ -378,7 +389,7 @@
     const focusSlider = focus.shadowRoot.querySelector(".manual hui-card-feature");
     check("focus, slider", focusSlider?.feature.type === "numeric-input" && focusSlider.feature.style === "slider" && focusSlider.context.entity_id === "number.f2_focus_height",
       "or Home Assistant's numeric input slider");
-    focus = addFeature({ type: "custom:xtool-focus", manual: "none", show_names: true }, { hass: makeHass() });
+    focus = addFeature({ type: "custom:xtool-focus", manual: "none", display: "both" }, { hass: makeHass() });
     await wait(50);
     check("focus, none", !focus.shadowRoot.querySelector(".manual").children.length && keyNamed(focus, "autofocus").textContent.includes("Autofocus"),
       "or Autofocus alone, with its name");
@@ -397,8 +408,8 @@
     focusOptions.hass = hass;
     focusOptions.context = { entity_id: "sensor.f2_status" };
     focusOptions.setConfig({ type: "custom:xtool-focus" });
-    check("focus, options", focusOptions.querySelector("ha-form").schema.map((s) => s.name).join() === "manual,step,show_input,show_names"
-      && focusOptions.querySelector("ha-form").data.step === 1, "Manual focus, Step, the box and names");
+    check("focus, options", focusOptions.querySelector("ha-form").schema.map((s) => s.name).join() === "manual,step,show_input,display"
+      && focusOptions.querySelector("ha-form").data.step === 0.1, "Manual focus, Step (0.1 mm), the box and Show");
     focusOptions.setConfig({ type: "custom:xtool-focus", manual: "slider" });
     check("focus, options", !focusOptions.querySelector("ha-form").schema.some((s) => s.name === "step"), "a step only for the buttons");
     const p2Focus = addFeature({ type: "custom:xtool-focus" }, { hass, entityId: "sensor.p2_status" });
