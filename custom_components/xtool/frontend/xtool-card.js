@@ -12,7 +12,7 @@
  * - custom:xtool-camera       a camera, shown by Home Assistant's own image element, with buttons to switch;
  *                             tap two corners on the main camera's picture to crop it; the deep camera's perspective
  * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: Off, Auto and its speeds in one control
- * - custom:xtool-focus        Autofocus and the focus height: step buttons or a slider, and a box to type it
+ * - custom:xtool-focus        the focus height in Home Assistant's number buttons; tap the height to type one
  * Each finds its entities on the same device as the card's entity, or on
  * the devices connected to it (the cameras' devices, the IF2's).
  *
@@ -1601,13 +1601,13 @@ class XtoolIf2Fan extends HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// Feature: focus (F2 Ultra UV). Autofocus, a button as on the laser, beside
-// the Focus height: Home Assistant's number buttons with the step chosen,
-// or its numeric input slider. Optionally a box to type the height, Home
-// Assistant's input as its number rows show it. Each change moves the head
-// (the laser refuses while it works; Home Assistant shows why).
+// Feature: focus (F2 Ultra UV), in one half-width row: - and + buttons that
+// move the head by the step chosen, around the Focus height in a field you
+// can type in (Enter or leaving the field moves the head there). Each change
+// moves the head (the laser refuses while it works; Home Assistant shows
+// why). Off with the inner engraving lens, as in Studio. Autofocus is in the
+// Controls feature.
 // ---------------------------------------------------------------------------
-const FOCUS_MANUAL = [["buttons", "Step buttons"], ["slider", "Slider"], ["none", "None"]];
 const FOCUS_STEP = 0.1;
 
 class XtoolFocus extends XtoolFeature {
@@ -1617,32 +1617,49 @@ class XtoolFocus extends XtoolFeature {
     super();
     const style = document.createElement("style");
     style.textContent = `
-      .line { display: flex; gap: var(--feature-button-spacing, 12px); }
-      .line .row { flex: 0 0 auto; }
-      .line .row .key { flex: none; min-width: var(--feature-height, 42px); padding: 0 10px; }
-      .line.alone .row { flex: 1 1 auto; }
-      .line.alone .row .key { flex: 1 1 0; }
-      .manual { flex: 1 1 0; min-width: 0; height: var(--feature-height, 42px); border-radius: var(--feature-border-radius, 12px); }
-      .manual:empty, .typed:empty { display: none; }
-      .manual ha-control-number-buttons { display: block; height: 100%; }
-      .typed { display: block; margin-top: var(--feature-button-spacing, 12px); }
-      .typed ha-input { display: block; width: 100%; }
-      .loader { display: none; }
-      ${HA_CONTROL_VARS}`;
+      .row .key { flex: none; width: var(--feature-height, 42px); padding: 0; }
+      .height {
+        position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 2px;
+        border-radius: var(--feature-border-radius, 12px); overflow: hidden; cursor: text;
+        color: var(--xtool-text, var(--primary-text-color)); font-weight: var(--ha-font-weight-medium, 500);
+      }
+      .height::before { content: ""; position: absolute; inset: 0; background: var(--feature-color); opacity: .2; }
+      .height:focus-within { outline: 2px solid var(--feature-color); outline-offset: 2px; }
+      .height > * { position: relative; }
+      .height input {
+        width: 100%; min-width: 0; margin: 0; padding: 0; border: 0; outline: none; background: transparent;
+        font: inherit; color: inherit; text-align: center;
+      }
+      .height.disabled { opacity: .45; cursor: default; }
+      .height .unit { flex: none; padding-right: 8px; color: var(--xtool-text, var(--secondary-text-color)); }`;
     this.shadowRoot.prepend(style);
-    this._line = document.createElement("div");
-    this._line.className = "line";
-    this._row.replaceWith(this._line);
-    this._manual = document.createElement("div");
-    this._manual.className = "manual slide";
-    this._line.append(this._row, this._manual);
-    this._typed = document.createElement("div");
-    this._typed.className = "typed";
-    this._line.after(this._typed);
+    this._field = document.createElement("label");
+    this._field.className = "height";
+    this._field.innerHTML = `<input type="text" inputmode="decimal" enterkeyhint="done"><span class="unit"></span>`;
+    this._input = this._field.querySelector("input");
+    this._unit = this._field.querySelector(".unit");
+    this._input.addEventListener("keydown", (ev) => {
+      ev.stopPropagation();
+      if (ev.key === "Enter") this._input.blur();
+      if (ev.key === "Escape") {
+        this._input.value = this._shown ?? "";
+        this._input.blur();
+      }
+    });
+    this._input.addEventListener("change", () => {
+      const typed = Number(this._input.value.trim().replace(",", "."));
+      if (this._input.value.trim() !== "" && Number.isFinite(typed)) this._setHeight(Math.round(typed * 10) / 10);
+      else this._input.value = this._shown ?? "";
+    });
+    this._input.addEventListener("click", (ev) => ev.stopPropagation());
   }
 
   static getStubConfig() {
     return { type: "custom:xtool-focus" };
+  }
+
+  static getConfigElement() {
+    return document.createElement("xtool-feature-editor");
   }
 
   get _height() {
@@ -1652,7 +1669,7 @@ class XtoolFocus extends XtoolFeature {
   /**
    * Whether focusing applies: with the inner engraving lens (or none) the
    * job sets the height from the material's size, as in Studio, which then
-   * offers no autofocus or manual focus.
+   * offers no manual focus.
    */
   get _surfaceLens() {
     const lens = sibling(this._hass, this._entityId, "engraving_lens");
@@ -1660,29 +1677,44 @@ class XtoolFocus extends XtoolFeature {
     return !["small", "none"].includes(state);
   }
 
+  get _step() {
+    return Number(this._config.step) > 0 ? Number(this._config.step) : FOCUS_STEP;
+  }
+
   _buttons() {
-    const hass = this._hass, id = this._entityId;
-    const autofocus = sibling(hass, id, "autofocus");
-    if (!autofocus) return [];
-    const status = statusOf(hass, id);
-    const phase = phaseOf(status ? hass.states[status]?.state : undefined);
-    // As in Studio: not while the laser works, frames, focuses or is off
-    const busy = BUSY_PHASES.includes(phase);
-    return [{
-      key: "autofocus", label: "Autofocus", icon: "mdi:image-filter-center-focus", text: "Autofocus",
-      color: "primary", disabled: !this._usable(autofocus) || busy || !this._surfaceLens,
-      action: () => hass.callService("button", "press", { entity_id: autofocus }),
-    }];
+    const height = this._height, stateObj = height ? this._hass.states[height] : undefined;
+    if (!height) return [];
+    const value = Number(stateObj?.state);
+    const usable = this._usable(height) && this._surfaceLens && Number.isFinite(value);
+    const { min = 0, max = 150 } = stateObj?.attributes ?? {};
+    const step = this._step;
+    return [
+      { key: "down", label: "Decrease", icon: "mdi:minus", disabled: !usable || value <= min, action: () => this._setHeight(Math.round((value - step) * 10) / 10) },
+      { key: "up", label: "Increase", icon: "mdi:plus", disabled: !usable || value >= max, action: () => this._setHeight(Math.round((value + step) * 10) / 10) },
+    ];
   }
 
   _render() {
     super._render();
     if (!this._hass || !this._config || !this._context) return;
-    const manual = FOCUS_MANUAL.some(([id]) => id === this._config.manual) ? this._config.manual : "buttons";
+    // In the number color, as Home Assistant's number features
+    this.style.setProperty("--feature-color", NUMBER_ON);
     const height = this._height;
-    this._line.classList.toggle("alone", manual === "none" || !height);
-    this._showManual(height && manual !== "none" ? manual : undefined);
-    this._showTyped(height && this._config.show_input ? height : undefined);
+    if (!height) {
+      this._field.remove();
+      return;
+    }
+    if (this._field.parentNode !== this._row || this._row.children[1] !== this._field) this._row.insertBefore(this._field, this._row.children[1] ?? null);
+    const stateObj = this._hass.states[height];
+    const value = Number(stateObj?.state);
+    const usable = this._usable(height) && this._surfaceLens;
+    this._shown = Number.isFinite(value) ? String(value) : "";
+    this._input.disabled = !usable;
+    this._field.classList.toggle("disabled", !usable);
+    this._input.setAttribute("aria-label", stateObj?.attributes.friendly_name ?? "Focus height");
+    this._unit.textContent = stateObj?.attributes.unit_of_measurement ?? "";
+    // Not while it is being typed in
+    if (this.shadowRoot.activeElement !== this._input) this._input.value = this._shown;
   }
 
   _setHeight(value) {
@@ -1690,110 +1722,6 @@ class XtoolFocus extends XtoolFeature {
     if (!stateObj || !Number.isFinite(value) || value === Number(stateObj.state)) return;
     const { min = 0, max = 150 } = stateObj.attributes;
     this._hass.callService("number", "set_value", { entity_id: height, value: Math.min(max, Math.max(min, value)) });
-  }
-
-  // Home Assistant's number buttons (loaded with its numeric input feature),
-  // or its numeric input feature itself as a slider
-  _showManual(manual) {
-    const height = this._height;
-    if (!manual) {
-      this._manual.replaceChildren();
-      this._manualKind = undefined;
-      return;
-    }
-    const stateObj = this._hass.states[height];
-    if (manual === "slider") {
-      if (this._manualKind !== `slider|${height}`) {
-        this._manualKind = `slider|${height}`;
-        this._slider = document.createElement("hui-card-feature");
-        this._slider.feature = { type: "numeric-input", style: "slider" };
-        this._slider.context = { entity_id: height };
-        this._manual.replaceChildren(this._slider);
-      }
-      this._slider.color = NUMBER_ON;
-      this._slider.style.setProperty("--feature-color", NUMBER_ON);
-      this._slider.hass = this._hass;
-      this._slider.toggleAttribute("inert", !this._surfaceLens);
-      this._slider.style.opacity = this._surfaceLens ? "" : "0.5";
-      return;
-    }
-    if (!customElements.get("ha-control-number-buttons")) {
-      // Home Assistant's numeric input feature brings its number buttons:
-      // show one, unseen, until they are defined
-      if (!this._loader) {
-        this._loader = document.createElement("hui-card-feature");
-        this._loader.className = "loader";
-        this._loader.feature = { type: "numeric-input", style: "buttons" };
-        this._loader.context = { entity_id: height };
-        this._loader.hass = this._hass;
-        this.shadowRoot.append(this._loader);
-        customElements.whenDefined("ha-control-number-buttons").then(() => {
-          this._loader.remove();
-          this._render();
-        });
-      }
-      return;
-    }
-    if (this._manualKind !== `buttons|${height}`) {
-      this._manualKind = `buttons|${height}`;
-      this._buttonsEl = document.createElement("ha-control-number-buttons");
-      this._buttonsEl.addEventListener("value-changed", (ev) => {
-        ev.stopPropagation();
-        this._setHeight(Number(ev.detail?.value));
-      });
-      this._manual.replaceChildren(this._buttonsEl);
-    }
-    const step = Number(this._config.step) > 0 ? Number(this._config.step) : FOCUS_STEP;
-    this._buttonsEl.style.setProperty("--feature-color", NUMBER_ON);
-    Object.assign(this._buttonsEl, {
-      label: stateObj?.attributes.friendly_name ?? "Focus height",
-      value: Number.isFinite(Number(stateObj?.state)) ? Number(stateObj.state) : undefined,
-      min: stateObj?.attributes.min ?? 0, max: stateObj?.attributes.max ?? 150, step,
-      unit: stateObj?.attributes.unit_of_measurement, disabled: !this._usable(height) || !this._surfaceLens, locale: this._hass.locale,
-    });
-  }
-
-  // Home Assistant's input (loaded with its number entity row), to type a height
-  _showTyped(height) {
-    if (!height) {
-      this._typed.replaceChildren();
-      this._input = undefined;
-      return;
-    }
-    if (!customElements.get("ha-input")) {
-      if (!this._inputLoading) {
-        this._inputLoading = true;
-        window.loadCardHelpers?.()
-          .then((helpers) => helpers.createRowElement({ entity: height }))
-          .then(() => customElements.whenDefined("ha-input"))
-          .then(() => this._render());
-      }
-      return;
-    }
-    const stateObj = this._hass.states[height];
-    if (!this._input || this._input.dataset.entity !== height) {
-      this._input = document.createElement("ha-input");
-      this._input.dataset.entity = height;
-      this._input.type = "number";
-      const unit = document.createElement("span");
-      unit.slot = "end";
-      this._input.append(unit);
-      this._input.addEventListener("change", (ev) => {
-        ev.stopPropagation();
-        this._setHeight(Number(this._input.value));
-      });
-      this._typed.replaceChildren(this._input);
-    }
-    Object.assign(this._input, {
-      label: stateObj?.attributes.friendly_name ?? "Focus height",
-      step: Number(stateObj?.attributes.step ?? 0.1), min: Number(stateObj?.attributes.min ?? 0), max: Number(stateObj?.attributes.max ?? 150),
-      disabled: !this._usable(height) || !this._surfaceLens,
-    });
-    this._input.querySelector("span[slot=end]").textContent = stateObj?.attributes.unit_of_measurement ?? "";
-    // Not while it is being typed in
-    if (!this._input.matches(":focus-within") && stateObj && Number.isFinite(Number(stateObj.state))) {
-      this._input.value = Number(stateObj.state).toString();
-    }
   }
 }
 
@@ -1951,28 +1879,13 @@ const FEATURE_FORMS = {
     };
   },
   "custom:xtool-focus": () => ({
-    schema: (c) => [
+    schema: [
       {
-        name: "manual", label: "Manual focus",
-        helper: "Step buttons: Home Assistant's number buttons, moving by the step below. Slider: Home Assistant's numeric input slider.",
-        selector: select(FOCUS_MANUAL),
+        name: "step", label: "Step (mm)", helper: "How far - and + move the head. Tap the height to type one.",
+        selector: { number: { mode: "box", min: 0.1, max: 50, step: 0.1 } },
       },
-      ...((c.manual ?? "buttons") === "buttons" ? [{
-        name: "step", label: "Step (mm)", selector: { number: { mode: "box", min: 0.1, max: 50, step: 0.1 } },
-      }] : []),
-      { name: "show_input", label: "Box to type the height", selector: { boolean: {} } },
-      displayField("For the Autofocus button."),
     ],
-    data: (c) => ({
-      manual: FOCUS_MANUAL.some(([id]) => id === c.manual) ? c.manual : "buttons",
-      ...((c.manual ?? "buttons") === "buttons" ? { step: Number(c.step) > 0 ? Number(c.step) : FOCUS_STEP } : {}),
-      show_input: !!c.show_input, display: displayOf(c),
-    }),
-    save: (v) => {
-      const c = { ...v };
-      if (c.manual !== "buttons") delete c.step;
-      return c;
-    },
+    data: (c) => ({ step: Number(c.step) > 0 ? Number(c.step) : FOCUS_STEP }),
   }),
 };
 
@@ -3282,7 +3195,7 @@ if (!customElements.get(CARD_TYPE)) {
       type: "xtool-if2-fan", name: "xTool SafetyPro IF2 fan",
       isSupported: (hass, context) => isXtool(hass, context?.entity_id) && !!if2Control(hass, context.entity_id), configurable: true,
     },
-    { type: "xtool-focus", name: "xTool focus", isSupported: has(["focus_height", "autofocus"]), configurable: true },
+    { type: "xtool-focus", name: "xTool focus", isSupported: has(["focus_height"]), configurable: true },
   );
 
   window.customCards = window.customCards || [];
