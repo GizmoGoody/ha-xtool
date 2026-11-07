@@ -66,7 +66,10 @@ def test_p3_by_machine_style() -> None:
 
 
 def test_models_without_it() -> None:
-    assert _supported(_model("P2"), "P0101000396") is False
+    from custom_components.xtool.protocols import DEVICE_MODELS
+
+    p2 = next(m for m in DEVICE_MODELS.values() if m.model_id == "P2")
+    assert _supported(p2, "P0101000396") is False
 
 
 async def test_machine_info_gives_the_sku() -> None:
