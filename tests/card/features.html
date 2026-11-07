@@ -251,7 +251,7 @@
     const shown = () => [...camera.shadowRoot.querySelectorAll(".shot hui-image")].filter((i) => !i.hidden);
     check("camera", shown().length === 1 && shown()[0].cameraImage === "camera.f2_deep" && image.hidden && image.isConnected,
       "switching shows the deep camera's image; the main camera's stays, hidden, with its picture");
-    check("camera", topKeys(camera).map((k) => k.textContent).join() === "Main,Deep,Straightened",
+    check("camera", topKeys(camera).map((k) => k.textContent).join() === "Main,Deep,straightened",
       "for the deep camera: no Crop or Reset, and its perspective in the same row");
     keyNamed(camera, "camera.f2_main").click();
     await wait(50);
@@ -265,7 +265,7 @@
     const live = addFeature({ type: "custom:xtool-camera", camera: "Deep", camera_view: "live", show_switch: false }, { hass });
     await wait(80);
     check("camera, live", live.shadowRoot.querySelector("hui-image").cameraView === "live" && live.shadowRoot.querySelector("hui-image").cameraImage === "camera.f2_deep"
-      && topKeys(live).length === 0, "the chosen camera, live, without camera buttons");
+      && topKeys(live).map((k) => k.dataset.key).join() === "perspective", "the chosen camera, live, without camera buttons (its perspective stays)");
 
     const offCamera = addFeature({ type: "custom:xtool-camera" }, { hass: makeHass({ "sensor.f2_status": "off" }) });
     await wait(60);
@@ -362,8 +362,8 @@
     await wait(60);
     const perspectiveKey = keyNamed(cropped, "perspective");
     check("camera, perspective", keysOf(cropped).map((k) => k.dataset.key).join() === "camera.f2_main,camera.f2_deep,perspective"
-      && cropped.shadowRoot.querySelectorAll(".row").length === 1 && perspectiveKey.textContent === "Straightened"
-      && !perspectiveKey.hasAttribute("aria-pressed") && perspectiveKey.title === "Perspective: Straightened. Tap for Uncorrected",
+      && cropped.shadowRoot.querySelectorAll(".row").length === 1 && perspectiveKey.textContent === "straightened"
+      && !perspectiveKey.hasAttribute("aria-pressed") && perspectiveKey.title === "Perspective: straightened. Tap for uncorrected",
       "the deep camera's perspective is one key in the camera row, showing the one chosen");
     perspectiveKey.click();
     check("camera, perspective", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "select", service: "select_option", data: { entity_id: "select.f2_deep_perspective", option: "uncorrected" } }),

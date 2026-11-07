@@ -197,9 +197,9 @@
     tap();
     await wait(50);
     // A tap between the features (it reaches the card behind them) leaves them open
-    const group = inner(collapsible).shadowRoot.querySelector("ha-card > hui-card-features").getBoundingClientRect();
+    const featureArea = inner(collapsible).shadowRoot.querySelector("ha-card > hui-card-features").getBoundingClientRect();
     collapsible.shadowRoot.querySelector(".frame").dispatchEvent(new PointerEvent("pointerdown", {
-      bubbles: true, composed: true, clientX: group.left + 2, clientY: group.top + 2,
+      bubbles: true, composed: true, clientX: featureArea.left + 2, clientY: featureArea.top + 2,
     }));
     tap();
     await wait(50);
