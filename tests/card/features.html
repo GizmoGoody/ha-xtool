@@ -276,14 +276,14 @@
     };
     let cropOpened;
     cropped.addEventListener("hass-more-info", (ev) => (cropOpened = ev.detail.entityId));
-    tapAt(0.25, 0.25);
+    tapAt(0.25, 0.2);
     check("camera, crop", !cropOpened && hass.calls.length === 0 && !cropped.shadowRoot.querySelector(".corner").hidden
       && cropped.shadowRoot.querySelector(".hint").textContent === "Tap the bottom-right corner", "the first tap marks the top-left corner and asks for the other");
-    tapAt(0.75, 0.999);
+    tapAt(0.75, 0.8);
     check("camera, crop", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "xtool", service: "camera", data: {
-      crop_width: 100, crop_height: 150, crop_center_x: 0, crop_center_y: 25, entity_id: "camera.f2_main" } })
+      crop_width: 100, crop_height: 120, crop_center_x: 0, crop_center_y: 0, entity_id: "camera.f2_main" } })
       && cropped.shadowRoot.querySelector(".corner").hidden && cropped.shadowRoot.querySelector(".hint").textContent === "",
-      `the second tap crops to the rectangle between them, in mm on the work surface (${JSON.stringify(lastCall(hass))}; ${JSON.stringify(img.getBoundingClientRect())})`);
+      `the second tap crops to the rectangle between them, in mm on the work surface (${JSON.stringify(lastCall(hass).data)})`);
     keyNamed(cropped, "crop_reset").click();
     check("camera, crop", JSON.stringify(lastCall(hass).data) === JSON.stringify({ crop_width: 200, crop_height: 200, crop_center_x: 0, crop_center_y: 0, entity_id: "camera.f2_main" }),
       "Reset: 200 x 200 mm, centered");
