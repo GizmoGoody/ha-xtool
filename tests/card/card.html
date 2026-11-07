@@ -73,10 +73,13 @@
 
   // Collapsing to the title
   try { localStorage.clear(); } catch (err) { /* no storage: the card still works */ }
-  const collapsible = addCard("tap shows or hides the features", { style: "graphite", features_toggle: true, ...jobFeatures }, { hass: f2("idle"), height: 220 });
-  const closedAtLoad = addCard("hidden at load", { entity: "sensor.p2_status", features_toggle: true, features_open: false, ...jobFeatures }, { hass: p2("idle"), height: 220 });
-  const closedInline = addCard("hidden at load, inline", { features_toggle: true, features_open: false, features_position: "inline",
+  const collapsible = addCard("tap shows or hides the features", { style: "graphite", collapsible: true, ...jobFeatures }, { hass: f2("idle"), height: 220 });
+  const closedAtLoad = addCard("hidden at load", { entity: "sensor.p2_status", collapsible: true, expanded: false, ...jobFeatures }, { hass: p2("idle"), height: 220 });
+  const closedInline = addCard("hidden at load, inline", { collapsible: true, expanded: false, features_position: "inline",
     features: [{ type: "custom:xtool-job" }, { type: "custom:xtool-peripherals" }, { type: "custom:xtool-safety" }] }, { hass: f2("idle"), height: 160 });
+  const autoCollapse = addCard("collapse when off", { entity: "sensor.p2_status", collapsible: true, ...jobFeatures }, { hass: p2("idle"), height: 220 });
+  const keepOpen = addCard("collapse when off: off", { entity: "sensor.p2_status", collapsible: true, auto_collapse: false, ...jobFeatures }, { hass: p2("idle"), height: 220 });
+  const offAtLoad = addCard("off at load", { collapsible: true, ...jobFeatures }, { hass: f2("off"), height: 220 });
   const offStyled = addCard("off, graphite", { style: "graphite", ...jobFeatures }, { hass: f2("off"), height: 220 });
   const noLight = addCard("no status light", { status_light: false }, { hass: f2("idle"), height: 80 });
 
@@ -214,7 +217,30 @@
     tap();
     await wait(50);
     check("tap shows or hides the features", inner(collapsible).config.features.length === 2, "another tap shows them again");
-    check("hidden at load", inner(closedAtLoad).config.features.length === 0, "Show features at load: off");
+    check("hidden at load", inner(closedAtLoad).config.features.length === 0, "Expanded at load: off");
+
+    // Collapse when off: closes as the machine turns off, opens as it turns on
+    autoCollapse.hass = p2("unavailable");
+    keepOpen.hass = p2("unavailable");
+    await wait(50);
+    check("collapse when off", inner(autoCollapse).config.features.length === 0, "turning off collapses the card");
+    check("collapse when off", localStorage.getItem("xtool-card:sensor.p2_status") !== "0", "the browser keeps the tapped choice");
+    check("collapse when off: off", inner(keepOpen).config.features.length === 2, "with the option off, the card stays open");
+    autoCollapse.hass = p2("idle");
+    await wait(50);
+    check("collapse when off", inner(autoCollapse).config.features.length === 2, "turning on expands it again");
+    check("off at load", inner(offAtLoad).config.features.length === 0, "a card that loads while the machine is off is collapsed");
+    const tapOff = () => inner(offAtLoad).shadowRoot.querySelector("ha-card").dispatchEvent(new CustomEvent("ll-custom", {
+      bubbles: true, composed: true, detail: inner(offAtLoad).config.tap_action,
+    }));
+    tapOff();
+    await wait(50);
+    check("off at load", inner(offAtLoad).config.features.length === 2, "a tap still opens it while off");
+    offAtLoad.hass = f2("idle");
+    await wait(50);
+    offAtLoad.hass = f2("off");
+    await wait(50);
+    check("off at load", inner(offAtLoad).config.features.length === 0, "turning off again collapses it");
     check("hidden at load, inline", inner(closedInline).config.features.map((f) => f.type).join() === "custom:xtool-job",
       "collapsed, the feature beside the title stays, as on a tile card");
     check("champagne, match", !inner(styles.champagne).config.tap_action, "without the option, the Tap behavior is the card's own");
