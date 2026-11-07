@@ -6,7 +6,7 @@
  * - custom:xtool-job          Start or Resume, Pause and Cancel, following the job
  * - custom:xtool-peripherals  power, the exhaust fan, fill lights (on or off), red dot
  *                             and other parts; a fan's icon turns while it runs
- * - custom:xtool-fill-light   one fill light's brightness: the tile card's own light brightness feature
+ * - custom:xtool-fill-light   the fill lights' brightness, side by side: the tile card's own light brightness feature
  * - custom:xtool-safety       the safety checks, the safety key and Access control; turning a check off asks first
  * - custom:xtool-settings     the Configuration switches: buzzer reminders, the IF2 buzzer, device sleep
  * - custom:xtool-camera       a camera, shown by Home Assistant's own image element, with buttons to switch;
@@ -309,19 +309,21 @@ function lightOf(hass, entityId, state) {
 
 // Drawn on the tile card's icon, from inside the tile card (as the window's
 // title text is); if Home Assistant renames that part, there is no ring. The
-// ring is 1 px wide, inside the icon's edge (an outline drawn inward, over
-// the icon's background), with a glow outside.
+// tile card gives its icon 6 px of padding around the 36 px circle, for a
+// larger tap area; the ring is 2 px wide, inside that circle's edge (an
+// outline drawn inward, over the icon's background), so it is never larger
+// than the icon.
+const ICON_PADDING = "6px";
 const LIGHT_SHEET = `
   :host([xtool-light]) ha-tile-icon {
     border-radius: 50%;
-    outline: 1px solid var(--xtool-light); outline-offset: -1px;
-    box-shadow: 0 0 4px var(--xtool-light);
+    outline: 2px solid var(--xtool-light); outline-offset: calc(-2px - ${ICON_PADDING});
   }
   :host([xtool-light="slow"]) ha-tile-icon { animation: xtool-light-blink 2s step-end infinite; }
   :host([xtool-light="fast"]) ha-tile-icon { animation: xtool-light-blink .6s step-end infinite; }
   :host([xtool-light="breathe"]) ha-tile-icon { animation: xtool-light-breathe 3s ease-in-out infinite; }
-  @keyframes xtool-light-blink { 50% { outline-color: transparent; box-shadow: none; } }
-  @keyframes xtool-light-breathe { 50% { outline-color: transparent; box-shadow: 0 0 4px transparent; } }
+  @keyframes xtool-light-blink { 50% { outline-color: transparent; } }
+  @keyframes xtool-light-breathe { 50% { outline-color: transparent; } }
   @media (prefers-reduced-motion: reduce) { :host([xtool-light]) ha-tile-icon { animation: none; } }`;
 
 // ---------------------------------------------------------------------------
@@ -655,6 +657,8 @@ const FEATURE_CSS = `
     color: var(--xtool-text, var(--primary-text-color)); font: inherit; font-size: var(--ha-font-size-s, 12px); font-weight: 500;
   }
   .key::before { content: ""; position: absolute; inset: 0; background: var(--c, var(--feature-color)); opacity: .2; transition: opacity 180ms ease-in-out; }
+  /* A switch that is off: Home Assistant's off color, not its own */
+  .key[aria-pressed="false"]:not(.fill)::before { background: var(--disabled-color, #bdbdbd); }
   .key:hover::before { opacity: .35; }
   .key[aria-pressed="true"]::before { opacity: 1; }
   .key[aria-pressed="true"] { color: var(--xtool-on-color, #fff); }
@@ -681,6 +685,7 @@ const FEATURE_CSS = `
  * its own confirmation dialog ({ title, text, confirm_text }).
  */
 function performAction(host, service, entityId, confirmation) {
+  // The question's answers: confirm_text, and dismiss_text (Keep it by default)
   fire(host, "hass-action", {
     config: {
       tap_action: {
@@ -917,7 +922,7 @@ class XtoolToggles extends XtoolFeature {
       const status = statusOf(this._hass, this._entityId);
       const phase = phaseOf(status ? this._hass.states[status]?.state : undefined);
       if (phase === "processing" || phase === "paused") {
-        confirmation = { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, confirm_text: "Turn off" };
+        confirmation = { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, confirm_text: "Turn off", dismiss_text: "Keep on" };
       }
     }
     performAction(this, `${domainOf(entityId)}.${on ? "turn_off" : "turn_on"}`, entityId, confirmation);
@@ -973,11 +978,11 @@ class XtoolCamera extends XtoolFeature {
       .shot hui-image { display: block; }
       .shot hui-image[hidden] { display: none; }
       .shot.cropping { cursor: crosshair; }
-      .shot .corner {
-        position: absolute; width: 14px; height: 14px; margin: -8px 0 0 -8px; pointer-events: none;
-        border: 2px solid var(--primary-color, #03a9f4); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6);
+      .shot .area {
+        position: absolute; pointer-events: none; box-sizing: border-box;
+        border: 2px solid var(--primary-color, #03a9f4); box-shadow: 0 0 0 1px rgba(0, 0, 0, .6), 0 0 0 100vmax rgba(0, 0, 0, .35);
       }
-      .shot .corner[hidden] { display: none; }
+      .shot .area[hidden] { display: none; }
       .shot .hint {
         position: absolute; left: 0; right: 0; top: 0; padding: 6px 12px 16px; text-align: start; pointer-events: none;
         font-size: var(--ha-font-size-s, 12px); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .9);
@@ -994,9 +999,9 @@ class XtoolCamera extends XtoolFeature {
     this._shot = document.createElement("button");
     this._shot.type = "button";
     this._shot.className = "shot";
-    this._shot.innerHTML = `<span class="corner" hidden></span><span class="hint"></span><span class="time"></span>`;
+    this._shot.innerHTML = `<span class="area" hidden></span><span class="hint"></span><span class="time"></span>`;
     this._time = this._shot.querySelector(".time");
-    this._corner = this._shot.querySelector(".corner");
+    this._area = this._shot.querySelector(".area");
     this._hint = this._shot.querySelector(".hint");
     this._images = new Map();
     this._shot.addEventListener("click", (ev) => {
@@ -1005,6 +1010,10 @@ class XtoolCamera extends XtoolFeature {
       // Crop on: a tap marks a corner. Off: a tap opens the camera
       if (this._cropping && this._crop()) this._cropTap(ev);
       else fire(this, "hass-more-info", { entityId: this._camera });
+    });
+    // After the first corner, the rectangle follows the pointer
+    this._shot.addEventListener("pointermove", (ev) => {
+      if (this._first) this._showArea(this._first, this._placeOf(ev));
     });
     this.shadowRoot.prepend(style);
     this._row.before(this._shot);
@@ -1048,20 +1057,21 @@ class XtoolCamera extends XtoolFeature {
         this._picked = entityId;
         this._first = undefined;
         this._cropping = false;
+        this._area.hidden = true;
         this._key = undefined;
         this._render();
       },
     }));
     const crop = this._crop();
     if (crop) {
-      // Crop makes a tap on the picture mark a corner; Reset shows the whole 200 x 200 mm again
+      // On while choosing a crop and while one is in effect; off shows the
+      // whole 200 x 200 mm again
       const usable = this._usable(current);
+      const cropped = this._cropped(crop);
       buttons.push({
-        key: "crop", label: "Crop by tapping", text: "Crop", icon: "mdi:crop", color: "primary",
-        pressed: !!this._cropping && usable, disabled: !usable, action: () => this._toggleCropping(),
-      }, {
-        key: "crop_reset", label: "Reset crop", text: "Reset", icon: "mdi:restore", color: "primary",
-        disabled: !usable, action: () => this._setCrop(CROP_RESET),
+        key: "crop", label: cropped ? "Crop: on. Tap to show it all" : this._cropping ? "Crop: tap the picture" : "Crop by tapping",
+        text: "Crop", icon: "mdi:crop", color: "primary",
+        pressed: usable && (!!this._cropping || cropped), disabled: !usable, action: () => this._toggleCropping(crop),
       });
     }
     const perspective = this._perspectiveButton();
@@ -1107,6 +1117,26 @@ class XtoolCamera extends XtoolFeature {
     return crop;
   }
 
+  /** Whether a crop is in effect: not the whole 200 x 200 mm, centered. */
+  _cropped(crop) {
+    return Object.entries(CROP_RESET).some(([side, value]) => crop[side] !== value);
+  }
+
+  /** A point's place in the picture box (px). */
+  _placeOf(ev) {
+    const box = this._shot.getBoundingClientRect();
+    return { left: ev.clientX - box.left, top: ev.clientY - box.top };
+  }
+
+  /** The rectangle between two places in the picture box. */
+  _showArea(a, b) {
+    Object.assign(this._area.style, {
+      left: `${Math.min(a.left, b.left)}px`, top: `${Math.min(a.top, b.top)}px`,
+      width: `${Math.abs(b.left - a.left)}px`, height: `${Math.abs(b.top - a.top)}px`,
+    });
+    this._area.hidden = false;
+  }
+
   /** The tapped point on the work surface (mm), or undefined off the picture or for a whole-photo side. */
   _pointOf(ev, crop) {
     const img = this._images.get(this._camera)?.shadowRoot?.querySelector("img");
@@ -1118,10 +1148,7 @@ class XtoolCamera extends XtoolFeature {
     const u = (ev.clientX - box.left - (box.width - shownW) / 2) / shownW;
     const v = (ev.clientY - box.top - (box.height - shownH) / 2) / shownH;
     if (u < 0 || u > 1 || v < 0 || v > 1) return undefined;
-    return {
-      x: crop.center_x + (u - 0.5) * crop.width, y: crop.center_y + (v - 0.5) * crop.height,
-      left: ev.clientX - this._shot.getBoundingClientRect().left, top: ev.clientY - this._shot.getBoundingClientRect().top,
-    };
+    return { x: crop.center_x + (u - 0.5) * crop.width, y: crop.center_y + (v - 0.5) * crop.height, ...this._placeOf(ev) };
   }
 
   // First tap: the top-left corner; second tap: the bottom-right corner
@@ -1131,15 +1158,13 @@ class XtoolCamera extends XtoolFeature {
     if (!point) return;
     if (!this._first) {
       this._first = point;
-      this._corner.style.left = `${point.left}px`;
-      this._corner.style.top = `${point.top}px`;
-      this._corner.hidden = false;
+      this._showArea(point, point);
       this._showHint();
       return;
     }
     const first = this._first;
     this._first = undefined;
-    this._corner.hidden = true;
+    this._area.hidden = true;
     this._showHint();
     const width = Math.abs(point.x - first.x), height = Math.abs(point.y - first.y);
     if (!width || !height) return;
@@ -1149,11 +1174,26 @@ class XtoolCamera extends XtoolFeature {
     });
   }
 
-  _toggleCropping() {
-    this._cropping = !this._cropping;
-    this._first = undefined;
-    this._corner.hidden = true;
+  // Off: start choosing a crop. On: stop choosing, and show it all again
+  _toggleCropping(crop) {
+    if (this._cropping || this._cropped(crop)) {
+      const cropped = this._cropped(crop);
+      this._stopCropping();
+      if (cropped) this._setCrop(CROP_RESET);
+      return;
+    }
+    this._cropping = true;
     this._showHint();
+    this._key = undefined;
+    this._render();
+  }
+
+  _stopCropping() {
+    this._cropping = false;
+    this._first = undefined;
+    this._area.hidden = true;
+    this._showHint();
+    this._key = undefined;
     this._render();
   }
 
@@ -1161,7 +1201,7 @@ class XtoolCamera extends XtoolFeature {
     const camera = this._camera;
     this._first = undefined;
     this._cropping = false;
-    this._corner.hidden = true;
+    this._area.hidden = true;
     this._showHint();
     this._render();
     // The integration takes the new photo before the action ends: show it now
@@ -1208,9 +1248,7 @@ class XtoolCamera extends XtoolFeature {
   _showHint() {
     const crop = this._cropping ? this._crop() : undefined;
     this._shot.classList.toggle("cropping", !!crop);
-    this._hint.textContent = !crop ? ""
-      : !(crop.width > 0 && crop.height > 0) ? "Reset the crop to crop by tapping"
-        : this._first ? "Tap the bottom-right corner" : "Tap the top-left corner";
+    this._hint.textContent = !crop ? "" : this._first ? "Tap the opposite corner" : "Tap a corner of the part to show";
   }
 
   _currentCamera(cameras) {
@@ -1292,8 +1330,8 @@ class XtoolCamera extends XtoolFeature {
 }
 
 // ---------------------------------------------------------------------------
-// Feature: one fill light's brightness. It is Home Assistant's own light
-// brightness feature, shown for the chosen fill light through
+// Feature: the fill lights' brightness, side by side. Each is Home Assistant's own light
+// brightness feature, shown for each fill light chosen through
 // hui-card-feature, the element the tile card shows every feature with
 // (features render only inside a tile card, which loads it). Turning the
 // lights on and off is in the peripherals feature.
@@ -1323,16 +1361,17 @@ class XtoolFillLight extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this.shadowRoot.innerHTML = `<style>
       :host { display: block; }
-      .slide { display: block; border-radius: var(--feature-border-radius, 12px); }
-    </style><div class="slide"></div>`;
-    this._box = this.shadowRoot.querySelector(".slide");
+      .lights { display: flex; gap: var(--feature-button-spacing, 12px); }
+      .slide { display: block; flex: 1 1 0; min-width: 0; border-radius: var(--feature-border-radius, 12px); }
+    </style><div class="lights"></div>`;
+    this._box = this.shadowRoot.querySelector(".lights");
+    this._slides = new Map();
     keepTaps(this);
   }
 
-  // A new feature starts with the first fill light (add it again for the next)
+  // A new feature shows every fill light, side by side
   static getStubConfig(hass, context) {
-    const first = dimmableLights(hass, context?.entity_id)[0];
-    return { type: "custom:xtool-fill-light", light: first?.role ?? "fill_light_front" };
+    return { type: "custom:xtool-fill-light", lights: dimmableLights(hass, context?.entity_id).map((l) => l.role) };
   }
 
   static getConfigElement() {
@@ -1355,27 +1394,41 @@ class XtoolFillLight extends HTMLElement {
     this._render();
   }
 
+  /** The fill lights shown, in the order chosen (all by default). */
+  _lights() {
+    const lights = dimmableLights(this._hass, this._context.entity_id);
+    const roles = this._config.lights;
+    if (!Array.isArray(roles)) return lights;
+    return roles.map((role) => lights.find((l) => l.role === role)).filter(Boolean);
+  }
+
   _render() {
     if (!this._hass || !this._config || !this._context) return;
-    const lights = dimmableLights(this._hass, this._context.entity_id);
-    const light = lights.find((l) => l.role === this._config.light) ?? lights[0];
-    if (!light) {
-      this._box.replaceChildren();
-      this._feature = undefined;
-      return;
+    const lights = this._lights();
+    // One slide for each light, each in its light's color
+    const slides = lights.map((light) => {
+      let slide = this._slides.get(light.entityId);
+      if (!slide) {
+        slide = document.createElement("div");
+        slide.className = "slide";
+        const feature = document.createElement("hui-card-feature");
+        feature.feature = { type: "light-brightness" };
+        feature.context = { entity_id: light.entityId };
+        slide.append(feature);
+        this._slides.set(light.entityId, slide);
+      }
+      const feature = slide.firstChild;
+      const stateObj = this._hass.states[light.entityId];
+      const rgb = stateObj?.attributes.rgb_color;
+      const color = stateObj?.state === "on" ? (Array.isArray(rgb) ? `rgb(${rgb.join(", ")})` : LIGHT_ON) : LIGHT_OFF;
+      slide.style.setProperty("--feature-color", color);
+      feature.color = color;
+      feature.hass = this._hass;
+      return slide;
+    });
+    if (slides.length !== this._box.children.length || slides.some((slide, i) => this._box.children[i] !== slide)) {
+      this._box.replaceChildren(...slides);
     }
-    if (!this._feature) {
-      this._feature = document.createElement("hui-card-feature");
-      this._feature.feature = { type: "light-brightness" };
-      this._box.replaceChildren(this._feature);
-    }
-    const stateObj = this._hass.states[light.entityId];
-    const rgb = stateObj?.attributes.rgb_color;
-    const color = stateObj?.state === "on" ? (Array.isArray(rgb) ? `rgb(${rgb.join(", ")})` : LIGHT_ON) : LIGHT_OFF;
-    this.style.setProperty("--feature-color", color);
-    this._feature.color = color;
-    if (this._feature.context?.entity_id !== light.entityId) this._feature.context = { entity_id: light.entityId };
-    this._feature.hass = this._hass;
   }
 }
 
@@ -1449,8 +1502,8 @@ class XtoolSafety extends XtoolFeature {
       fire(this, "hass-more-info", { entityId });
       return;
     }
-    const confirmation = on ? { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, confirm_text: "Turn off" }
-      : item.enabling ? { title: `Turn on ${item.label.toLowerCase()}?`, text: item.enabling, confirm_text: "Turn on" } : undefined;
+    const confirmation = on ? { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, confirm_text: "Turn off", dismiss_text: "Keep on" }
+      : item.enabling ? { title: `Turn on ${item.label.toLowerCase()}?`, text: item.enabling, confirm_text: "Turn on", dismiss_text: "Keep off" } : undefined;
     performAction(this, `switch.${on ? "turn_off" : "turn_on"}`, entityId, confirmation);
   }
 }
@@ -1464,6 +1517,7 @@ class XtoolSafety extends XtoolFeature {
 // Shown disabled while the laser does not see the IF2, as Home Assistant's are.
 // ---------------------------------------------------------------------------
 const NUMBER_ON = "var(--state-number-active-color, var(--state-active-color, var(--primary-color, #03a9f4)))";
+const IF2_KEYS = [["off", "Off"], ["auto", "Auto"], ["speed", "Speed"]];
 const IF2_ICONS = { off: "mdi:fan-off", auto: "mdi:fan-auto", speed: "mdi:fan", 1: "mdi:fan-speed-1", 2: "mdi:fan-speed-2", 3: "mdi:fan-speed-3" };
 
 class XtoolIf2Fan extends XtoolFeature {
@@ -1514,7 +1568,9 @@ class XtoolIf2Fan extends XtoolFeature {
           hass.callService("fan", "set_percentage", { entity_id: fan, percentage: Math.min(100, nextSpeed * step) });
         },
       });
-      return buttons;
+      // The keys chosen, in the order chosen (all by default)
+      if (!Array.isArray(c.controls)) return buttons;
+      return c.controls.map((key) => buttons.find((b) => b.key === key)).filter(Boolean);
     }
     const gears = sibling(hass, laser, "if2_gear_select");
     const gearState = gears ? hass.states[gears] : undefined;
@@ -1649,7 +1705,7 @@ class XtoolFocus extends XtoolFeature {
     const stateObj = this._hass.states[height];
     const value = Number(stateObj?.state);
     const usable = this._usable(height);
-    this._shown = Number.isFinite(value) ? String(value) : "";
+    this._shown = Number.isFinite(value) ? value.toFixed(1) : "";
     this._input.disabled = !usable;
     this._field.classList.toggle("disabled", !usable);
     this._input.setAttribute("aria-label", stateObj?.attributes.friendly_name ?? "Focus height");
@@ -1725,11 +1781,11 @@ const FEATURE_FORMS = {
     const roles = lights.map((l) => l.role);
     return {
       schema: [{
-        name: "light", label: "Fill light",
-        helper: "Add this feature once for each fill light. Turning the lights on and off is in the peripherals feature.",
-        selector: { select: { mode: "dropdown", options: lights.map((l) => ({ value: l.role, label: l.label })) } },
+        name: "lights", label: "Fill lights",
+        helper: "Side by side, in order. Turning the lights on and off is in the peripherals feature.",
+        selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: lights.map((l) => ({ value: l.role, label: l.label })) } },
       }],
-      data: (c) => ({ light: roles.includes(c.light) ? c.light : roles[0] }),
+      data: (c) => ({ lights: Array.isArray(c.lights) ? c.lights.filter((role) => roles.includes(role)) : roles }),
     };
   },
   "custom:xtool-settings": (hass, entityId) => ({
@@ -1764,7 +1820,7 @@ const FEATURE_FORMS = {
         },
         ...(crops.length === CROP_ROLES.length ? [{
           name: "crop", label: "Crop by tapping",
-          helper: "Adds Crop and Reset for the main camera. With Crop on, tap the picture at the top-left corner, then at the bottom-right corner, to show only that part. Reset shows the 200 x 200 mm area, centered.",
+          helper: "Adds a Crop key for the main camera. Tap it, then tap two opposite corners on the picture to show only that part. The key stays on while the crop is in effect; tap it again to show the whole 200 x 200 mm area.",
           selector: { boolean: {} },
         }] : []),
         ...(perspective ? [{
@@ -1786,8 +1842,13 @@ const FEATURE_FORMS = {
     const gears = sibling(hass, entityId, "if2_gear_select");
     const options = gears ? hass.states[gears]?.attributes.options ?? [] : [];
     return {
-      // One control: Off, Auto and the speeds (IF2 2.0), or the gears (IF2)
+      // One control: Off, Auto and the speed (IF2 2.0), or the gears (IF2)
       schema: (c) => [
+        ...(fan ? [{
+          name: "controls", label: "Keys",
+          helper: "In order. The speed key shows the speed, and a tap steps to the next.",
+          selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: IF2_KEYS.map(([value, label]) => ({ value, label })) } },
+        }] : []),
         displayField(),
         ...(!fan && gears ? [
           { name: "customize_options", label: "Customize choices", selector: { boolean: {} } },
@@ -1799,6 +1860,7 @@ const FEATURE_FORMS = {
         ] : []),
       ],
       data: (c) => ({
+        ...(fan ? { controls: Array.isArray(c.controls) ? c.controls : IF2_KEYS.map(([value]) => value) } : {}),
         display: displayOf(c, "names"),
         ...(!fan && gears ? { customize_options: Array.isArray(c.options), ...(Array.isArray(c.options) ? { options: c.options } : {}) } : {}),
       }),
