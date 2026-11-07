@@ -89,6 +89,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "job_result_time": lambda: "has_job_result_time" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # Device registry lookups without the helpers Home Assistant 2026.11 deprecates
     "device_registry_lookup": lambda: "async_entries_for_config_entry" in (COMPONENT / "coordinator.py").read_text(encoding="utf-8"),
+    # The WS-V2 poll does not read the settings of a sleeping laser (the read wakes it)
+    "sleep_no_slow_reads": lambda: "slow = not asleep" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }
