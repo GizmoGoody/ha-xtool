@@ -1,22 +1,21 @@
 """Tests for the F2 Ultra UV Status details (Focusing, Warming up,
-Interrupted, Laser overheat) and the Continue / Discard buttons.
+Laser overheat).
 
 Each comes from the same read or push xTool Studio uses.
 """
 
 from __future__ import annotations
 
+import inspect
 import json
+import logging
 from unittest.mock import AsyncMock
 
 import pytest
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.xtool.const import XtoolStatus
 from custom_components.xtool.protocols.base import XtoolDeviceState
 
-from .conftest import build_coordinator
 from .features import COMPONENT, requires
 
 pytestmark = requires("status_details")
@@ -105,22 +104,51 @@ def test_details_never_stick_when_no_base_status_is_known() -> None:
 
 async def test_reads_as_studio_at_connect() -> None:
     proto = _protocol()
-
-    async def request(url, method="GET", params=None, data=None, timeout=None):
-        if url == "/v1/device/uv-laser":
-            return {"uv_ready": "0"}
-        if url == "/v1/processing/powerResume":
-            assert params == {"action": "query"}
-            return {"status": True}
-        return {}
-
-    proto.request = AsyncMock(side_effect=request)
+    proto.request = AsyncMock(return_value={"uv_ready": "0"})
     await proto._poll_status_reads()
     assert proto._status_reads_known is True
-    # An interrupted job shows before a cold UV laser.
-    assert _status(proto) == XtoolStatus.INTERRUPTED
-    proto._power_resume = False
     assert _status(proto) == XtoolStatus.WARMING_UP
+    proto.request.assert_awaited_once_with("/v1/device/uv-laser", "GET", timeout=8.0)
+
+
+async def test_a_failed_read_is_tried_again() -> None:
+    from custom_components.xtool.protocols.ws_v2.protocol import UV_READY_TRIES
+
+    proto = _protocol()
+    proto.request = AsyncMock(side_effect=TimeoutError)
+    for _ in range(UV_READY_TRIES - 1):
+        await proto._poll_status_reads()
+        assert proto._status_reads_known is False
+    proto.request = AsyncMock(return_value={"uv_ready": "0"})
+    await proto._poll_status_reads()
+    assert proto._status_reads_known is True
+    assert _status(proto) == XtoolStatus.WARMING_UP
+
+
+async def test_reads_stop_after_the_tries() -> None:
+    from custom_components.xtool.protocols.ws_v2.protocol import UV_READY_TRIES
+
+    proto = _protocol()
+    proto.request = AsyncMock(side_effect=TimeoutError)
+    for _ in range(UV_READY_TRIES):
+        await proto._poll_status_reads()
+    assert proto._status_reads_known is True
+    assert proto._uv_ready is None
+
+
+def test_a_reconnect_forgets_the_old_ready_flag() -> None:
+    from custom_components.xtool.protocols.ws_v2.protocol import WSV2Protocol
+
+    source = inspect.getsource(WSV2Protocol._open_instruction_ws)
+    assert "self._uv_ready = None" in source
+    assert "self._status_read_tries = 0" in source
+
+
+def test_laser_head_status_pushes_are_handled(caplog) -> None:
+    proto = _protocol()
+    with caplog.at_level(logging.DEBUG):
+        _push(proto, "/laser_head/status", "LASER_HEAD", "UV_READY")
+    assert "unhandled push" not in caplog.text
 
 
 async def test_reads_happen_until_known_then_slowly() -> None:
@@ -137,37 +165,11 @@ async def test_reads_happen_until_known_then_slowly() -> None:
     proto._poll_status_reads.assert_not_awaited()
 
 
-@pytest.mark.parametrize(("action", "wire"), [("continue", "start"), ("discard", "cancel")])
-async def test_power_resume_buttons(hass: HomeAssistant, action: str, wire: str) -> None:
-    coordinator = build_coordinator(hass, _f2uv())
-    buttons = {
-        b.unique_id.rsplit("_power_resume_", 1)[-1]: b
-        for b in coordinator.build_buttons()
-        if "power_resume" in (b.unique_id or "")
-    }
-    assert set(buttons) == {"continue", "discard"}
-    button = buttons[action]
-    proto = _protocol()
-    coordinator.protocol = proto
-    proto._power_resume = False
-    assert button.available is False
-    with pytest.raises(HomeAssistantError):
-        await button.async_press()
-    proto._power_resume = True
-    proto.request = AsyncMock(return_value={})
-    coordinator.async_request_refresh = AsyncMock()
-    await button.async_press()
-    proto.request.assert_awaited_once_with(
-        "/v1/processing/powerResume", "PUT", params={"action": wire}, timeout=15.0,
-    )
-    assert proto._power_resume is False
-
-
-def test_a_job_start_clears_the_interrupted_job() -> None:
-    proto = _protocol()
-    proto._power_resume = True
-    _push(proto, "/device/status", "STATUS_CONTROLLER", "WORK_STARTED", "")
-    assert proto._power_resume is False
+def test_no_power_loss_resume() -> None:
+    """The F2 Ultra UV never offers a resumable job, so none of it is built."""
+    text = (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8")
+    assert "powerResume" not in text
+    assert not hasattr(XtoolStatus, "INTERRUPTED")
 
 
 def test_only_the_uv_models_have_these() -> None:
@@ -176,7 +178,6 @@ def test_only_the_uv_models_have_these() -> None:
     for key, model in DEVICE_MODELS.items():
         uv = model.model_id.startswith("F2UltraUV") and model.protocol_version == "V2"
         assert getattr(model, "has_uv_laser_status", False) is uv, key
-        assert getattr(model, "has_power_resume", False) is uv, key
 
 
 @pytest.mark.parametrize(
@@ -185,5 +186,6 @@ def test_only_the_uv_models_have_these() -> None:
 def test_translated(path: str) -> None:
     data = json.loads((COMPONENT / path).read_text(encoding="utf-8"))["entity"]
     states = data["sensor"]["status"]["state"]
-    assert {"focusing", "warming_up", "interrupted", "laser_overheat"} <= set(states)
-    assert {"power_resume_continue", "power_resume_discard"} <= set(data["button"])
+    assert {"focusing", "warming_up", "laser_overheat"} <= set(states)
+    assert "interrupted" not in states
+    assert not {"power_resume_continue", "power_resume_discard"} & set(data["button"])

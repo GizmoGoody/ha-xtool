@@ -63,8 +63,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "camera_devices": lambda: "_camera_device_info" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     # F2 Ultra UV focus height control and the xtool.focus action
     "focus_control": lambda: "has_focus_control" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
-    # F2 Ultra UV Status: Focusing, Warming up, Interrupted, Laser overheat
-    "status_details": lambda: "has_power_resume" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
+    # F2 Ultra UV Status: Focusing, Warming up, Laser overheat
+    "status_details": lambda: "has_uv_laser_status" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # F2 Ultra UV Engraving lens, Wi-Fi signal and Calibration sensors
     "laser_info": lambda: "has_laser_info" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # The red dot is assumed on after a V2 laser connects
@@ -73,6 +73,12 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "if2_alerts": lambda: '"event": _AccessoryAlertEvent' in (COMPONENT / "protocols" / "accessories" / "entities.py").read_text(encoding="utf-8"),
     # F2 Ultra UV main camera Calibration image
     "calibration_image": lambda: (COMPONENT / "image.py").exists(),
+    # A WS-V2 job the laser reports as failed is a Job "failed" event
+    "job_failed": lambda: '"failed" if failed else "finished"' in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
+    # F2 Ultra UV Last job time from the job result push
+    "job_result_time": lambda: "has_job_result_time" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
+    # Device registry lookups without the helpers Home Assistant 2026.11 deprecates
+    "device_registry_lookup": lambda: "async_entries_for_config_entry" in (COMPONENT / "coordinator.py").read_text(encoding="utf-8"),
     # The dashboard card and its tile features
     "dashboard_card": lambda: (COMPONENT / "frontend" / "xtool-card.js").exists(),
 }

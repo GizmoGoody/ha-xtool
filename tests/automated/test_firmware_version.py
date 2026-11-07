@@ -133,13 +133,13 @@ def test_restart_keeps_the_firmware_from_the_device_page(hass: HomeAssistant, co
     from custom_components.xtool import _last_firmware_version
 
     stored = "40.130.022.00.ht1"
-    assert _last_firmware_version(hass, "MXTEST0001", stored) == stored
+    assert _last_firmware_version(hass, config_entry.entry_id, "MXTEST0001", stored) == stored
     dr.async_get(hass).async_get_or_create(
         config_entry_id=config_entry.entry_id,
         identifiers={("xtool", "MXTEST0001")},
         sw_version=INSTALLED,
     )
-    assert _last_firmware_version(hass, "MXTEST0001", stored) == INSTALLED
+    assert _last_firmware_version(hass, config_entry.entry_id, "MXTEST0001", stored) == INSTALLED
 
 
 @requires("device_info_refetch")
