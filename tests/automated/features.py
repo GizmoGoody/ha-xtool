@@ -56,6 +56,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "access_control_sku": lambda: "access_control_skus" in (COMPONENT / "protocols" / "base.py").read_text(encoding="utf-8"),
     # Auto power-off: the Power switch turns off after Idle or Sleeping for a while
     "auto_power_off": lambda: "class XtoolAutoPowerOff" in (COMPONENT / "number.py").read_text(encoding="utf-8"),
+    # A value written from Home Assistant shows at once and is held until the device reports it
+    "written_values_held": lambda: "def async_write" in (COMPONENT / "coordinator.py").read_text(encoding="utf-8"),
     # Task ID shows None when the laser has no job
     "task_id_none": lambda: "def task_id_value" in (COMPONENT / "const.py").read_text(encoding="utf-8"),
     # WS-V2 camera: faster photo live view, Idle when nobody watches
