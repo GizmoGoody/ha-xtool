@@ -244,14 +244,15 @@
     check("camera", image?.cameraImage === "camera.f2_main" && image.entity === "camera.f2_main" && image.cameraView === "auto" && image.hass === hass,
       "Home Assistant's image element shows the main camera, in the Auto view");
     check("camera", !camera.shadowRoot.querySelector(".shot > img"), "no picture of the card's own");
-    const topKeys = (el) => [...el.shadowRoot.querySelectorAll(".row:not(.perspective) .key")];
+    const topKeys = keysOf;
     check("camera", topKeys(camera).map((k) => k.textContent).join() === "Main,Deep,Crop,Reset", "buttons for both cameras, and Crop and Reset for the main camera");
     keyNamed(camera, "camera.f2_deep").click();
     await wait(50);
     const shown = () => [...camera.shadowRoot.querySelectorAll(".shot hui-image")].filter((i) => !i.hidden);
     check("camera", shown().length === 1 && shown()[0].cameraImage === "camera.f2_deep" && image.hidden && image.isConnected,
       "switching shows the deep camera's image; the main camera's stays, hidden, with its picture");
-    check("camera", topKeys(camera).map((k) => k.textContent).join() === "Main,Deep", "no Crop or Reset for the deep camera");
+    check("camera", topKeys(camera).map((k) => k.textContent).join() === "Main,Deep,Straightened",
+      "for the deep camera: no Crop or Reset, and its perspective in the same row");
     keyNamed(camera, "camera.f2_main").click();
     await wait(50);
     check("camera", shown()[0] === image && camera.shadowRoot.querySelectorAll(".shot hui-image").length === 2, "and switching back shows the same image again");
@@ -326,6 +327,8 @@
     check("camera, crop", !cropOpened && hass.calls.length === 0 && !cropped.shadowRoot.querySelector(".corner").hidden
       && cropped.shadowRoot.querySelector(".hint").textContent === "Tap the bottom-right corner", "the first tap marks the top-left corner and asks for the other");
     const before = cropped.shadowRoot.querySelector(".shot hui-image");
+    // Home Assistant's 9 s store of picture addresses, shared by its images
+    hass._cameraTmbUrl = { "camera.f2_main": Promise.resolve("/api/camera_proxy/camera.f2_main?authSig=old"), "camera.f2_deep": Promise.resolve("deep") };
     tapAt(0.75, 0.8);
     check("camera, crop", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "xtool", service: "camera", data: {
       crop_width: 100, crop_height: 120, crop_center_x: 0, crop_center_y: 0, entity_id: "camera.f2_main" } })
@@ -334,6 +337,8 @@
       `the second tap crops to the rectangle between them, in mm on the work surface, and Crop turns off (${JSON.stringify(lastCall(hass).data)})`);
     await wait(30);
     const visible = [...cropped.shadowRoot.querySelectorAll(".shot hui-image")].filter((i) => !i.hidden);
+    check("camera, crop", hass._cameraTmbUrl["camera.f2_main"] === undefined && hass._cameraTmbUrl["camera.f2_deep"] !== undefined,
+      "the main camera's stored picture address is dropped, so the new image asks for a new one");
     check("camera, crop", visible.length === 1 && visible[0] !== before && !before.isConnected,
       "the new photo is shown at once: a new image replaces the old one");
     keyNamed(cropped, "crop_reset").click();
@@ -355,42 +360,53 @@
       "Crop by tapping off: a tap opens the camera, without Crop or Reset");
     keyNamed(cropped, "camera.f2_deep").click();
     await wait(60);
-    const perspectiveKeys = () => [...cropped.shadowRoot.querySelectorAll(".perspective .key")];
-    check("camera, perspective", perspectiveKeys().map((k) => k.dataset.key).join() === "uncorrected,rotated,straightened"
-      && perspectiveKeys().find((k) => k.dataset.key === "straightened").getAttribute("aria-pressed") === "true"
-      && perspectiveKeys().every((k) => k.querySelector("span") && !k.querySelector("ha-icon")),
-      "the deep camera shows its perspective instead: a row of keys, with names, the one chosen pressed");
-    perspectiveKeys().find((k) => k.dataset.key === "rotated").click();
-    check("camera, perspective", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "select", service: "select_option", data: { entity_id: "select.f2_deep_perspective", option: "rotated" } }),
-      "a tap selects the option");
+    const perspectiveKey = keyNamed(cropped, "perspective");
+    check("camera, perspective", keysOf(cropped).map((k) => k.dataset.key).join() === "camera.f2_main,camera.f2_deep,perspective"
+      && cropped.shadowRoot.querySelectorAll(".row").length === 1 && perspectiveKey.textContent === "Straightened"
+      && !perspectiveKey.hasAttribute("aria-pressed") && perspectiveKey.title === "Perspective: Straightened. Tap for Uncorrected",
+      "the deep camera's perspective is one key in the camera row, showing the one chosen");
+    perspectiveKey.click();
+    check("camera, perspective", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "select", service: "select_option", data: { entity_id: "select.f2_deep_perspective", option: "uncorrected" } }),
+      "a tap steps to the next (after the last, the first)");
     const iconCamera = addFeature({ type: "custom:xtool-camera", camera: "Deep", display: "icons" }, { hass });
     await wait(60);
-    const iconPerspective = [...iconCamera.shadowRoot.querySelectorAll(".perspective .key")];
-    check("camera, show", iconPerspective.length === 3 && iconPerspective.every((k) => k.querySelector("ha-icon") && !k.querySelector("span"))
+    check("camera, show", keysOf(iconCamera).length === 3 && keyNamed(iconCamera, "perspective").querySelector("ha-icon").icon === "mdi:perspective-less"
       && keysOf(iconCamera).every((k) => k.querySelector("ha-icon") && !k.querySelector("span")), "Show: Icons, for the camera buttons and the perspective");
     cameraOptions.setConfig({ type: "custom:xtool-camera" });
     const cropNames = cameraOptions.querySelector("ha-form").schema.map((s) => s.name);
     check("camera, options", cropNames.includes("crop") && cropNames.includes("show_perspective") && !cropNames.some((n) => n.startsWith("crop_") || n === "show_crop")
       && cameraOptions.querySelector("ha-form").data.crop === true, `Crop by tapping (on by default) and the perspective (${cropNames.join(", ")})`);
 
-    // IF2 2.0 fan: one row of keys, Off, A (Auto) and 1 to 4
+    // IF2 2.0 fan: Off, A (Auto) and one speed key that steps 1 to 4
     hass = makeHass();
     let fan = addFeature({ type: "custom:xtool-if2-fan" }, { hass });
     await wait(60);
-    check("IF2 fan", keysOf(fan).map((k) => k.textContent).join() === "Off,A,1,2,3,4" && keyNamed(fan, "2").getAttribute("aria-pressed") === "true"
-      && keyNamed(fan, "auto").title === "Auto" && !fan.shadowRoot.querySelector("ha-control-select"), "keys: Off, A, 1 to 4, with names; at speed 2");
+    check("IF2 fan", keysOf(fan).map((k) => k.textContent).join() === "Off,A,2" && keyNamed(fan, "speed").getAttribute("aria-pressed") === "true"
+      && keyNamed(fan, "auto").title === "Auto" && keyNamed(fan, "speed").title === "Speed 2. Tap for 3", "keys: Off, A and the speed, with names; at speed 2");
     keyNamed(fan, "auto").click();
     check("IF2 fan", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "fan", service: "set_preset_mode", data: { entity_id: "fan.if2_fan", preset_mode: "Auto" } }),
       "A sets Auto: each job sets the speed");
-    keyNamed(fan, "4").click();
-    check("IF2 fan", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "fan", service: "set_percentage", data: { entity_id: "fan.if2_fan", percentage: 100 } }),
-      "4 sets 100 %");
+    keyNamed(fan, "speed").click();
+    check("IF2 fan", JSON.stringify(lastCall(hass)) === JSON.stringify({ domain: "fan", service: "set_percentage", data: { entity_id: "fan.if2_fan", percentage: 75 } }),
+      "a tap on the speed steps from 2 to 3 (75 %)");
     keyNamed(fan, "off").click();
     check("IF2 fan", lastCall(hass).service === "turn_off", "Off turns the fan off");
+    let fanHass = makeHass({ "fan.if2_fan": { attributes: { percentage: 100 } } });
+    fan = addFeature({ type: "custom:xtool-if2-fan" }, { hass: fanHass });
+    await wait(60);
+    keyNamed(fan, "speed").click();
+    check("IF2 fan", lastCall(fanHass).data.percentage === 25, "after 4, back to 1");
+    fanHass = makeHass({ "fan.if2_fan": { state: "off", attributes: { percentage: 0 } } });
+    fan = addFeature({ type: "custom:xtool-if2-fan" }, { hass: fanHass });
+    await wait(60);
+    keyNamed(fan, "speed").click();
+    check("IF2 fan", keyNamed(fan, "speed").getAttribute("aria-pressed") === "false" && lastCall(fanHass).data.percentage === 25,
+      "while off, the speed key starts the speed it shows (1 at first)");
     fan = addFeature({ type: "custom:xtool-if2-fan", display: "icons" }, { hass: makeHass({ "fan.if2_fan": { attributes: { preset_mode: "Auto" } } }) });
     await wait(60);
-    check("IF2 fan", keyNamed(fan, "auto").getAttribute("aria-pressed") === "true" && keysOf(fan).every((k) => k.querySelector("ha-icon") && !k.querySelector("span")),
-      "in Auto: A pressed; Show: Icons");
+    check("IF2 fan", keyNamed(fan, "auto").getAttribute("aria-pressed") === "true" && keysOf(fan).every((k) => k.querySelector("ha-icon"))
+      && !keyNamed(fan, "off").querySelector("span") && keyNamed(fan, "speed").querySelector("span")?.textContent === "1",
+      "in Auto: A pressed; Show: Icons, with the speed's number beside its icon");
     const fanOptions = document.createElement("xtool-feature-editor");
     fanOptions.hass = hass;
     fanOptions.context = { entity_id: "sensor.f2_status" };

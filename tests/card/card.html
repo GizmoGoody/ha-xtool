@@ -196,6 +196,23 @@
     check("tap shows or hides the features", localStorage.getItem("xtool-card:sensor.f2_status") === "0", "the browser remembers it");
     tap();
     await wait(50);
+    // A tap between the features (it reaches the card behind them) leaves them open
+    const group = inner(collapsible).shadowRoot.querySelector("ha-card > hui-card-features").getBoundingClientRect();
+    collapsible.shadowRoot.querySelector(".frame").dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, composed: true, clientX: group.left + 2, clientY: group.top + 2,
+    }));
+    tap();
+    await wait(50);
+    check("tap shows or hides the features", inner(collapsible).config.features.length === 2, "a tap between the features leaves them open");
+    const title = inner(collapsible).shadowRoot.querySelector(".top").getBoundingClientRect();
+    collapsible.shadowRoot.querySelector(".frame").dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, composed: true, clientX: title.left + 2, clientY: title.top + 2,
+    }));
+    tap();
+    await wait(50);
+    check("tap shows or hides the features", inner(collapsible).config.features.length === 0, "a tap on the title row hides them");
+    tap();
+    await wait(50);
     check("tap shows or hides the features", inner(collapsible).config.features.length === 2, "another tap shows them again");
     check("hidden at load", inner(closedAtLoad).config.features.length === 0, "Show features at load: off");
     check("hidden at load, inline", inner(closedInline).config.features.map((f) => f.type).join() === "custom:xtool-job",
@@ -235,7 +252,7 @@
 
     // One channel for each Home Assistant control inside the card's features
     const channels = [...haInside.shadowRoot.querySelectorAll(".area.console")];
-    check("console, Home Assistant features inside", channels.length === 7, `one channel each: the fill light, and each of the IF2 fan's six buttons (${channels.length})`);
+    check("console, Home Assistant features inside", channels.length === 4, `one channel each: the fill light, and each of the IF2 fan's three buttons (${channels.length})`);
     check("console, Home Assistant features inside", channels.every((a) => Math.abs(parseFloat(a.style.height) - 48) <= 1),
       `fitted to the 42 px control (${channels.map((a) => a.style.height).join(", ")})`);
 
