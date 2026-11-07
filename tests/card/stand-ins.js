@@ -48,7 +48,7 @@ const F2_DEEP_CAMERA = [
 ];
 const IF2 = [
   ["switch.if2_buzzer", "accessory_ductfanv3_buzzer", "off"],
-  ["fan.if2_fan", "accessory_ductfanv3_fan", "on", { preset_modes: ["Auto Regular", "Auto Quiet"], percentage_step: 25, percentage: 50, preset_mode: null }],
+  ["fan.if2_fan", "accessory_ductfanv3_fan", "on", { preset_modes: ["Auto"], percentage_step: 25, percentage: 50, preset_mode: null }],
   ["sensor.if2_speed", "accessory_ductfanv3_current_speed", "60"],
 ];
 const P2 = [
