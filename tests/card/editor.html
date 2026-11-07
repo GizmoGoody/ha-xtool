@@ -30,7 +30,21 @@
     const form = editor.shadowRoot.getElementById("form");
     const styleForm = editor.shadowRoot.getElementById("style");
     const names = [...styleForm.schema, ...form.schema].map((s) => s.name);
-    check("editor", ["style", "features_style", "badges", "progress"].every((n) => names.includes(n)), `the xTool options (${names.join(", ")})`);
+    check("editor", ["style", "features_style", "badges", "status_light", "progress"].every((n) => names.includes(n)), `the xTool options (${names.join(", ")})`);
+    check("status light", fired.status_light === true && form.data.status_light === true, "the status light is on by default");
+    form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { style: "champagne", status_light: false } } }));
+    check("status light", fired.status_light === false, "and can be turned off");
+    form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { style: "champagne", status_light: true } } }));
+
+    // The laser: a device picker, which fills in the laser's Status sensor
+    const laserForm = editor.shadowRoot.getElementById("laser");
+    const laserField = laserForm.schema[0];
+    check("laser", laserField.name === "device" && laserField.selector.device.integration === "xtool" && laserForm.data.device === "dev_f2",
+      "a device picker for xTool lasers, showing the card's laser");
+    laserForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { device: "dev_p2" } } }));
+    check("laser", fired.entity === "sensor.p2_status", "choosing a laser sets its Status sensor");
+    laserForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { device: "dev_f2" } } }));
+    check("laser", fired.entity === "sensor.f2_status", "and back");
     check("editor", styleForm.data.style === "champagne", "the style is shown");
 
     // Randomize reflections: a new pattern for the window's reflections
@@ -51,6 +65,7 @@
     const tile = editor.shadowRoot.querySelector("xtool-tile-card-editor");
     check("editor", !!tile, "the tile card's own editor is inside");
     check("editor", tile && !/"name":"icon"|"name":"show_entity_picture"/.test(tile.schemaNames), "without the icon options (the card draws the picture)");
+    check("editor", tile && !/"name":"entity"/.test(tile.schemaNames), "without the tile card's entity picker (the laser is chosen above)");
     check("editor", tile?.config && !("style" in tile.config) && tile.config.show_entity_picture === true, "the tile editor gets only tile card options");
     check("editor", tile?.hass.states["sensor.f2_status"].attributes.elapsed === "12:08", "State content can offer the job attributes");
 

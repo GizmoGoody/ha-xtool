@@ -33,6 +33,7 @@ const F2 = [
   ["update.f2_firmware", "firmware", "off"],
   ["number.f2_focus_height", "focus_height", "36.1", { min: 0, max: 150, step: 0.1, unit_of_measurement: "mm", mode: "box" }],
   ["button.f2_autofocus", "autofocus", "unknown"],
+  ["sensor.f2_engraving_lens", "engraving_lens", "big", { device_class: "enum", options: ["none", "small", "big"] }],
 ];
 const F2_MAIN_CAMERA = [
   ["camera.f2_main", "camera_main", "idle", { entity_picture: "/api/camera_proxy/camera.f2_main?token=a" }],
@@ -112,7 +113,10 @@ customElements.define("hui-timestamp-display", class extends HTMLElement {});
 window.defineHuiImage = () => customElements.define("hui-image", class extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: "open" }).innerHTML = '<div><img alt=""></div>';
+    this.attachShadow({ mode: "open" }).innerHTML = '<div><img alt="" style="display:block;width:100%;aspect-ratio:4/3"></div>';
+    const img = this.shadowRoot.querySelector("img");
+    Object.defineProperty(img, "naturalWidth", { value: 400 });
+    Object.defineProperty(img, "naturalHeight", { value: 300 });
     this.updateComplete = Promise.resolve();
   }
 });

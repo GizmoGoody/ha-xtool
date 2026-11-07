@@ -78,6 +78,7 @@
   const closedInline = addCard("hidden at load, inline", { features_toggle: true, features_open: false, features_position: "inline",
     features: [{ type: "custom:xtool-job" }, { type: "custom:xtool-peripherals" }, { type: "custom:xtool-safety" }] }, { hass: f2("idle"), height: 160 });
   const offStyled = addCard("off, graphite", { style: "graphite", ...jobFeatures }, { hass: f2("off"), height: 220 });
+  const noLight = addCard("no status light", { status_light: false }, { hass: f2("idle"), height: 80 });
 
   // A feature beside the title (features position: inline), and two columns of features
   const inlineCard = addCard("inline job, champagne", { style: "champagne", features_style: "console", features_position: "inline",
@@ -252,5 +253,6 @@
     check("status light", !tileOf(offStyled).hasAttribute("xtool-light"), "none while the laser is off");
     check("status light", tileOf(closedAtLoad).getAttribute("xtool-light") === "solid" && tileOf(closedAtLoad).style.getPropertyValue("--xtool-light") === "#ffffff",
       "the P2 ring light: white while idle");
+    check("status light", !tileOf(noLight).hasAttribute("xtool-light"), "none when turned off");
   });
 </script>
