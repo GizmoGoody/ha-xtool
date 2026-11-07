@@ -558,16 +558,6 @@ const FEATURE_CSS = `
   ${KEY_CSS}
 `;
 
-/**
- * Show or hide a feature. A hidden feature takes no room: the cell Home
- * Assistant's features grid holds it in (hui-card-feature) is hidden with it,
- * so no gap is left and the card gets shorter.
- */
-function showFeature(el, shown) {
-  el.style.display = shown ? "" : "none";
-  const cell = el.getRootNode?.()?.host;
-  if (cell?.localName === "hui-card-feature") cell.style.display = shown ? "" : "none";
-}
 
 /**
  * Perform an action through Home Assistant's own action handling, as a
@@ -882,19 +872,12 @@ class XtoolSettings extends XtoolToggles {
   }
 }
 
-// Hidden while no accessory can be used (the laser does not see it)
 class XtoolAccessories extends XtoolToggles {
   static label = "Accessories";
   static list = ACCESSORIES;
 
   static getStubConfig() {
     return { type: "custom:xtool-accessories" };
-  }
-
-  _buttons() {
-    const buttons = super._buttons();
-    showFeature(this, buttons.some((b) => !b.disabled));
-    return buttons;
   }
 }
 
@@ -967,11 +950,7 @@ class XtoolCamera extends XtoolFeature {
   }
 
   _buttons() {
-    const status = statusOf(this._hass, this._entityId);
-    const off = phaseOf(status ? this._hass.states[status]?.state : undefined) === "off";
     const cameras = camerasOf(this._hass, this._entityId);
-    // The laser is off, or no camera can be used: no picture and no buttons
-    showFeature(this, !off && cameras.some(([id]) => this._usable(id)));
     const current = this._currentCamera(cameras);
     if (current !== this._camera) {
       this._camera = current;
@@ -1286,9 +1265,10 @@ class XtoolIf2Fan extends HTMLElement {
   // The features to show, left to right: [{ feature, entityId, color, part }]
   _wanted() {
     const laser = this._context.entity_id, c = this._config;
-    const usable = (id) => !!id && !!this._hass.states[id] && this._hass.states[id].state !== "unavailable";
+    // While the laser does not see the IF2, its features show disabled, as Home Assistant draws them
+    const exists = (id) => !!id && !!this._hass.states[id];
     const fan = sibling(this._hass, laser, "if2_fan_entity");
-    if (usable(fan)) {
+    if (exists(fan)) {
       const color = this._hass.states[fan].state === "on" ? FAN_ON : FAN_OFF;
       const wanted = [];
       const presets = this._hass.states[fan].attributes.preset_modes ?? [];
@@ -1303,7 +1283,7 @@ class XtoolIf2Fan extends HTMLElement {
       return wanted;
     }
     const select = sibling(this._hass, laser, "if2_gear_select");
-    if (!usable(select)) return [];
+    if (!exists(select)) return [];
     const options = Array.isArray(c.options) ? { options: c.options } : {};
     return [{ feature: { type: "select-options", style: "buttons", ...options }, entityId: select, color: SELECT_ON, part: "speed" }];
   }
@@ -1311,8 +1291,6 @@ class XtoolIf2Fan extends HTMLElement {
   _render() {
     if (!this._hass || !this._config || !this._context) return;
     const wanted = this._wanted();
-    // The laser does not see the IF2: nothing to show, and no room taken
-    showFeature(this, wanted.length > 0);
     const key = JSON.stringify(wanted.map(({ feature, entityId, part }) => [feature, entityId, part]));
     if (key !== this._key) {
       // Another choice or entity: new features (Home Assistant's feature
@@ -1391,7 +1369,6 @@ class XtoolFocus extends XtoolFeature {
   _buttons() {
     const hass = this._hass, id = this._entityId;
     const autofocus = sibling(hass, id, "autofocus");
-    showFeature(this, !!autofocus || !!this._height);
     if (!autofocus) return [];
     const status = statusOf(hass, id);
     const phase = phaseOf(status ? hass.states[status]?.state : undefined);
