@@ -29,8 +29,11 @@ def _model(model_id: str):
 def _supported(model, sku="", style=""):
     from custom_components.xtool.coordinator import XtoolCoordinator
 
-    unit = SimpleNamespace(model=model, sku=sku, machine_style=style)
-    return XtoolCoordinator.access_control_supported.fget(unit)
+    class Unit(SimpleNamespace):
+        access_control_supported = XtoolCoordinator.access_control_supported
+        eu_unit = XtoolCoordinator.eu_unit
+
+    return Unit(model=model, sku=sku, machine_style=style).access_control_supported
 
 
 @pytest.mark.parametrize(
