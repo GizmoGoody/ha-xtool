@@ -308,12 +308,13 @@
     };
     let cropOpened;
     cropped.addEventListener("hass-more-info", (ev) => (cropOpened = ev.detail.entityId));
-    check("camera, crop", keysOf(cropped).map((k) => k.dataset.key).join() === "camera.f2_main,camera.f2_deep,crop,crop_reset"
-      && keyNamed(cropped, "camera.f2_main").querySelector("ha-icon").icon === "mdi:crop-free"
-      && keyNamed(cropped, "camera.f2_deep").querySelector("ha-icon").icon === "mdi:fullscreen"
-      && keyNamed(cropped, "crop").querySelector("ha-icon").icon === "mdi:crop"
-      && keyNamed(cropped, "crop_reset").querySelector("ha-icon").icon === "mdi:restore" && !keyNamed(cropped, "open"),
-      "Main, Deep, Crop and Reset, with their icons; no Open");
+    const iconsOf = addFeature({ type: "custom:xtool-camera", display: "icons" }, { hass });
+    await wait(60);
+    const iconOf = (key) => keyNamed(iconsOf, key)?.querySelector("ha-icon")?.icon;
+    check("camera, crop", keysOf(cropped).map((k) => k.dataset.key).join() === "camera.f2_main,camera.f2_deep,crop,crop_reset" && !keyNamed(cropped, "open")
+      && iconOf("camera.f2_main") === "mdi:crop-free" && iconOf("camera.f2_deep") === "mdi:fullscreen"
+      && iconOf("crop") === "mdi:crop" && iconOf("crop_reset") === "mdi:restore",
+      `Main, Deep, Crop and Reset, with their icons; no Open (${["camera.f2_main", "camera.f2_deep", "crop", "crop_reset"].map(iconOf).join(", ")})`);
     tapAt(0.5, 0.5);
     check("camera, crop", cropOpened === "camera.f2_main" && hass.calls.length === 0, "Crop off: a tap opens the camera");
     cropOpened = undefined;

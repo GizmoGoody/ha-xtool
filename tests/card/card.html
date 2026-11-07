@@ -235,7 +235,7 @@
 
     // One channel for each Home Assistant control inside the card's features
     const channels = [...haInside.shadowRoot.querySelectorAll(".area.console")];
-    check("console, Home Assistant features inside", channels.length === 2, `one channel each: the fill light and the IF2 fan (${channels.length})`);
+    check("console, Home Assistant features inside", channels.length === 7, `one channel each: the fill light, and each of the IF2 fan's six buttons (${channels.length})`);
     check("console, Home Assistant features inside", channels.every((a) => Math.abs(parseFloat(a.style.height) - 48) <= 1),
       `fitted to the 42 px control (${channels.map((a) => a.style.height).join(", ")})`);
 
