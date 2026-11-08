@@ -500,13 +500,13 @@
     },
     "light": {
       "fill_light_1": {
-        "name": "Fill light 1"
+        "name": "Close-view fill light"
       },
       "fill_light_2": {
-        "name": "Fill light 2"
+        "name": "Fill light (right)"
       },
       "fill_light_3": {
-        "name": "Fill light 3"
+        "name": "Fill light (left)"
       },
       "fill_light": {
         "name": "Fill light"
@@ -528,10 +528,10 @@
         "name": "Safety lock"
       },
       "aimed_measure_light": {
-        "name": "Aimed-measure light"
+        "name": "Aimed measure light"
       },
       "quick_measure_light": {
-        "name": "Quick-measure light"
+        "name": "Quick measure light"
       },
       "buzzer": {
         "name": "Buzzer"

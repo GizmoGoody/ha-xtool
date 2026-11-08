@@ -461,13 +461,13 @@
     },
     "light": {
       "fill_light_1": {
-        "name": "Arbeitslicht 1"
+        "name": "Arbeitslicht Nahbereichskamera"
       },
       "fill_light_2": {
-        "name": "Arbeitslicht 2"
+        "name": "Arbeitslicht (rechts)"
       },
       "fill_light_3": {
-        "name": "Arbeitslicht 3"
+        "name": "Arbeitslicht (links)"
       },
       "fill_light": {
         "name": "Arbeitslicht"
