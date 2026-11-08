@@ -111,3 +111,41 @@ async def test_a_missing_calibration_file_is_none(monkeypatch) -> None:
     assert await proto.camera_calibration_file("local_calib.json") is None
     monkeypatch.setattr(proto, "_request", AsyncMock(return_value=json.dumps(GRID)))
     assert json.loads(await proto.camera_calibration_file("global_calib.json"))["grid_num_w"] == 3
+
+
+@requires("p2_square_cells")
+def test_p2_grid_cells_are_square() -> None:
+    """62 x 32 points over a 2440 x 1220 image at 4 px/mm: 10 mm cells both ways."""
+    from custom_components.xtool.protocols.ws_v2.camera_correction import parse_calibration
+
+    points = "".join(f"[{c * 40.0},{r * 40.0}]" for r in range(32) for c in range(62))
+    raw = {"grid_num_w": 62, "grid_num_h": 32, "image_src_w": 4656, "image_src_h": 3496,
+           "image_dst_w": 2440, "image_dst_h": 1220, "data0": points}
+    cal = parse_calibration(raw, 4.0)
+    assert cal.cell_mm == (10.0, 10.0)
+    assert cal.area_h_mm == 305.0
+    # Without a scale (the F2 Ultra UV) the grid still fills the image
+    assert parse_calibration(raw).cell_mm[1] == pytest.approx(200 * 1220 / 2440 / 31)
+
+
+@requires("p2_exposure_1000")
+async def test_exposure_change_takes_a_new_photo(hass, config_entry, monkeypatch) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from custom_components.xtool.protocols.rest import XTOOL_P2
+    from custom_components.xtool.protocols.rest import p2_entities
+    from custom_components.xtool.protocols.ws_v2.entities import _thumbnail_registry
+
+    from .conftest import build_coordinator
+
+    coord = build_coordinator(hass, XTOOL_P2)
+    coord.protocol.set_camera_exposure = AsyncMock()
+    monkeypatch.setattr(p2_entities, "P2_EXPOSURE_SETTLE_SECONDS", 0)
+    camera = MagicMock(refresh_picture=AsyncMock())
+    _thumbnail_registry(coord).cameras["overview"] = camera
+    number = p2_entities.P2CameraExposure(coord, "overview")
+    number.async_write_ha_state = MagicMock()
+    assert number.native_max_value == 1000
+    await number.async_set_native_value(1000)
+    coord.protocol.set_camera_exposure.assert_awaited_once_with(0, 1000)
+    camera.refresh_picture.assert_awaited_once()
