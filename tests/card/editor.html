@@ -68,6 +68,8 @@
     check("editor", tile && !/"name":"entity"/.test(tile.schemaNames), "without the tile card's entity picker (the laser is chosen above)");
     check("editor", tile?.config && !("style" in tile.config) && tile.config.show_entity_picture === true, "the tile editor gets only tile card options");
     check("editor", tile?.hass.states["sensor.f2_status"].attributes.elapsed === "12:08", "State content can offer the job attributes");
+    check("editor", tile?.hass.states["sensor.f2_status"].attributes.wifi_signal === "-52 dBm" && !("ip_address" in tile.hass.states["sensor.f2_status"].attributes),
+      "and the laser's sensors with the chosen diagnostics");
 
     // The xTool options change
     form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { style: "none", badges: ["alarm"], progress: { edge: "bottom" } } } }));

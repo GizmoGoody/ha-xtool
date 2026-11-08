@@ -94,6 +94,7 @@
 
   // State content attributes
   const content = addCard("state content", { state_content: ["state", "elapsed", "exhaust", "red_dot"] }, { hass: f2("processing") });
+  const sensorContent = addCard("state content, sensors", { state_content: ["state", "engraving_lens", "wifi_signal", "firmware", "ip_address"] }, { hass: f2("idle") });
 
   // Galvo strokes never cross: parse "M x y L x y ..." and test every pair
   function crossings(d) {
@@ -285,6 +286,13 @@
     // State content
     const info = content.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-info").textContent;
     check("state content", /processing · 12:0\d · Exhaust running · Red dot off/.test(info), `elapsed time and parts (${info})`);
+    const sensorTile = sensorContent.shadowRoot.querySelector("hui-tile-card");
+    const sensorInfo = sensorTile.shadowRoot.querySelector("ha-tile-info").textContent;
+    check("state content, sensors", sensorInfo === "idle · big · -52 dBm · 40.130.023.00.ht5",
+      `the laser's sensors, the chosen diagnostics, and the firmware version; no other diagnostics (${sensorInfo})`);
+    const sensorAttributes = sensorTile.hass.states["sensor.f2_status"].attributes;
+    check("state content, sensors", !("machine_lock" in sensorAttributes) && !("status" in sensorAttributes) && sensorAttributes.task_time === "1132",
+      "the other sensors too; parts the card already reports and the card's own entity are not repeated");
     const finishedInfo = pictures.finished.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-info").textContent;
     check("finished", finishedInfo === "finished · 18:52", `the last job's time (${finishedInfo})`);
 

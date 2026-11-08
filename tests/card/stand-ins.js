@@ -9,6 +9,9 @@
  * sensor.
  */
 
+// The entity categories, as the entity registry has them
+const CATEGORIES = { "update.f2_firmware": "diagnostic", "sensor.f2_wifi_signal": "diagnostic", "sensor.f2_ip_address": "diagnostic" };
+
 // [entity_id, translation_key, state, attributes]
 const F2 = [
   ["sensor.f2_status", "status", "idle"],
@@ -30,7 +33,9 @@ const F2 = [
   ["binary_sensor.f2_alarm", "alarm", "off"],
   ["binary_sensor.f2_safety_key", "machine_lock", "on"],
   ["sensor.f2_task_time", "task_time", "1132"],
-  ["update.f2_firmware", "firmware", "off"],
+  ["update.f2_firmware", "firmware", "off", { installed_version: "40.130.023.00.ht5" }],
+  ["sensor.f2_wifi_signal", "wifi_signal", "-52", { unit_of_measurement: "dBm" }],
+  ["sensor.f2_ip_address", "ip_address", "192.168.0.10"],
   ["number.f2_focus_height", "focus_height", "36.1", { min: 0, max: 150, step: 0.1, unit_of_measurement: "mm", mode: "box" }],
   ["button.f2_autofocus", "autofocus", "unknown"],
   ["sensor.f2_engraving_lens", "engraving_lens", "big", { device_class: "enum", options: ["none", "small", "big"] }],
@@ -78,6 +83,11 @@ window.makeHass = (changes = {}) => {
       dev_p2: { id: "dev_p2", model: "xTool P2", via_device_id: null },
     },
     calls: [],
+    // The state as Home Assistant shows it: here the state and its unit
+    formatEntityState(stateObj) {
+      const unit = stateObj.attributes.unit_of_measurement;
+      return unit ? `${stateObj.state} ${unit}` : stateObj.state;
+    },
     // A call's target is recorded with its data, as one entity_id
     callService(domain, service, data, target) {
       hass.calls.push({ domain, service, data: { ...(data ?? {}), ...(target ?? {}) } });
@@ -87,7 +97,7 @@ window.makeHass = (changes = {}) => {
   const started = new Date(Date.now() - 728000).toISOString();  // 12:08 ago
   for (const [device, list] of [["dev_f2", F2], ["dev_f2_main", F2_MAIN_CAMERA], ["dev_f2_deep", F2_DEEP_CAMERA], ["dev_if2", IF2], ["dev_p2", P2]]) {
     for (const [entity_id, translation_key, state, attributes = {}] of list) {
-      hass.entities[entity_id] = { entity_id, device_id: device, platform: "xtool", translation_key };
+      hass.entities[entity_id] = { entity_id, device_id: device, platform: "xtool", translation_key, entity_category: CATEGORIES[entity_id] };
       hass.states[entity_id] = { entity_id, state, attributes: { friendly_name: entity_id, ...attributes }, last_changed: started };
     }
   }
