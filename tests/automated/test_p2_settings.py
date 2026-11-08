@@ -56,11 +56,17 @@ def test_p2_entities_use_studio_names(coordinator) -> None:
         assert set(by_key(coordinator.build_locks())) == {"safety_lock"}
     else:
         expected.add("safety_lock")
+    views = has("p2_views")  # the cameras' view settings
+    if views:
+        expected |= {"slat_overlay", "overlay"}
     assert set(switches) == expected
     numbers = by_key(coordinator.build_numbers())
     assert {"smoking_fan_duration", "lowest_output_power"} <= set(numbers)
     assert ("fill_light_brightness" in numbers) is not LIGHT_BRIGHTNESS
-    assert set(by_key(coordinator.build_selects())) == {"flame_alarm_level"}
+    selects = {"flame_alarm_level"}
+    if views:
+        selects |= {"crop_preset", "overlay", "processing_mode"}
+    assert set(by_key(coordinator.build_selects())) == selects
     assert set(by_key(coordinator.build_lights())) == {"fill_light_1", "fill_light_2", "fill_light_3"}
     assert {"lid", "baseplate"} <= set(by_key(coordinator.build_binary_sensors()))
     assert "time_sync" not in by_key(coordinator.build_buttons())
