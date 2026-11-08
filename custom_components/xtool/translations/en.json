@@ -363,6 +363,12 @@
       }
     },
     "binary_sensor": {
+      "lid": {
+        "name": "Lid"
+      },
+      "baseplate": {
+        "name": "Baseplate"
+      },
       "cover_open": {
         "name": "Cover"
       },
@@ -490,6 +496,15 @@
       }
     },
     "light": {
+      "fill_light_1": {
+        "name": "Fill light 1"
+      },
+      "fill_light_2": {
+        "name": "Fill light 2"
+      },
+      "fill_light_3": {
+        "name": "Fill light 3"
+      },
       "fill_light": {
         "name": "Fill light"
       },
@@ -506,6 +521,15 @@
       }
     },
     "switch": {
+      "safety_lock": {
+        "name": "Safety lock"
+      },
+      "aimed_measure_light": {
+        "name": "Aimed-measure light"
+      },
+      "quick_measure_light": {
+        "name": "Quick-measure light"
+      },
       "buzzer": {
         "name": "Buzzer"
       },
@@ -598,6 +622,12 @@
       }
     },
     "number": {
+      "fill_light_brightness": {
+        "name": "Fill light brightness"
+      },
+      "lowest_output_power": {
+        "name": "Lowest output power"
+      },
       "air_assist_close_delay": {
         "name": "Air-assist post-run"
       },
@@ -693,6 +723,13 @@
       }
     },
     "select": {
+      "flame_alarm_level": {
+        "name": "Flame alarm",
+        "state": {
+          "low": "Low",
+          "high": "High"
+        }
+      },
       "flame_alarm_sensitivity": {
         "name": "Flame alarm sensitivity",
         "state": {

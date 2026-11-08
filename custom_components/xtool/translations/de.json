@@ -336,6 +336,12 @@
       }
     },
     "binary_sensor": {
+      "lid": {
+        "name": "Deckel"
+      },
+      "baseplate": {
+        "name": "Bodenplatte"
+      },
       "cover_open": {
         "name": "Deckel"
       },
@@ -451,6 +457,15 @@
       }
     },
     "light": {
+      "fill_light_1": {
+        "name": "Arbeitslicht 1"
+      },
+      "fill_light_2": {
+        "name": "Arbeitslicht 2"
+      },
+      "fill_light_3": {
+        "name": "Arbeitslicht 3"
+      },
       "fill_light": {
         "name": "Arbeitslicht"
       },
@@ -467,6 +482,15 @@
       }
     },
     "switch": {
+      "safety_lock": {
+        "name": "Sicherheitsschloss"
+      },
+      "aimed_measure_light": {
+        "name": "Licht für gezielte Messung"
+      },
+      "quick_measure_light": {
+        "name": "Licht für Schnellmessung"
+      },
       "buzzer": {
         "name": "Signalton"
       },
@@ -556,6 +580,12 @@
       }
     },
     "number": {
+      "fill_light_brightness": {
+        "name": "Helligkeit Arbeitslicht"
+      },
+      "lowest_output_power": {
+        "name": "Niedrigste Ausgangsleistung"
+      },
       "accessory_ductfan_manual_gear": {
         "name": "Manuelle Stufe"
       },
@@ -651,6 +681,13 @@
       }
     },
     "select": {
+      "flame_alarm_level": {
+        "name": "Feueralarm",
+        "state": {
+          "low": "Niedrig",
+          "high": "Hoch"
+        }
+      },
       "flame_alarm_sensitivity": {
         "name": "Feueralarm-Empfindlichkeit",
         "state": {
