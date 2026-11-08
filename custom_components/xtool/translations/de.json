@@ -432,6 +432,9 @@
       "measured_thickness": {
         "name": "Gemessene Materialstärke"
       },
+      "measured_distance": {
+        "name": "Gemessene Distanz"
+      },
       "last_distance": {
         "name": "Letzte Distanz"
       },
@@ -749,6 +752,12 @@
       }
     },
     "switch": {
+      "slat_overlay": {
+        "name": "Lamellen-Overlay"
+      },
+      "overlay": {
+        "name": "Overlay"
+      },
       "buzzer": {
         "name": "Signalton"
       },
@@ -847,6 +856,15 @@
       }
     },
     "number": {
+      "thickness_on_slats": {
+        "name": "Stärke auf Lamellen"
+      },
+      "distance_honeycomb_panel": {
+        "name": "Distanz mit Wabenplatte"
+      },
+      "distance_slats_removed": {
+        "name": "Distanz ohne Lamellen"
+      },
       "auto_power_off": {
         "name": "Automatisch ausschalten"
       },
@@ -990,6 +1008,37 @@
       }
     },
     "select": {
+      "crop_preset": {
+        "name": "Zuschnitt",
+        "state": {
+          "custom": "Benutzerdefiniert",
+          "work_bed": "Gesamte Arbeitsfläche",
+          "process_on_slats": "Auf Lamellen bearbeiten",
+          "honeycomb_panel": "Wabenplatte",
+          "slats_removed": "Lamellen entfernt",
+          "close_camera": "Nahkamerabild"
+        }
+      },
+      "overlay": {
+        "name": "Overlay",
+        "state": {
+          "none": "Keins",
+          "work_bed": "Gesamte Arbeitsfläche",
+          "process_on_slats": "Auf Lamellen bearbeiten",
+          "honeycomb_panel": "Wabenplatte",
+          "slats_removed": "Lamellen entfernt",
+          "close_camera": "Nahkamerabild",
+          "custom": "Benutzerdefiniert"
+        }
+      },
+      "processing_mode": {
+        "name": "Bearbeitungsmodus",
+        "state": {
+          "process_on_slats": "Auf Lamellen bearbeiten",
+          "honeycomb_panel": "Wabenplatte",
+          "slats_removed": "Lamellen entfernt"
+        }
+      },
       "perspective": {
         "name": "Perspektive",
         "state": {
@@ -1297,9 +1346,9 @@
         }
       }
     },
-    "move_laser_head": {
-      "name": "Laserkopf bewegen",
-      "description": "Bewegt den Laserkopf des P2 wie die Bewegungssteuerung in xTool Studio: auf eine X- und Y-Position oder um Schritte mit Vorzeichen (mehrfach wiederholt). Eine Achse ohne Angabe bleibt, wo sie ist. Hält bei 0-620 mal 0-308 mm an. Abgelehnt, solange der Laser nicht bereit ist.",
+    "move": {
+      "name": "Bewegen",
+      "description": "Bewegt den Laserkopf des P2 wie die Bewegungssteuerung in xTool Studio: auf eine X- und Y-Position oder um Schritte mit Vorzeichen (mehrfach wiederholt). Eine Achse ohne Angabe bleibt, wo sie ist. Hält bei 0-620 mal 0-308 mm an. Abgelehnt, solange der Laser nicht bereit ist. Bewegungen laufen nacheinander, in der angefragten Reihenfolge.",
       "fields": {
         "x": {
           "name": "X",
