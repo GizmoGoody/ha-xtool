@@ -12,11 +12,14 @@ pytestmark = requires("entity_categories")
 
 
 def test_firmware_updates_are_diagnostic() -> None:
+    import inspect
+
     from custom_components.xtool.protocols.accessories.entities import _AccessoryUpdate
     from custom_components.xtool.update import XtoolFirmwareUpdate
 
-    assert XtoolFirmwareUpdate._attr_entity_category is EntityCategory.DIAGNOSTIC
-    assert _AccessoryUpdate._attr_entity_category is EntityCategory.DIAGNOSTIC
+    # Home Assistant wraps _attr_ defaults in properties; read the class body
+    for cls in (XtoolFirmwareUpdate, _AccessoryUpdate):
+        assert "_attr_entity_category = EntityCategory.DIAGNOSTIC" in inspect.getsource(cls)
 
 
 def test_task_id_is_diagnostic_on_every_protocol() -> None:
