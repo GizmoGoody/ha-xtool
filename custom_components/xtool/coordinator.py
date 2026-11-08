@@ -536,12 +536,13 @@ class XtoolCoordinator(DataUpdateCoordinator[XtoolDeviceState]):
             sn = product_sn or mac_sn
             key = f"{type_id}:{sn}"
             # Carry forward fields the poll reply cannot populate but
-            # push events and HA writes cache: DuctFanV3's Auto gear
-            # (``auto_gear``) and job flag (``job_active``) are not in
-            # the M9082 reply. Without this, every poll would wipe them.
+            # push events and HA writes cache: DuctFanV3's Auto preset
+            # (``auto_submode``), Auto gear (``auto_gear``) and job flag
+            # (``job_active``) are not in the M9082 reply. Without this,
+            # every poll would wipe them.
             prior = (state.connected_accessories or {}).get(key)
             if prior is not None:
-                for sticky in ("auto_gear", "job_active"):
+                for sticky in ("auto_submode", "auto_gear", "job_active"):
                     if sticky not in fields and sticky in prior.fields:
                         fields[sticky] = prior.fields[sticky]
             _LOGGER.debug(

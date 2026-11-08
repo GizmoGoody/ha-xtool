@@ -51,14 +51,16 @@ def parse_fan_info(text: str) -> dict[str, object]:
 # token the IF2 2.0 stores the gear but does not change its mode, so
 # a speed set from Off leaves the fan off.
 #
-# In Auto, each job sets the gear: Studio writes the gear of the
-# job's processing mode into the job (3 by default, one less in its
-# quiet work mode; ``_getAutoModeFanGear``). So there is one Auto
-# preset: it switches to Auto and keeps the gear the IF2 has (3 until
-# one is seen), and the next job sets its own.
-FANV3_PRESET_AUTO = "Auto"
-FANV3_PRESETS: tuple[str, ...] = (FANV3_PRESET_AUTO,)
-FANV3_AUTO_DEFAULT_GEAR = 3
+# Studio's Auto gear is the gear of the current processing mode
+# (default 3); its quiet work mode uses one gear less
+# (``_getAutoModeFanGear``). The presets below use those defaults.
+FANV3_PRESET_REGULAR = "Auto Regular"
+FANV3_PRESET_QUIET = "Auto Quiet"
+FANV3_PRESETS: tuple[str, ...] = (FANV3_PRESET_REGULAR, FANV3_PRESET_QUIET)
+FANV3_AUTO_GEAR: dict[str, int] = {
+    FANV3_PRESET_REGULAR: 3,
+    FANV3_PRESET_QUIET: 2,
+}
 
 # ``mode_class`` values, shared by the M9082 ``D`` token and the
 # M9064 push ``C`` token.
@@ -74,9 +76,11 @@ def fan_v3_manual_mcode(gear: int) -> str:
     return f"{MCODE_FAN_SET_GEAR} A{gear} {mode}"
 
 
-def fan_v3_auto_mcode(gear: int) -> str:
-    """Return the M9064 command that switches to Auto at the gear given (1-4)."""
-    gear = max(1, min(4, int(gear)))
+def fan_v3_auto_mcode(preset: str) -> str | None:
+    """Return the M9064 command for an Auto preset, or None if unknown."""
+    gear = FANV3_AUTO_GEAR.get(preset)
+    if gear is None:
+        return None
     return f"{MCODE_FAN_SET_GEAR} B{gear} C4"
 
 
@@ -177,6 +181,14 @@ def parse_fan_v3_push(text: str) -> dict[str, object]:
         auto_gear = f["B"]
         if mode == FANV3_AUTO and auto_gear is not None and 0 <= auto_gear <= 4:
             out["auto_gear"] = auto_gear
+            # The IF2 does not report the preset itself. Studio runs
+            # Auto at the processing mode's gear (3 by default) and one
+            # gear less when quiet, so gears 1-2 read as quiet and 3-4
+            # as regular. Gear 0 (idle after a job) keeps the last one.
+            if 1 <= auto_gear <= 2:
+                out["auto_submode"] = FANV3_PRESET_QUIET
+            elif auto_gear >= 3:
+                out["auto_submode"] = FANV3_PRESET_REGULAR
     if f["D"] is not None:
         out["job_active"] = f["D"] == 1
     if f["S"] is not None:
