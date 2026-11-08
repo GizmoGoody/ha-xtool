@@ -80,6 +80,12 @@
         "state": { "off": "mdi:laptop-off" }
       }
     },
+    "sensor": {
+      "connection": {
+        "default": "mdi:ethernet",
+        "state": { "wifi": "mdi:wifi" }
+      }
+    },
     "switch": {
       "safety_lock": {
         "default": "mdi:lock",
