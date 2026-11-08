@@ -194,9 +194,6 @@
       "accessory_ductfan_current_speed": {
         "name": "Current speed"
       },
-      "accessory_ductfanv3_current_speed": {
-        "name": "Current speed"
-      },
       "accessory_purifier_filter_pre": {
         "name": "Pre-filter remaining"
       },
@@ -765,9 +762,6 @@
           "medium": "Medium",
           "high": "High"
         }
-      },
-      "accessory_ductfanv3_mode_speed": {
-        "name": "Fan"
       },
       "accessory_purifier_gear_select": {
         "name": "Set purifier speed"
