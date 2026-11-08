@@ -70,6 +70,15 @@
     check("editor", tile?.hass.states["sensor.f2_status"].attributes.elapsed === "12:08", "State content can offer the job attributes");
     check("editor", tile?.hass.states["sensor.f2_status"].attributes.wifi_signal === "-52 dBm" && !("ip_address" in tile.hass.states["sensor.f2_status"].attributes),
       "and the laser's sensors with the chosen diagnostics");
+    // The State content picker reads the state from Home Assistant's "states" context
+    const request = new Event("context-request", { bubbles: true, composed: true });
+    let fromContext, calls = 0;
+    Object.assign(request, { context: "states", subscribe: true, callback: (states) => { fromContext = states; calls += 1; } });
+    tile.dispatchEvent(request);
+    check("editor", fromContext?.["sensor.f2_status"]?.attributes.wifi_signal === "-52 dBm" && fromContext["sensor.f2_status"].attributes.elapsed === "12:08",
+      "the states context inside the editor has the card's attributes");
+    editor.hass = makeHass({ "sensor.f2_wifi_signal": "-60" });
+    check("editor", calls === 2 && fromContext["sensor.f2_status"].attributes.wifi_signal === "-60 dBm", "and follows new states");
 
     // The xTool options change
     form.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { style: "none", badges: ["alarm"], progress: { edge: "bottom" } } } }));

@@ -293,6 +293,12 @@
     const sensorAttributes = sensorTile.hass.states["sensor.f2_status"].attributes;
     check("state content, sensors", !("machine_lock" in sensorAttributes) && !("status" in sensorAttributes) && sensorAttributes.task_time === "1132",
       "the other sensors too; parts the card already reports and the card's own entity are not repeated");
+    const request = new Event("context-request", { bubbles: true, composed: true });
+    let fromContext;
+    Object.assign(request, { context: "states", subscribe: true, callback: (states) => (fromContext = states) });
+    sensorTile.dispatchEvent(request);
+    check("state content, sensors", fromContext?.["sensor.f2_status"]?.attributes.engraving_lens === "big",
+      "the states context inside the card has the card's attributes");
     const finishedInfo = pictures.finished.shadowRoot.querySelector("hui-tile-card").shadowRoot.querySelector("ha-tile-info").textContent;
     check("finished", finishedInfo === "finished · 18:52", `the last job's time (${finishedInfo})`);
 
