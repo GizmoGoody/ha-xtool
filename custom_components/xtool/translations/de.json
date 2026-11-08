@@ -198,7 +198,10 @@
           "working_mode": {
             "name": "Betriebsmodus"
           },
-          "last_distance": {
+          "measured_thickness": {
+        "name": "Gemessene Materialstärke"
+      },
+      "last_distance": {
             "name": "Letzte Distanz"
           },
           "riser_base": {
@@ -970,6 +973,12 @@
       "accessory_largepurifierv3_auto_off_timeout": {
         "name": "Abschalt-Verzögerung"
       },
+      "laser_position_x": {
+        "name": "Laserposition X"
+      },
+      "laser_position_y": {
+        "name": "Laserposition Y"
+      },
       "focus_height": {
         "name": "Fokushöhe"
       },
@@ -1288,6 +1297,32 @@
         }
       }
     },
+    "move_laser_head": {
+      "name": "Laserkopf bewegen",
+      "description": "Bewegt den Laserkopf des P2 wie die Bewegungssteuerung in xTool Studio: auf eine X- und Y-Position oder um Schritte mit Vorzeichen (mehrfach wiederholt). Eine Achse ohne Angabe bleibt, wo sie ist. Hält bei 0-620 mal 0-308 mm an. Abgelehnt, solange der Laser nicht bereit ist.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Zielposition in mm von der Grundstellung (0-620); X wächst nach rechts."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Zielposition in mm von der Grundstellung (0-308); Y wächst nach vorne."
+        },
+        "step_x": {
+          "name": "Schritt X",
+          "description": "Schritt in mm mit Vorzeichen: positiv nach rechts, negativ nach links."
+        },
+        "step_y": {
+          "name": "Schritt Y",
+          "description": "Schritt in mm mit Vorzeichen: positiv nach vorne, negativ nach hinten."
+        },
+        "steps": {
+          "name": "Schritte",
+          "description": "Wie oft die Schritte angewendet werden."
+        }
+      }
+    },
     "camera": {
       "name": "Kamera-Bildausschnitt",
       "description": "Legt den Teil der Arbeitsfläche fest, den die entzerrte Hauptkamera zeigt (in mm), und aktualisiert ihr Bild. Einer der vier Werte genügt; die anderen bleiben. Eine Breite oder Höhe von 0 zeigt das ganze Foto in dieser Richtung.",
@@ -1323,6 +1358,12 @@
     },
     "camera_needs_a_value": {
       "message": "Gib mindestens einen Wert für den Bildausschnitt an."
+    },
+    "move_wrong_entity": {
+      "message": "Diese Entität ist keine xTool-Laserposition."
+    },
+    "move_needs_a_value": {
+      "message": "Gib eine X- oder Y-Position oder einen Schritt an."
     }
   }
 }
