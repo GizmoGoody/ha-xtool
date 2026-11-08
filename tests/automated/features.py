@@ -23,6 +23,8 @@ def _imports_protocols_first() -> bool:
 
 
 FEATURES: dict[str, Callable[[], bool]] = {
+    # WS-V2: a push that arrives during the accessory reads wins over the poll
+    "push_after_accessory_poll": lambda: "A push that arrived while the accessories were read" in (COMPONENT / "protocols" / "ws_v2" / "coordinator.py").read_text(encoding="utf-8"),
     # P2: Studio's push channel on port 8081 alongside the REST poll
     "p2_push": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists(),
     # P2: the poll reads what Studio reads; alarms by Studio's codes; cancelled jobs
