@@ -31,7 +31,8 @@
  *   can collapse to the title, and to collapse it while the machine is off,
  * - the job's progress, elapsed time and last job time, and the state of
  *   parts such as the exhaust and the red dot, as attributes the tile card's
- *   "State content" can show (see JOB_ATTRIBUTES).
+ *   "State content" can show (see JOB_ATTRIBUTES), and the laser's sensors
+ *   there too (see sensorAttributes).
  *
  * Every corner, size and text color comes from the theme's variables.
  */
@@ -603,6 +604,40 @@ const JOB_ATTRIBUTES = {
   progress: "42 %", elapsed: "12:08", job_time: "18:52",
   ...Object.fromEntries(PART_ATTRIBUTES.map(([name, , on]) => [name, on])),
 };
+
+// The diagnostic entities State content offers, besides the laser's sensors
+const DIAGNOSTIC_STATE_CONTENT = ["wifi_signal", "working_time", "last_job_time", "firmware", "cpu_temp"];
+
+/**
+ * The laser's own sensors and binary sensors, and the diagnostic entities
+ * above, as attributes for the tile card's State content: {translation key:
+ * the state as Home Assistant shows it}. The card's own entity and the parts
+ * PART_ATTRIBUTES reports are left out. Unknown and unavailable states are
+ * left out unless all is true (the editor offers every one).
+ */
+function sensorAttributes(hass, entityId, all = false) {
+  const device = hass?.entities?.[entityId]?.device_id;
+  if (!device) return {};
+  const own = hass.entities[entityId].translation_key;
+  const parts = PART_ATTRIBUTES.flatMap(([, role]) => ROLES[role]?.[0] ?? []);
+  const out = {};
+  for (const e of deviceEntities(hass, device)) {
+    const key = e.translation_key, domain = domainOf(e.entity_id);
+    if (!key || key === own || parts.includes(key) || key in out) continue;
+    const wanted = domain === "update"
+      ? DIAGNOSTIC_STATE_CONTENT.includes(key)
+      : ["sensor", "binary_sensor"].includes(domain) && (!e.entity_category || DIAGNOSTIC_STATE_CONTENT.includes(key));
+    const stateObj = wanted ? hass.states[e.entity_id] : undefined;
+    if (!stateObj) continue;
+    const known = !["unknown", "unavailable"].includes(stateObj.state);
+    if (!known && !all) continue;
+    // A firmware update entity shows its installed version
+    const version = domain === "update" ? stateObj.attributes.installed_version : undefined;
+    if (domain === "update" && !version && !all) continue;
+    out[key] = version ?? hass.formatEntityState(stateObj);
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Shared feature parts
@@ -2472,7 +2507,7 @@ class XtoolCard extends HTMLElement {
   /** The attributes for the tile card's State content (see JOB_ATTRIBUTES). */
   _attributes() {
     const { phase, value, working, started, taskTime } = this._job;
-    const extra = {};
+    const extra = sensorAttributes(this._hass, this._config.entity);
     if (working && value !== undefined) extra.progress = `${Math.round(value * 100)} %`;
     if (working && started !== undefined) extra.elapsed = formatDuration((Date.now() - started) / 1000);
     if (phase === "finished" && Number.isFinite(taskTime)) extra.job_time = formatDuration(taskTime);
@@ -2944,11 +2979,11 @@ function xtoolStatusSensors(hass) {
     .sort();
 }
 
-/** hass with the card's entity carrying example job attributes, so State content can offer them. */
+/** hass with the card's entity carrying example job attributes and its sensors, so State content can offer them. */
 function withJobAttributes(hass, entityId) {
   const stateObj = hass?.states[entityId];
   if (!stateObj) return hass;
-  const attributes = { ...JOB_ATTRIBUTES, ...stateObj.attributes };
+  const attributes = { ...JOB_ATTRIBUTES, ...sensorAttributes(hass, entityId, true), ...stateObj.attributes };
   return { ...hass, states: { ...hass.states, [entityId]: { ...stateObj, attributes } } };
 }
 

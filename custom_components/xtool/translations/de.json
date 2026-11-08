@@ -103,6 +103,233 @@
           "working_button": "Auftrag (Taste)",
           "measure_area": "Bereich messen",
           "unknown": "Unbekannt"
+        },
+        "state_attributes": {
+          "laser_position_x": {
+            "name": "Laserposition X"
+          },
+          "laser_position_y": {
+            "name": "Laserposition Y"
+          },
+          "laser_position_z": {
+            "name": "Laserposition Z"
+          },
+          "fire_level": {
+            "name": "Feuerlevel"
+          },
+          "air_assist_level": {
+            "name": "Air-Assist Stufe"
+          },
+          "task_id": {
+            "name": "Auftrags-ID"
+          },
+          "task_time": {
+            "name": "Auftragszeit"
+          },
+          "task_progress": {
+            "name": "Auftragsfortschritt"
+          },
+          "working_time": {
+            "name": "Betriebszeit"
+          },
+          "session_count": {
+            "name": "Aufträge gesamt"
+          },
+          "standby_time": {
+            "name": "Standby-Zeit"
+          },
+          "tool_runtime": {
+            "name": "Lasermodul-Laufzeit"
+          },
+          "ip_address": {
+            "name": "IP-Adresse"
+          },
+          "laser_power": {
+            "name": "Laserleistung"
+          },
+          "laser_module": {
+            "name": "Lasermodul"
+          },
+          "sd_card": {
+            "name": "SD-Karte"
+          },
+          "workspace_size": {
+            "name": "Arbeitsbereich"
+          },
+          "connection_count": {
+            "name": "Aktive Verbindungen"
+          },
+          "origin_offset_x": {
+            "name": "Origin-Offset X"
+          },
+          "origin_offset_y": {
+            "name": "Origin-Offset Y"
+          },
+          "last_job_time": {
+            "name": "Letzte Auftragszeit"
+          },
+          "working_mode": {
+            "name": "Betriebsmodus"
+          },
+          "last_distance": {
+            "name": "Letzte Distanz"
+          },
+          "riser_base": {
+            "name": "Erhöhungsbasis"
+          },
+          "water_temperature": {
+            "name": "Wassertemperatur"
+          },
+          "water_flow": {
+            "name": "Wasserdurchfluss"
+          },
+          "z_temperature": {
+            "name": "Z-Achsen-Temperatur"
+          },
+          "workhead_id": {
+            "name": "Werkzeug"
+          },
+          "workhead_z_height": {
+            "name": "Werkzeug Z-Höhe"
+          },
+          "print_tool_type": {
+            "name": "Werkzeugtyp"
+          },
+          "hardware_type": {
+            "name": "Hardware-Typ"
+          },
+          "gyro_x": {
+            "name": "Gyro X"
+          },
+          "gyro_y": {
+            "name": "Gyro Y"
+          },
+          "gyro_z": {
+            "name": "Gyro Z"
+          },
+          "inkjet_ink_c": {
+            "name": "Tintenstand Cyan"
+          },
+          "inkjet_ink_m": {
+            "name": "Tintenstand Magenta"
+          },
+          "inkjet_ink_y": {
+            "name": "Tintenstand Gelb"
+          },
+          "inkjet_ink_k": {
+            "name": "Tintenstand Schwarz"
+          },
+          "inkjet_sn": {
+            "name": "Seriennummer Druckkopf"
+          },
+          "inkjet_version": {
+            "name": "Firmware Druckkopf"
+          },
+          "inkjet_toner_sn": {
+            "name": "Seriennummer Toner"
+          },
+          "active_alarms": {
+            "name": "Aktive Alarme"
+          },
+          "job_name": {
+            "name": "Auftragsname"
+          },
+          "job_progress": {
+            "name": "Auftragsfortschritt"
+          },
+          "job_time_remaining": {
+            "name": "Verbleibende Auftragszeit"
+          },
+          "queued_jobs": {
+            "name": "Aufträge in Warteschlange"
+          },
+          "air_purifier_runtime": {
+            "name": "Laufzeit Luftreiniger"
+          },
+          "ambient_temp": {
+            "name": "Umgebungstemperatur"
+          },
+          "ambient_humidity": {
+            "name": "Luftfeuchtigkeit"
+          },
+          "uv_lamp_runtime": {
+            "name": "Laufzeit UV-Lampe"
+          },
+          "cover_open": {
+            "name": "Deckel"
+          },
+          "machine_lock": {
+            "name": "Sicherheitsschlüssel"
+          },
+          "alarm": {
+            "name": "Alarm"
+          },
+          "xcs_compatibility_mode": {
+            "name": "XCS-Kompatibilitätsmodus"
+          },
+          "air_assist_connected": {
+            "name": "Air-Assist verbunden"
+          },
+          "drawer_open": {
+            "name": "Schublade"
+          },
+          "cooling_fan_running": {
+            "name": "Kühllüfter"
+          },
+          "smoking_fan_running": {
+            "name": "Absauglüfter"
+          },
+          "cpu_fan_running": {
+            "name": "CPU-Lüfter"
+          },
+          "uv_fire_alarm": {
+            "name": "UV-Brandsensor"
+          },
+          "water_pump_running": {
+            "name": "Wasserpumpe"
+          },
+          "water_line_ok": {
+            "name": "Wasserkreislauf"
+          },
+          "flame_alarm_enabled": {
+            "name": "Feueralarm aktiv"
+          },
+          "beep_enabled": {
+            "name": "Signalton aktiv"
+          },
+          "gap_check_enabled": {
+            "name": "Deckelüberwachung aktiv"
+          },
+          "machine_lock_check_enabled": {
+            "name": "Verriegelungsüberwachung aktiv"
+          },
+          "inkjet_head_capped": {
+            "name": "Druckkopf abgedeckt"
+          },
+          "inkjet_toner_installed": {
+            "name": "Toner eingesetzt"
+          },
+          "inkjet_calibrated": {
+            "name": "Druckkopf kalibriert"
+          },
+          "front_door": {
+            "name": "Fronttür"
+          },
+          "rear_door": {
+            "name": "Hintertür"
+          },
+          "waste_tank_full": {
+            "name": "Resttintenbehälter voll"
+          },
+          "waste_tank_present": {
+            "name": "Resttintenbehälter eingesetzt"
+          },
+          "filter_installed": {
+            "name": "Luftfilter eingesetzt"
+          },
+          "firmware": {
+            "name": "Firmware"
+          }
         }
       },
       "laser_position_x": {
