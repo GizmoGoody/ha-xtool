@@ -23,6 +23,8 @@ def _imports_protocols_first() -> bool:
 
 
 FEATURES: dict[str, Callable[[], bool]] = {
+    # P2: Studio's push channel on port 8081 alongside the REST poll
+    "p2_push": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists(),
     # The first import of the package succeeds (no circular import)
     "clean_first_import": _imports_protocols_first,
     # Issue #13: switch and binary sensor icons follow the entity state
