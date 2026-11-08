@@ -1,0 +1,123 @@
+"""What a test on a real P2 (firmware 40.21.025) showed: baseplate, safety lock, Ethernet."""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from .conftest import build_coordinator
+from .features import requires
+
+MACHINE_INFO = {
+    "deviceName": "P2", "sn": "MXTEST0001", "mac": "48:FB:A9:5C:4F:7D", "machineSubType": "004",
+    "ip": {"eth0-0-ip": "169.254.2.1", "eth0-ip": "192.168.0.46", "usb0-ip": "201.234.3.1",
+           "wlan0-ip": "192.168.0.47"},
+}
+
+
+@pytest.fixture
+def coordinator(hass: HomeAssistant, config_entry: MockConfigEntry):
+    from custom_components.xtool.protocols.base import XtoolDeviceState
+    from custom_components.xtool.protocols.rest import XTOOL_P2
+
+    coord = build_coordinator(hass, XTOOL_P2)
+    coord.config_entry = config_entry
+    coord.serial_number = "MXTEST0001"
+    state = XtoolDeviceState()
+    state.available = True
+    coord.data = state
+    return coord
+
+
+@requires("p2_hardware_findings")
+def test_baseplate_is_on_when_in_place(coordinator) -> None:
+    """``/peripheral/drawer`` "off" (DRAWER CLOSE) means the baseplate is in place."""
+    sensors = {e.translation_key: e for e in coordinator.build_binary_sensors()}
+    baseplate = sensors["baseplate"]
+    coordinator.data.drawer_open = False
+    assert baseplate.is_on is True
+    coordinator.data.drawer_open = True
+    assert baseplate.is_on is False
+
+
+@requires("p2_hardware_findings")
+async def test_safety_lock_sends_on_and_off(monkeypatch) -> None:
+    """The P2 refuses "lock" and "unlock"; it takes "on" and "off"."""
+    from custom_components.xtool.protocols.rest.p2 import P2Protocol
+
+    proto = P2Protocol("192.168.0.47")
+    sent = []
+
+    async def post(path, data=None, **kwargs):
+        sent.append((path, data))
+
+    monkeypatch.setattr(proto, "_post", post)
+    await proto.set_digital_lock(True)
+    await proto.set_digital_lock(False)
+    assert sent == [("/peripheral/digital_lock", {"action": "on"}),
+                    ("/peripheral/digital_lock", {"action": "off"})]
+
+
+@requires("p2_ethernet")
+def test_ethernet_address_and_connection() -> None:
+    """eth0-ip is listed only with a cable; Connection follows the address in use."""
+    from custom_components.xtool.protocols.rest.p2 import P2Protocol
+
+    proto = P2Protocol("192.168.0.47")
+    proto.machine_info = MACHINE_INFO
+    assert proto.ethernet_address() == "192.168.0.46"
+    assert proto.connection() == "wifi"
+    proto.host = "192.168.0.46"
+    assert proto.connection() == "ethernet"
+    proto.machine_info = {**MACHINE_INFO, "ip": {"eth0-0-ip": "169.254.2.1", "wlan0-ip": "192.168.0.47"}}
+    assert proto.ethernet_address() == ""
+
+
+@requires("p2_ethernet")
+async def test_moves_to_ethernet_when_it_answers(coordinator, monkeypatch) -> None:
+    """On Wi-Fi with a cable connected, the entry moves to the Ethernet address."""
+    from custom_components.xtool.protocols.rest import coordinator as rest_coordinator
+
+    coordinator.protocol.host = "192.168.0.47"
+    coordinator.protocol.ethernet_address = MagicMock(return_value="192.168.0.46")
+    update = MagicMock()
+    monkeypatch.setattr(coordinator.hass.config_entries, "async_update_entry", update)
+
+    monkeypatch.setattr(rest_coordinator, "_serial_at", AsyncMock(return_value="OTHER"))
+    await coordinator._prefer_ethernet()
+    update.assert_not_called()
+
+    monkeypatch.setattr(rest_coordinator, "_serial_at", AsyncMock(return_value="MXTEST0001"))
+    await coordinator._prefer_ethernet()
+    assert update.call_args.kwargs["data"]["host"] == "192.168.0.46"
+
+    # Already on Ethernet: nothing to do
+    update.reset_mock()
+    coordinator.protocol.host = "192.168.0.46"
+    await coordinator._prefer_ethernet()
+    update.assert_not_called()
+
+
+@requires("p2_ethernet")
+async def test_discovery_keeps_an_address_that_answers(hass: HomeAssistant, monkeypatch) -> None:
+    """Seeing the laser at its Wi-Fi address does not move it off a working Ethernet one."""
+    from custom_components.xtool import config_flow
+    from custom_components.xtool.const import DOMAIN
+    from custom_components.xtool.protocols.base import ConnectionInfo
+
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="MXTEST0002", data={"host": "192.168.0.46"})
+    entry.add_to_hass(hass)
+    answering = {"192.168.0.46"}
+
+    async def validate(host):
+        return ConnectionInfo(host=host, serial_number="MXTEST0002") if host in answering else "cannot_connect"
+
+    monkeypatch.setattr(config_flow, "validate_connection", validate)
+    flow = config_flow.XtoolConfigFlow()
+    flow.hass = hass
+    assert await flow._configured_host_answers("MXTEST0002", "192.168.0.47") is True
+    answering.clear()
+    assert await flow._configured_host_answers("MXTEST0002", "192.168.0.47") is False

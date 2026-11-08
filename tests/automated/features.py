@@ -31,6 +31,10 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "p2_settings": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists(),
     # P2: safety class as Model ID, both MACs, Work info, the other address
     "p2_device_info": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists() and "def model_variant" in (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8"),
+    # P2 hardware test: baseplate on when in place, safety lock on/off
+    "p2_hardware_findings": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "class P2Baseplate" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
+    # P2: Ethernet first when a cable is connected, Connection sensor
+    "p2_ethernet": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists() and "def ethernet_address" in (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8"),
     # The first import of the package succeeds (no circular import)
     "clean_first_import": _imports_protocols_first,
     # Issue #13: switch and binary sensor icons follow the entity state
