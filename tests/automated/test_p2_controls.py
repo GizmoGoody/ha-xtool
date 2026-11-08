@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .conftest import build_coordinator
-from .features import COMPONENT, requires
+from .features import COMPONENT, has, requires
 
 pytestmark = requires("p2_controls")
 
@@ -108,6 +108,11 @@ async def test_a_move_waits_and_the_next_poll_reads_the_position(monkeypatch) ->
 
 
 def test_position_icons_are_straight_arrows(coordinator) -> None:
+    if has("p2_head_controls"):
+        icons = json.loads((COMPONENT / "icons.json").read_text(encoding="utf-8"))["entity"]["number"]
+        assert icons["laser_position_x"]["default"] == "mdi:arrow-left-right"
+        assert icons["laser_position_y"]["default"] == "mdi:arrow-up-down"
+        return
     sensors = _by_key(coordinator.build_sensors())
     assert sensors["laser_position_x"].icon == "mdi:arrow-left-right"
     assert sensors["laser_position_y"].icon == "mdi:arrow-up-down"

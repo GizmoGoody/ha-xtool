@@ -46,6 +46,7 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "p2_square_cells": lambda: (COMPONENT / "protocols" / "ws_v2" / "camera_correction.py").exists() and "square_cells" in (COMPONENT / "protocols" / "ws_v2" / "camera_correction.py").read_text(encoding="utf-8"),
     "p2_exposure_1000": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "P2_EXPOSURE_MAX = 1000" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     "p2_controls": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "class P2SafetyLock" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
+    "p2_head_controls": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "class P2LaserPosition" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     "p2_move_without_reload": lambda: "def made_entry_update" in (COMPONENT / "protocols" / "rest" / "coordinator.py").read_text(encoding="utf-8"),
     # P2: the right and left fill lights follow Studio's Fill light brightness and write it
     "p2_studio_brightness": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists() and "def _follow_studio_brightness" in (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8"),
