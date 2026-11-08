@@ -101,6 +101,7 @@ async def test_finds_the_laser_at_its_other_address(coordinator, monkeypatch) ->
     monkeypatch.setattr(rest_coordinator, "_serial_at", serial_at)
     update = MagicMock()
     monkeypatch.setattr(coordinator.hass.config_entries, "async_update_entry", update)
+    monkeypatch.setattr(coordinator.hass.config_entries, "async_schedule_reload", MagicMock())
     await coordinator._find_on_other_address()
     assert asked == ["192.168.0.47"]
     assert update.call_args.kwargs["data"]["host"] == "192.168.0.47"
@@ -119,6 +120,7 @@ async def test_a_different_laser_is_not_taken(coordinator, monkeypatch) -> None:
     monkeypatch.setattr(rest_coordinator, "_serial_at", AsyncMock(return_value="OTHER"))
     update = MagicMock()
     monkeypatch.setattr(coordinator.hass.config_entries, "async_update_entry", update)
+    monkeypatch.setattr(coordinator.hass.config_entries, "async_schedule_reload", MagicMock())
     await coordinator._find_on_other_address()
     update.assert_not_called()
 
