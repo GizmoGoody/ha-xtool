@@ -72,17 +72,13 @@ class XtoolEntity(CoordinatorEntity[XtoolCoordinator]):
             name=self.coordinator.device_name,
             manufacturer="xTool",
             model=self.coordinator.model.name,
-<<<<<<< HEAD
             # The product part of the SKU the laser reports (the rest is
             # per unit), e.g. "P0101000393" for one F2 Ultra UV variant,
             # with "(EU)" for the EU units (they have Access control)
             model_id=(
                 f"{self.coordinator.sku[:11]} (EU)" if self.coordinator.eu_unit
                 else self.coordinator.sku[:11]
-            ) or None,
-=======
-            model_id=self.coordinator.model_variant or None,
->>>>>>> p2-device-info
+            ) or self.coordinator.model_variant or None,
             serial_number=self.coordinator.serial_number,
             sw_version=self.coordinator.firmware_version,
             hw_version=self.coordinator._hardware_version or None,
