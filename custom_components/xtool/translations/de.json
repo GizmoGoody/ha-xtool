@@ -350,6 +350,12 @@
       },
       "uv_lamp_runtime": {
         "name": "Laufzeit UV-Lampe"
+      },
+      "operating_times": {
+        "name": "Betriebsvorgänge"
+      },
+      "accessory_ductfanv3_current_speed": {
+        "name": "Aktuelle Drehzahl"
       }
     },
     "binary_sensor": {
@@ -442,6 +448,12 @@
       },
       "smoking_fan_installation": {
         "name": "Abluftventilator-Installation"
+      },
+      "lid": {
+        "name": "Deckel"
+      },
+      "baseplate": {
+        "name": "Bodenplatte"
       }
     },
     "camera": {
@@ -479,6 +491,15 @@
       },
       "fill_light_back": {
         "name": "Arbeitslicht hinten"
+      },
+      "fill_light_1": {
+        "name": "Arbeitslicht 1"
+      },
+      "fill_light_2": {
+        "name": "Arbeitslicht 2"
+      },
+      "fill_light_3": {
+        "name": "Arbeitslicht 3"
       }
     },
     "fan": {
@@ -573,6 +594,15 @@
       },
       "accessory_largepurifierv3_auto_continue": {
         "name": "Auto-Weiterlauf"
+      },
+      "safety_lock": {
+        "name": "Sicherheitsschloss"
+      },
+      "aimed_measure_light": {
+        "name": "Licht für gezielte Messung"
+      },
+      "quick_measure_light": {
+        "name": "Licht für Schnellmessung"
       }
     },
     "number": {
@@ -701,6 +731,15 @@
       },
       "focus_height": {
         "name": "Fokushöhe"
+      },
+      "fill_light_brightness": {
+        "name": "Helligkeit Arbeitslicht"
+      },
+      "lowest_output_power": {
+        "name": "Niedrigste Ausgangsleistung"
+      },
+      "accessory_ductfanv3_post_run": {
+        "name": "Zeit, die der Inline-Lüfter weiterläuft"
       }
     },
     "select": {
@@ -769,6 +808,16 @@
       },
       "accessory_largepurifierv3_speed_select": {
         "name": "Geschwindigkeit"
+      },
+      "flame_alarm_level": {
+        "name": "Feueralarm",
+        "state": {
+          "low": "Niedrig",
+          "high": "Hoch"
+        }
+      },
+      "accessory_ductfanv3_mode_speed": {
+        "name": "Lüfter"
       }
     },
     "update": {
@@ -929,7 +978,14 @@
               "laser_module": "Lasermodul",
               "tilt": "Neigung",
               "moving": "Bewegung",
-              "emergency_stop": "Not-Halt"
+              "emergency_stop": "Not-Halt",
+              "firmware": "Firmware",
+              "water_cooling": "Wasserkühlung",
+              "exhaust_fan": "Abluftventilator",
+              "safety_lock": "Sicherheitsschloss",
+              "air_pump": "Luftpumpe",
+              "short_circuit": "Kurzschluss",
+              "other": "Sonstiges"
             }
           }
         }

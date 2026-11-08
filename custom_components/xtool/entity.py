@@ -64,12 +64,15 @@ class XtoolEntity(CoordinatorEntity[XtoolCoordinator]):
         connections: set[tuple[str, str]] = set()
         if self.coordinator.mac_address:
             connections.add((CONNECTION_NETWORK_MAC, self.coordinator.mac_address))
+        for mac in self.coordinator.other_mac_addresses:
+            connections.add((CONNECTION_NETWORK_MAC, mac))
         return DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.serial_number)},
             connections=connections,
             name=self.coordinator.device_name,
             manufacturer="xTool",
             model=self.coordinator.model.name,
+<<<<<<< HEAD
             # The product part of the SKU the laser reports (the rest is
             # per unit), e.g. "P0101000393" for one F2 Ultra UV variant,
             # with "(EU)" for the EU units (they have Access control)
@@ -77,6 +80,9 @@ class XtoolEntity(CoordinatorEntity[XtoolCoordinator]):
                 f"{self.coordinator.sku[:11]} (EU)" if self.coordinator.eu_unit
                 else self.coordinator.sku[:11]
             ) or None,
+=======
+            model_id=self.coordinator.model_variant or None,
+>>>>>>> p2-device-info
             serial_number=self.coordinator.serial_number,
             sw_version=self.coordinator.firmware_version,
             hw_version=self.coordinator._hardware_version or None,
