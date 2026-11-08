@@ -234,7 +234,7 @@ Connected BT accessories surface as their own **child devices** hanging off the 
 | Main camera | Wide-angle workspace camera (F2 family + MetalFab on V2 firmware). Streams live MJPEG with snapshot fallback |
 | Deep camera | Close-up / depth camera (F2 family + MetalFab on V2 firmware). Streams live MJPEG with snapshot fallback |
 | Overview camera | Wide-angle workspace camera (P-family + V1-firmware dual-camera devices) |
-| Close-up camera | Detail camera (P-family + V1-firmware dual-camera devices) |
+| Close camera | Detail camera (P-family + V1-firmware dual-camera devices) |
 | Global / Local / Side camera | M2 exposes three cameras: `far` (global / overview), `near` (local / close-up) and `side` (process-side view) |
 | Flame record | Snapshot of the most recent flame-detection event |
 
