@@ -204,7 +204,7 @@
       "camera_fire_record": { "name": "Flame record" }
     },
     "light": {
-      "fill_light_1": { "name": "Close-view fill light" },
+      "fill_light_1": { "name": "Fill light (close)" },
       "fill_light_2": { "name": "Fill light (right)" },
       "fill_light_3": { "name": "Fill light (left)" },
       "fill_light": { "name": "Fill light" },
@@ -238,7 +238,6 @@
       "md_mode": { "name": "Auto mode (access control)" }
     },
     "number": {
-      "fill_light_brightness": { "name": "Fill light brightness" },
       "lowest_output_power": { "name": "Lowest output power" },
       "air_assist_close_delay": { "name": "Air assist delay" },
       "smoking_fan_duration": { "name": "Exhaust time after processing" },
