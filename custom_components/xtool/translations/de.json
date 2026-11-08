@@ -347,7 +347,11 @@
         "name": "Deckel"
       },
       "baseplate": {
-        "name": "Bodenplatte"
+        "name": "Bodenplatte",
+        "state": {
+          "on": "Eingesetzt",
+          "off": "Entfernt"
+        }
       },
       "cover_open": {
         "name": "Deckel"
@@ -489,9 +493,6 @@
       }
     },
     "switch": {
-      "safety_lock": {
-        "name": "Sicherheitsschloss"
-      },
       "aimed_measure_light": {
         "name": "Roter Punkt (nah)"
       },
@@ -908,6 +909,11 @@
             }
           }
         }
+      }
+    },
+    "lock": {
+      "safety_lock": {
+        "name": "Sicherheitsschloss"
       }
     }
   }

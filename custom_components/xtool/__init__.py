@@ -43,6 +43,7 @@ PLATFORMS = [
     Platform.FAN,
     Platform.SENSOR,
     Platform.LIGHT,
+    Platform.LOCK,
     Platform.SWITCH,
     Platform.NUMBER,
     Platform.SELECT,

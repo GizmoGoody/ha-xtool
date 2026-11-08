@@ -374,7 +374,11 @@
         "name": "Lid"
       },
       "baseplate": {
-        "name": "Baseplate"
+        "name": "Baseplate",
+        "state": {
+          "on": "Installed",
+          "off": "Removed"
+        }
       },
       "cover_open": {
         "name": "Cover"
@@ -528,9 +532,6 @@
       }
     },
     "switch": {
-      "safety_lock": {
-        "name": "Safety lock"
-      },
       "aimed_measure_light": {
         "name": "Red dot (close)"
       },
@@ -950,6 +951,11 @@
             }
           }
         }
+      }
+    },
+    "lock": {
+      "safety_lock": {
+        "name": "Safety lock"
       }
     }
   }

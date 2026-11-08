@@ -12,6 +12,7 @@ from typing import Any
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.components.button import ButtonEntity
 from homeassistant.components.light import ATTR_BRIGHTNESS, ColorMode, LightEntity
+from homeassistant.components.lock import LockEntity
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
@@ -20,10 +21,9 @@ from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
 from homeassistant.exceptions import HomeAssistantError
 
 from ...coordinator import XtoolCoordinator
-from ...entity import XtoolEntity
+from ...entity import XtoolEntity, XtoolReadOnlyEntity
 from .entities import (
     XtoolCameraExposure,
-    XtoolDigitalLock,
     XtoolHomeLaserHead,
     XtoolIRLED,
     XtoolMeasureDistance,
@@ -312,6 +312,57 @@ class P2Connection(XtoolEntity, SensorEntity):
         return self.coordinator.protocol.connection()
 
 
+class P2SafetyLock(XtoolEntity, LockEntity):
+    """Studio's Safety lock: locks the lid."""
+
+    _attr_translation_key = "safety_lock"
+
+    def __init__(self, coordinator: XtoolCoordinator) -> None:
+        super().__init__(coordinator)
+        # The unique ID the switch had
+        self._set_unique_id("digital_lock")
+
+    @property
+    def is_locked(self) -> bool | None:
+        d = self.coordinator.data
+        return d.cover_locked if d else None
+
+    async def async_lock(self, **kwargs: Any) -> None:
+        await self.coordinator.async_write(
+            {"cover_locked": True}, self.coordinator.protocol.set_digital_lock(True),
+        )
+
+    async def async_unlock(self, **kwargs: Any) -> None:
+        await self.coordinator.async_write(
+            {"cover_locked": False}, self.coordinator.protocol.set_digital_lock(False),
+        )
+
+
+class P2Alarm(XtoolReadOnlyEntity, BinarySensorEntity):
+    """On while the P2 reports an alarm; each alarm's code and Studio's message as attributes."""
+
+    _attr_translation_key = "alarm"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(self, coordinator: XtoolCoordinator) -> None:
+        super().__init__(coordinator)
+        self._set_unique_id("alarm")
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.data
+        return None if data is None else bool(data.active_alarms)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        alarms = [
+            {k: a.get(k) for k in ("code", "message", "level")}
+            for a in (data.active_alarms if data is not None else [])
+        ]
+        return {"alarms": alarms, "codes": [a["code"] for a in alarms]}
+
+
 # --- Builders ----------------------------------------------------------------
 
 
@@ -319,10 +370,13 @@ def build_p2_switches(coordinator: XtoolCoordinator) -> list[SwitchEntity]:
     return [
         _renamed(XtoolIRLED(coordinator, "close"), "aimed_measure_light"),
         _renamed(XtoolIRLED(coordinator, "global"), "quick_measure_light"),
-        _renamed(XtoolDigitalLock(coordinator), "safety_lock"),
         P2Buzzer(coordinator),
         P2ExhaustFan(coordinator),
     ]
+
+
+def build_p2_locks(coordinator: XtoolCoordinator) -> list[LockEntity]:
+    return [P2SafetyLock(coordinator)]
 
 
 def build_p2_numbers(coordinator: XtoolCoordinator) -> list[NumberEntity]:
@@ -346,6 +400,7 @@ def build_p2_binary_sensors(coordinator: XtoolCoordinator) -> list[BinarySensorE
     return [
         _renamed(_RestCoverSensor(coordinator), "lid"),
         P2Baseplate(coordinator),
+        P2Alarm(coordinator),
         # Both run whenever the P2 is awake; the alarms report a failure
         _off_by_default(_RestPushBinary(coordinator, "cooling_fan_running", "cooling_fan_running",
                                         BinarySensorDeviceClass.RUNNING)),
