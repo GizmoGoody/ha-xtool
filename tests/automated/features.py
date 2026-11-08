@@ -23,6 +23,8 @@ def _imports_protocols_first() -> bool:
 
 
 FEATURES: dict[str, Callable[[], bool]] = {
+    # The camera thumbnail refresh stops when Home Assistant stops
+    "thumbnail_cancel_on_shutdown": lambda: "cancel_on_shutdown=True" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     # WS-V2: a push that arrives during the accessory reads wins over the poll
     "push_after_accessory_poll": lambda: "A push that arrived while the accessories were read" in (COMPONENT / "protocols" / "ws_v2" / "coordinator.py").read_text(encoding="utf-8"),
     # P2: Studio's push channel on port 8081 alongside the REST poll

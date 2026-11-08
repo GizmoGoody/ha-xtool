@@ -91,3 +91,20 @@ def test_translations_name_every_number() -> None:
         for key in keys:
             name = f"{key}_thumbnail_refresh" if key else "thumbnail_refresh"
             assert name in numbers, (path, name)
+
+
+async def test_refresh_stops_when_home_assistant_stops(hass: HomeAssistant, monkeypatch) -> None:
+    """A photo every few seconds adds tasks the shutdown waits for, so it never ended."""
+    import custom_components.xtool.protocols.ws_v2.entities as entities
+
+    if not has("thumbnail_cancel_on_shutdown"):
+        import pytest
+
+        pytest.skip("branch lacks thumbnail_cancel_on_shutdown")
+    calls = []
+    monkeypatch.setattr(entities, "async_track_time_interval", lambda *a, **kw: calls.append(kw) or (lambda: None))
+    coordinator = _f2uv(hass)
+    camera = next(c for c in coordinator.build_cameras() if c._camera_name == "main")
+    camera.hass = hass
+    camera.set_thumbnail_refresh(5)
+    assert calls and calls[-1].get("cancel_on_shutdown") is True
