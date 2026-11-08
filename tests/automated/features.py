@@ -38,7 +38,7 @@ FEATURES: dict[str, Callable[[], bool]] = {
     # P2 hardware test: baseplate on when in place, safety lock on/off
     "p2_hardware_findings": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "class P2Baseplate" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     # REST lasers (P2): written values show at once and are held (coordinator.async_write)
-    "rest_hold_written_values": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "async_write" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
+    "rest_hold_written_values": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "coordinator.async_write(" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     # P2: no Fill light brightness number; a fill light turns on at Studio's level
     "p2_light_brightness": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "use Studio's Fill light brightness" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     # P2: no camera photo while it sleeps (a photo wakes it)
