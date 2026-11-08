@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .conftest import build_coordinator
@@ -90,7 +92,9 @@ async def test_a_refused_setting_keeps_the_old_value(coordinator) -> None:
     """When the laser refuses a write, the entity keeps showing the laser's value."""
     coordinator.protocol.set_config = AsyncMock(return_value=False)
     buzzer = by_key(coordinator.build_switches())["buzzer"]
-    await buzzer.async_turn_on()
+    # Since written values are held, a refusal is also shown as an error
+    with contextlib.suppress(HomeAssistantError):
+        await buzzer.async_turn_on()
     assert buzzer.is_on is False
 
 

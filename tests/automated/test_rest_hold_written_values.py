@@ -65,10 +65,11 @@ async def test_refused_setting_shows_the_old_value(coordinator) -> None:
     assert switches["buzzer"].is_on is False
 
 
-async def test_exhaust_fan_writes_studios_pair_at_once(coordinator) -> None:
+async def test_exhaust_fan_holds_both_of_studios_writes(coordinator) -> None:
     switches = by_key(coordinator.build_switches())
     await switches["smoking_fan"].async_turn_on()
-    coordinator.protocol.set_config.assert_awaited_once_with(purifierEnable=True, purifierTimeout=5)
+    poll_with(coordinator, device_config={"beepEnable": False, "purifierEnable": False, "purifierTimeout": 10})
+    assert coordinator.data.device_config["purifierEnable"] is True
     assert coordinator.data.device_config["purifierTimeout"] == 5
 
 
