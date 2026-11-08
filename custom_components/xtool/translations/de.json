@@ -75,6 +75,13 @@
   },
   "entity": {
     "sensor": {
+      "connection": {
+        "name": "Verbindung",
+        "state": {
+          "ethernet": "Ethernet",
+          "wifi": "WLAN"
+        }
+      },
       "accessory_ductfanv3_post_run": {
         "name": "Zeit, die der Inline-Lüfter weiterläuft"
       },
@@ -493,13 +500,13 @@
         "name": "Arbeitslicht hinten"
       },
       "fill_light_1": {
-        "name": "Arbeitslicht 1"
+        "name": "Arbeitslicht Nahbereichskamera"
       },
       "fill_light_2": {
-        "name": "Arbeitslicht 2"
+        "name": "Arbeitslicht (rechts)"
       },
       "fill_light_3": {
-        "name": "Arbeitslicht 3"
+        "name": "Arbeitslicht (links)"
       }
     },
     "fan": {

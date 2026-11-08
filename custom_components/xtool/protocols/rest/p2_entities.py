@@ -14,6 +14,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.components.light import ATTR_BRIGHTNESS, ColorMode, LightEntity
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.components.select import SelectEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
 
@@ -259,6 +260,45 @@ class P2FlameAlarm(_P2Setting, SelectEntity):
         await self._write(flameLevelHLSelect=1, flameAlarmLevel1=option == "high")
 
 
+# --- Sensors ----------------------------------------------------------------
+
+
+class P2Baseplate(_RestPushBinary):
+    """Studio's baseplate: on when the P2 detects it in place.
+
+    ``/peripheral/drawer`` reads "off" and the DRAWER CLOSE push arrives
+    when the baseplate is in (Studio's drawerStatus is ``state === 'off'``).
+    """
+
+    _attr_entity_category = None
+
+    def __init__(self, coordinator: XtoolCoordinator) -> None:
+        super().__init__(coordinator, "baseplate", "drawer_open")
+
+    @property
+    def is_on(self) -> bool | None:
+        d = self.coordinator.data
+        live = getattr(d, self._state_attr) if d else None
+        return self._is_on_or_restored(None if live is None else not live)
+
+
+class P2Connection(XtoolEntity, SensorEntity):
+    """Whether Home Assistant reaches the P2 over Ethernet or Wi-Fi."""
+
+    _attr_translation_key = "connection"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["ethernet", "wifi"]
+
+    def __init__(self, coordinator: XtoolCoordinator) -> None:
+        super().__init__(coordinator)
+        self._set_unique_id("connection")
+
+    @property
+    def native_value(self) -> str | None:
+        return self.coordinator.protocol.connection()
+
+
 # --- Builders ----------------------------------------------------------------
 
 
@@ -295,11 +335,9 @@ def build_p2_lights(coordinator: XtoolCoordinator) -> list[LightEntity]:
 
 
 def build_p2_binary_sensors(coordinator: XtoolCoordinator) -> list[BinarySensorEntity]:
-    baseplate = _renamed(_RestPushBinary(coordinator, "drawer_open", "drawer_open"), "baseplate")
-    baseplate._attr_entity_category = None
     return [
         _renamed(_RestCoverSensor(coordinator), "lid"),
-        baseplate,
+        P2Baseplate(coordinator),
         _RestPushBinary(coordinator, "cooling_fan_running", "cooling_fan_running",
                         BinarySensorDeviceClass.RUNNING),
         _RestPushBinary(coordinator, "smoking_fan_running", "smoking_fan_running",
