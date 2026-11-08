@@ -171,3 +171,19 @@ async def test_a_move_during_setup_reloads(coordinator, monkeypatch) -> None:
     monkeypatch.setattr(coordinator.hass.config_entries, "async_update_entry", MagicMock(return_value=False))
     await coordinator._prefer_ethernet()
     reload.assert_called_once()
+
+
+@requires("p2_sensor_cleanup")
+def test_p2_leaves_out_sensors_that_tell_nothing(coordinator) -> None:
+    """No tool type, working mode, gyro, laser power or module; some sensors start off."""
+    sensors = {e.translation_key: e for e in coordinator.build_sensors()}
+    for key in ("hardware_type", "print_tool_type", "working_mode", "gyro_x", "gyro_y", "gyro_z",
+                "laser_power", "laser_module"):
+        assert key not in sensors
+    assert sensors["task_id"].entity_registry_enabled_default is False
+    assert sensors["cpu_temp"].entity_registry_enabled_default is False
+    assert sensors["task_progress"].entity_registry_enabled_default is True
+    binaries = {e.translation_key: e for e in coordinator.build_binary_sensors()}
+    assert binaries["cooling_fan_running"].entity_registry_enabled_default is False
+    assert binaries["water_pump_running"].entity_registry_enabled_default is False
+    assert binaries["smoking_fan_running"].entity_registry_enabled_default is True
