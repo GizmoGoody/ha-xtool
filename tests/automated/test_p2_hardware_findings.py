@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .conftest import build_coordinator
-from .features import requires
+from .features import has, requires
 
 MACHINE_INFO = {
     "deviceName": "P2", "sn": "MXTEST0001", "mac": "48:FB:A9:5C:4F:7D", "machineSubType": "004",
@@ -126,6 +126,7 @@ async def test_discovery_keeps_an_address_that_answers(hass: HomeAssistant, monk
 
 
 @requires("p2_sleep_photo")
+@pytest.mark.skipif(has("p2_cameras"), reason="P2 cameras are P2Camera (test_p2_cameras)")
 async def test_no_photo_while_sleeping(coordinator, monkeypatch) -> None:
     """A photo wakes a sleeping P2, so the camera keeps its last one."""
     from custom_components.xtool.const import XtoolStatus
