@@ -187,3 +187,9 @@ def test_p2_leaves_out_sensors_that_tell_nothing(coordinator) -> None:
     assert binaries["cooling_fan_running"].entity_registry_enabled_default is False
     assert binaries["water_pump_running"].entity_registry_enabled_default is False
     assert binaries["smoking_fan_running"].entity_registry_enabled_default is True
+
+
+@requires("p2_no_reboot")
+def test_p2_has_no_reboot_button(coordinator) -> None:
+    """The P2 answers /reboot with "invalid request"."""
+    assert "reboot" not in {e.translation_key for e in coordinator.build_buttons()}

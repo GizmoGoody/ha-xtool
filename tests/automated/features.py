@@ -47,6 +47,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "p2_studio_brightness": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists() and "def _follow_studio_brightness" in (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8"),
     # P2: sensors that tell nothing are left out; some start turned off
     "p2_sensor_cleanup": lambda: "_P2_LEFT_OUT" in (COMPONENT / "protocols" / "rest" / "entities.py").read_text(encoding="utf-8"),
+    # P2: no Reboot button (the P2 refuses /reboot)
+    "p2_no_reboot": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "XtoolReboot" not in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     # P2: no camera photo while it sleeps (a photo wakes it)
     "p2_sleep_photo": lambda: "A photo wakes a sleeping P2" in (COMPONENT / "protocols" / "rest" / "entities.py").read_text(encoding="utf-8"),
     # P2: Ethernet first when a cable is connected, Connection sensor
