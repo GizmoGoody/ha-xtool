@@ -41,6 +41,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "rest_hold_written_values": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "coordinator.async_write(" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     # P2: no Fill light brightness number; a fill light turns on at Studio's level
     "p2_light_brightness": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "use Studio's Fill light brightness" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
+    # P2: a move to another address reloads the entry even during setup
+    "p2_reload_on_move": lambda: "def _move_to" in (COMPONENT / "protocols" / "rest" / "coordinator.py").read_text(encoding="utf-8"),
     # P2: no camera photo while it sleeps (a photo wakes it)
     "p2_sleep_photo": lambda: "A photo wakes a sleeping P2" in (COMPONENT / "protocols" / "rest" / "entities.py").read_text(encoding="utf-8"),
     # P2: Ethernet first when a cable is connected, Connection sensor
