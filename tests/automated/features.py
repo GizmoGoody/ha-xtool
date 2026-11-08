@@ -27,6 +27,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "p2_push": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists(),
     # P2: the poll reads what Studio reads; alarms by Studio's codes; cancelled jobs
     "p2_status": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists() and "def describe_alarm" in (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8"),
+    # P2: settings by Studio's keys and names; three fill lights
+    "p2_settings": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists(),
     # The first import of the package succeeds (no circular import)
     "clean_first_import": _imports_protocols_first,
     # Issue #13: switch and binary sensor icons follow the entity state
