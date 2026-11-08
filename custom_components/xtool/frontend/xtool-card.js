@@ -639,6 +639,45 @@ function sensorAttributes(hass, entityId, all = false) {
   return out;
 }
 
+/**
+ * Answers Home Assistant's "states" context inside an element, as Home
+ * Assistant's own provider does (the Lit context protocol), with the states
+ * the card changed. Parts that read a state from the context instead of from
+ * hass, such as the tile card editor's State content picker, then see the
+ * card's attributes. A request made before the states are known is answered
+ * once they are.
+ */
+class StatesProvider {
+  constructor(host) {
+    this._unsubscribes = new Map();
+    this._waiting = [];
+    host.addEventListener("context-request", (ev) => {
+      if (ev.context !== "states") return;
+      ev.stopPropagation();
+      if (this._states === undefined) this._waiting.push(ev);
+      else this._answer(ev);
+    });
+  }
+
+  _answer(ev) {
+    if (!ev.subscribe) {
+      ev.callback(this._states);
+      return;
+    }
+    // The consumer expects the same unsubscribe function with every value
+    const unsubscribe = () => this._unsubscribes.delete(ev.callback);
+    this._unsubscribes.set(ev.callback, unsubscribe);
+    ev.callback(this._states, unsubscribe);
+  }
+
+  set states(states) {
+    if (states === this._states) return;
+    this._states = states;
+    for (const ev of this._waiting.splice(0)) this._answer(ev);
+    for (const [callback, unsubscribe] of this._unsubscribes) callback(states, unsubscribe);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shared feature parts
 // ---------------------------------------------------------------------------
@@ -2284,6 +2323,7 @@ class XtoolCard extends HTMLElement {
           stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </div>`;
     this._frame = this.shadowRoot.querySelector(".frame");
+    this._statesProvider = new StatesProvider(this._frame);
     this._over = this.shadowRoot.querySelector(".clip.over");
     this._window = this.shadowRoot.getElementById("window");
     this._stripe = this.shadowRoot.getElementById("stripe");
@@ -2374,11 +2414,18 @@ class XtoolCard extends HTMLElement {
     this._tile = document.createElement("hui-tile-card");
     this._tile.classList.add("tile");
     this._tile.setConfig(tile);
-    if (this._hass) this._tile.hass = this._innerHass(this._hass);
+    if (this._hass) this._setTileHass(this._hass);
     if (this._preview !== undefined) this._tile.preview = this._preview;
     if (this._layoutValue !== undefined) this._tile.layout = this._layoutValue;
     this._frame.insertBefore(this._tile, this._over);
     this._layout();
+  }
+
+  /** The tile card gets the changed hass, and so does the states context inside the card. */
+  _setTileHass(hass) {
+    const inner = this._innerHass(hass);
+    this._statesProvider.states = inner.states;
+    this._tile.hass = inner;
   }
 
   set hass(hass) {
@@ -2387,7 +2434,7 @@ class XtoolCard extends HTMLElement {
     this._job = this._jobState(hass);
     this._frame.classList.toggle("off", this._job.phase === "off");
     this._followPower(this._job.phase === "off");
-    if (this._tile) this._tile.hass = this._innerHass(hass);
+    if (this._tile) this._setTileHass(hass);
     this._updateBadge();
     this._updateLight();
     this._updateEdge();
@@ -2556,7 +2603,7 @@ class XtoolCard extends HTMLElement {
     const run = this.isConnected && shown && this._job?.phase === "processing";
     if (run && !this._timer) {
       this._timer = setInterval(() => {
-        if (this._tile && this._hass) this._tile.hass = this._innerHass(this._hass);
+        if (this._tile && this._hass) this._setTileHass(this._hass);
       }, 1000);
     } else if (!run && this._timer) {
       clearInterval(this._timer);
@@ -3048,6 +3095,7 @@ class XtoolCardEditor extends HTMLElement {
           <ha-form id="form"></ha-form>
         </div>
       </ha-expansion-panel>`;
+    this._statesProvider = new StatesProvider(this.shadowRoot);
     this._laserForm = this.shadowRoot.getElementById("laser");
     this._laserForm.computeLabel = (s) => s.label;
     this._laserForm.computeHelper = (s) => s.helper;
@@ -3089,7 +3137,15 @@ class XtoolCardEditor extends HTMLElement {
     this._laserForm.hass = hass;
     this._styleForm.hass = hass;
     this._form.hass = hass;
-    if (this._tileEditor) this._tileEditor.hass = withJobAttributes(hass, this._config?.entity);
+    this._setTileEditorHass(this._config?.entity);
+  }
+
+  /** The tile editor, and the states context inside this editor, get the laser's entity with the card's attributes. */
+  _setTileEditorHass(entity) {
+    if (!this._hass) return;
+    const hass = withJobAttributes(this._hass, entity);
+    this._statesProvider.states = hass.states;
+    if (this._tileEditor) this._tileEditor.hass = hass;
   }
 
   set lovelace(lovelace) {
@@ -3100,6 +3156,7 @@ class XtoolCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = explicit(config);
     this._render();
+    this._setTileEditorHass(this._config.entity);
     this._setTileEditorConfig();
     if (JSON.stringify(this._config) !== JSON.stringify(config)) this._fire();
   }
@@ -3123,13 +3180,13 @@ class XtoolCardEditor extends HTMLElement {
           this._fire();
           // The tile editor shows a change only once its configuration is handed back
           editor.setConfig(ev.detail.config);
-          if (ev.detail.config.entity) editor.hass = withJobAttributes(this._hass, ev.detail.config.entity);
+          if (ev.detail.config.entity) this._setTileEditorHass(ev.detail.config.entity);
         });
         editor.xtoolEntities = xtoolStatusSensors(this._hass);
-        editor.hass = withJobAttributes(this._hass, this._config.entity);
         if (this._lovelace) editor.lovelace = this._lovelace;
-        this.shadowRoot.getElementById("tile").replaceWith(editor);
         this._tileEditor = editor;
+        this._setTileEditorHass(this._config.entity);
+        this.shadowRoot.getElementById("tile").replaceWith(editor);
       })();
       await this._loading;
     }
