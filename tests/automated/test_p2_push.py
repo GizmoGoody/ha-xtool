@@ -139,59 +139,52 @@ async def test_a_push_during_the_poll_wins(monkeypatch) -> None:
     assert state.cover_open is True
 
 
-async def test_channel_pings_reads_and_notices_a_silent_laser(monkeypatch) -> None:
-    """Against a local stand-in: Studio's ping, a push, and silence ending the channel."""
-    from aiohttp import web
+class FakeChannel:
+    """Stands in for the WebSocket: hands out the given frames, then stays silent."""
 
+    def __init__(self, frames: list[bytes]) -> None:
+        self.frames = list(frames)
+        self.sent: list[str] = []
+        self.closed = False
+
+    async def send_str(self, text: str) -> None:
+        self.sent.append(text)
+
+    async def receive(self, timeout: float | None = None):
+        from aiohttp import WSMessage, WSMsgType
+
+        if self.frames:
+            return WSMessage(WSMsgType.BINARY, self.frames.pop(0), None)
+        await asyncio.sleep(timeout or 0)
+        raise asyncio.TimeoutError
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+async def test_channel_pings_reads_and_notices_a_silent_laser(monkeypatch) -> None:
+    """Studio's ping goes out, pushes are read, and silence ends the channel."""
     from custom_components.xtool.protocols.rest import p2 as p2_module
 
-    pings: list[str] = []
-    stop = asyncio.Event()
-
-    async def handler(request):
-        ws = web.WebSocketResponse()
-        await ws.prepare(request)
-        await ws.send_bytes(frame(IDLE))
-        await ws.send_bytes(KEEPALIVE)
-        await ws.send_bytes(frame(LID_OPEN))
-
-        async def read() -> None:
-            async for msg in ws:
-                pings.append(msg.data)
-
-        task = asyncio.create_task(read())
-        await stop.wait()
-        task.cancel()
-        return ws
-
-    app = web.Application()
-    app.router.add_get("/", handler)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "127.0.0.1", 0)
-    await site.start()
-    port = site._server.sockets[0].getsockname()[1]
-    monkeypatch.setattr(p2_module, "P2_PUSH_PORT", port)
     monkeypatch.setattr(p2_module, "PUSH_TIMEOUT_SECONDS", 0.6)
     monkeypatch.setattr(p2_module, "PING_SECONDS", 0.2)
-
     proto = p2()
+    channel = FakeChannel([frame(IDLE), KEEPALIVE, frame(LID_OPEN)])
+    proto._ws = channel
+    proto._last_frame = p2_module.time.monotonic()
     told: list[bool] = []
     proto._push_notify = lambda: told.append(proto.connected)
-    try:
-        await proto.connect()
-        assert proto.connected
-        await asyncio.sleep(0.3)
-        assert pings and pings[0] == "ping"
-        assert proto._latest["cover_open"][0] is True
-        # The stand-in now stays silent: the channel ends and says so
-        await asyncio.sleep(1.0)
-        assert not proto.connected
-        assert told and told[-1] is False
-    finally:
-        stop.set()
-        await proto.disconnect()
-        await runner.cleanup()
+    reader = asyncio.create_task(proto._read_pushes(channel))
+    await asyncio.sleep(0.3)
+    assert proto.connected
+    assert channel.sent and channel.sent[0] == "ping"
+    assert proto._latest["cover_open"][0] is True
+    assert proto._latest["status"][0] == "idle"
+    # Silent from here on: the channel ends and says so
+    await asyncio.wait_for(reader, 3)
+    assert channel.closed
+    assert not proto.connected
+    assert told and told[-1] is False
 
 
 def test_p2_uses_the_push_coordinator() -> None:
