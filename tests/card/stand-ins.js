@@ -83,10 +83,10 @@ window.makeHass = (changes = {}) => {
       dev_p2: { id: "dev_p2", model: "xTool P2", via_device_id: null },
     },
     calls: [],
-    // The state as Home Assistant shows it: here the state and its unit
-    formatEntityState(stateObj) {
+    // The state (or the state given) as Home Assistant shows it: here with its unit
+    formatEntityState(stateObj, state = stateObj.state) {
       const unit = stateObj.attributes.unit_of_measurement;
-      return unit ? `${stateObj.state} ${unit}` : stateObj.state;
+      return unit ? `${state} ${unit}` : state;
     },
     // A call's target is recorded with its data, as one entity_id
     callService(domain, service, data, target) {
