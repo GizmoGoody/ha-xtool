@@ -41,7 +41,11 @@ def coordinator(hass: HomeAssistant, config_entry: MockConfigEntry):
 def by_key(entities):
     for entity in entities:
         entity.async_write_ha_state = MagicMock()
-    return {e.translation_key: e for e in entities}
+    # On the close camera's device the close fill light is just "Fill light"
+    return {
+        ("fill_light_1" if e.translation_key == "fill_light" else e.translation_key): e
+        for e in entities
+    }
 
 
 def test_p2_entities_use_studio_names(coordinator) -> None:
