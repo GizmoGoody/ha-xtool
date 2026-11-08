@@ -2304,6 +2304,7 @@ for them):
 | `/peripheral/airassist`, `/peripheral/uv_fire_sensor`, `/peripheral/cpu_fan` | `invalid request` |
 | `/config/get {"keys": [...]}` | refused: `key 'kv' not found` |
 | `/system` | `{"result": "failed"}` (Studio reads `/system?action=version_v2`) |
+| `/reboot` (GET or POST) | `invalid request`; Studio has no reboot for the P2 |
 
 Not offered on the P2 because Studio does not offer them: Filter check,
 Purifier check, Purifier continue (Studio uses `purifierEnable` and
