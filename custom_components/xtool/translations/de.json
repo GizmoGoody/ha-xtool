@@ -752,6 +752,12 @@
       }
     },
     "switch": {
+      "slat_overlay": {
+        "name": "Lamellen-Overlay"
+      },
+      "overlay": {
+        "name": "Overlay"
+      },
       "buzzer": {
         "name": "Signalton"
       },
@@ -850,6 +856,15 @@
       }
     },
     "number": {
+      "thickness_on_slats": {
+        "name": "Stärke auf Lamellen"
+      },
+      "distance_honeycomb_panel": {
+        "name": "Distanz mit Wabenplatte"
+      },
+      "distance_slats_removed": {
+        "name": "Distanz ohne Lamellen"
+      },
       "auto_power_off": {
         "name": "Automatisch ausschalten"
       },
@@ -993,6 +1008,37 @@
       }
     },
     "select": {
+      "crop_preset": {
+        "name": "Zuschnitt",
+        "state": {
+          "custom": "Benutzerdefiniert",
+          "work_bed": "Gesamte Arbeitsfläche",
+          "process_on_slats": "Auf Lamellen bearbeiten",
+          "honeycomb_panel": "Wabenplatte",
+          "slats_removed": "Lamellen entfernt",
+          "close_camera": "Nahkamerabild"
+        }
+      },
+      "overlay": {
+        "name": "Overlay",
+        "state": {
+          "none": "Keins",
+          "work_bed": "Gesamte Arbeitsfläche",
+          "process_on_slats": "Auf Lamellen bearbeiten",
+          "honeycomb_panel": "Wabenplatte",
+          "slats_removed": "Lamellen entfernt",
+          "close_camera": "Nahkamerabild",
+          "custom": "Benutzerdefiniert"
+        }
+      },
+      "processing_mode": {
+        "name": "Bearbeitungsmodus",
+        "state": {
+          "process_on_slats": "Auf Lamellen bearbeiten",
+          "honeycomb_panel": "Wabenplatte",
+          "slats_removed": "Lamellen entfernt"
+        }
+      },
       "perspective": {
         "name": "Perspektive",
         "state": {
