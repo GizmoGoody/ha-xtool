@@ -520,11 +520,6 @@ class P2Protocol(RestProtocol):
         value = _peri_float(await self._get_json("/peripheral/water_flow?action=get"))
         if value is not None:
             state.water_flow = value
-        gyro = await self._get_json("/peripheral/gyro?action=get")
-        if isinstance(gyro, dict):
-            for axis in ("x", "y", "z"):
-                if isinstance(gyro.get(f"gyro_{axis}"), (int, float)):
-                    setattr(state, f"gyro_{axis}", float(gyro[f"gyro_{axis}"]))
         coord = await self._post_json(
             REST_PATH_LASER_HEAD, data={"action": PERIPHERAL_ACTION_GET_COORD, "waitTime": 0},
         )
