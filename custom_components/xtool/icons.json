@@ -211,6 +211,10 @@
         "default": "mdi:fan",
         "state": { "off": "mdi:fan-off" }
       },
+      "exhaust_fan_setting": {
+        "default": "mdi:fan-chevron-up",
+        "state": { "off": "mdi:fan-off" }
+      },
       "stops_when_moved": {
         "default": "mdi:vibrate",
         "state": { "off": "mdi:vibrate-off" }
