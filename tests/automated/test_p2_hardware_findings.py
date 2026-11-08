@@ -83,6 +83,7 @@ async def test_moves_to_ethernet_when_it_answers(coordinator, monkeypatch) -> No
 
     coordinator.protocol.host = "192.168.0.47"
     coordinator.protocol.ethernet_address = MagicMock(return_value="192.168.0.46")
+    coordinator.protocol.change_host = AsyncMock()
     update = MagicMock()
     monkeypatch.setattr(coordinator.hass.config_entries, "async_update_entry", update)
     reload = MagicMock()
@@ -144,34 +145,32 @@ async def test_no_photo_while_sleeping(coordinator, monkeypatch) -> None:
     assert await camera.async_camera_image() == b"old"
 
 
-@requires("p2_reload_on_move")
-async def test_a_move_during_setup_reloads(coordinator, monkeypatch) -> None:
-    """Found during setup (no update listener yet) or already saved: reload anyway."""
-    from homeassistant.config_entries import ConfigEntryState
-
+@requires("p2_move_without_reload")
+async def test_a_move_keeps_the_entities(coordinator, monkeypatch) -> None:
+    """A new address is used at once and saved; the entry is not reloaded."""
+    from custom_components.xtool import _async_options_updated
     from custom_components.xtool.protocols.rest import coordinator as rest_coordinator
 
-    coordinator.protocol.host = "192.168.0.47"
+    coordinator.protocol.host = "192.168.0.46"
     coordinator.protocol.ethernet_address = MagicMock(return_value="192.168.0.244")
+    coordinator.protocol.change_host = AsyncMock()
     monkeypatch.setattr(rest_coordinator, "_serial_at", AsyncMock(return_value="MXTEST0001"))
-    reload = MagicMock()
-    monkeypatch.setattr(coordinator.hass.config_entries, "async_schedule_reload", reload)
+    reload = AsyncMock()
+    monkeypatch.setattr(coordinator.hass.config_entries, "async_reload", reload)
+    entry = coordinator.config_entry
+    entry.runtime_data = coordinator
 
-    monkeypatch.setattr(coordinator.hass.config_entries, "async_update_entry", MagicMock(return_value=True))
-    coordinator.config_entry.mock_state(coordinator.hass, ConfigEntryState.SETUP_IN_PROGRESS)
     await coordinator._prefer_ethernet()
-    reload.assert_called_once_with(coordinator.config_entry.entry_id)
+    coordinator.protocol.change_host.assert_awaited_once_with("192.168.0.244")
+    assert entry.data["host"] == "192.168.0.244"
+    # The update listener sees the coordinator's own change and skips the reload
+    await _async_options_updated(coordinator.hass, entry)
+    reload.assert_not_awaited()
 
-    # Loaded and changed: the update listener reloads it
-    reload.reset_mock()
-    coordinator.config_entry.mock_state(coordinator.hass, ConfigEntryState.LOADED)
-    await coordinator._prefer_ethernet()
-    reload.assert_not_called()
-
-    # Already saved, so the update changes nothing: reload anyway
-    monkeypatch.setattr(coordinator.hass.config_entries, "async_update_entry", MagicMock(return_value=False))
-    await coordinator._prefer_ethernet()
-    reload.assert_called_once()
+    # Any other change still reloads
+    coordinator.hass.config_entries.async_update_entry(entry, options={**entry.options, "x": 1})
+    await _async_options_updated(coordinator.hass, entry)
+    reload.assert_awaited_once()
 
 
 @requires("p2_sensor_cleanup")

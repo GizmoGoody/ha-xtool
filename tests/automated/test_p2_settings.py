@@ -15,6 +15,7 @@ from .features import has, requires
 
 pytestmark = requires("p2_settings")
 LIGHT_BRIGHTNESS = has("p2_light_brightness")
+CONTROLS = has("p2_controls")
 
 CONFIG = {
     "beepEnable": False, "fillLightBrightness": 204, "flameAlarm": True, "flameAlarmLevel1": False,
@@ -51,7 +52,12 @@ def by_key(entities):
 def test_p2_entities_use_studio_names(coordinator) -> None:
     """The P2 offers what Studio offers, under Studio's names."""
     switches = by_key(coordinator.build_switches())
-    assert set(switches) == {"aimed_measure_light", "quick_measure_light", "safety_lock", "buzzer", "smoking_fan"}
+    expected = {"aimed_measure_light", "quick_measure_light", "buzzer", "smoking_fan"}
+    if CONTROLS:  # the Safety lock is a lock
+        assert set(by_key(coordinator.build_locks())) == {"safety_lock"}
+    else:
+        expected.add("safety_lock")
+    assert set(switches) == expected
     numbers = by_key(coordinator.build_numbers())
     assert {"smoking_fan_duration", "lowest_output_power"} <= set(numbers)
     assert ("fill_light_brightness" in numbers) is not LIGHT_BRIGHTNESS

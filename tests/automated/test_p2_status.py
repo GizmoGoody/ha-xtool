@@ -13,7 +13,9 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .conftest import build_coordinator
-from .features import COMPONENT, requires
+from .features import COMPONENT, has, requires
+
+CONTROLS = has("p2_controls")
 
 P2_SOURCE = (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8") if (COMPONENT / "protocols" / "rest" / "p2.py").exists() else ""
 
@@ -124,7 +126,7 @@ async def test_poll_reads_a_running_job(monkeypatch) -> None:
 
 
 async def test_settings_are_read_once_a_minute(monkeypatch) -> None:
-    """Every poll reads the status; settings wait a minute."""
+    """Every poll reads the status; the rest waits a minute (the settings too, before they were read on every poll)."""
     from custom_components.xtool.protocols.base import XtoolDeviceState
 
     proto = p2()
@@ -134,7 +136,8 @@ async def test_settings_are_read_once_a_minute(monkeypatch) -> None:
     assert calls.count("/config/get") == 1
     calls.clear()
     await proto.poll_state(XtoolDeviceState())
-    assert "/config/get" not in calls
+    assert ("/config/get" in calls) is CONTROLS
+    assert "/device/workingInfo" not in calls
     assert "/device/runningStatus" in calls
     assert len(calls) < first
 
@@ -203,7 +206,11 @@ def test_p2_entities(coordinator) -> None:
     from custom_components.xtool.protocols.rest.p2 import P2_ERROR_EVENT_TYPES
 
     keys = {e.translation_key for e in coordinator.build_sensors()}
-    assert {"task_progress", "cpu_temp", "active_alarms"} <= keys
+    assert {"task_progress", "cpu_temp"} <= keys
+    alarm_sensors = {e.translation_key for e in coordinator.build_binary_sensors()}
+    # The Alarm problem sensor replaced the Active alarms count
+    assert ("active_alarms" in keys) is not CONTROLS
+    assert ("alarm" in alarm_sensors) is CONTROLS
     error = next(e for e in coordinator.build_events() if e.translation_key == "error")
     assert error.event_types == list(P2_ERROR_EVENT_TYPES)
     assert "water_cooling" in error.event_types and "fire" not in error.event_types

@@ -99,6 +99,7 @@ async def test_finds_the_laser_at_its_other_address(coordinator, monkeypatch) ->
         return "MXTEST0001" if host == "192.168.0.47" else ""
 
     monkeypatch.setattr(rest_coordinator, "_serial_at", serial_at)
+    coordinator.protocol.change_host = AsyncMock()
     update = MagicMock()
     monkeypatch.setattr(coordinator.hass.config_entries, "async_update_entry", update)
     monkeypatch.setattr(coordinator.hass.config_entries, "async_schedule_reload", MagicMock())
