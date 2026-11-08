@@ -13,7 +13,9 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .conftest import build_coordinator
-from .features import requires
+from .features import COMPONENT, requires
+
+P2_SOURCE = (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8") if (COMPONENT / "protocols" / "rest" / "p2.py").exists() else ""
 
 pytestmark = requires("p2_status")
 
@@ -110,8 +112,10 @@ async def test_poll_reads_a_running_job(monkeypatch) -> None:
     assert state.cover_locked is False
     assert state.fill_light_a == 100
     assert state.ir_led_close is True and state.ir_led_global is False
-    assert state.sleep_timeout == 600
-    assert state.ir_light_auto_off == 120
+    if "/getsleeptimeout" in P2_SOURCE:
+        # Until the P2 rework dropped them (the P2 refuses to set them)
+        assert state.sleep_timeout == 600
+        assert state.ir_light_auto_off == 120
     assert state.beep_enabled is False
     assert state.flame_alarm == 1  # on, Low
     assert state.water_temperature == 22.38

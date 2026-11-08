@@ -121,3 +121,21 @@ async def test_discovery_keeps_an_address_that_answers(hass: HomeAssistant, monk
     assert await flow._configured_host_answers("MXTEST0002", "192.168.0.47") is True
     answering.clear()
     assert await flow._configured_host_answers("MXTEST0002", "192.168.0.47") is False
+
+
+@requires("p2_sleep_photo")
+async def test_no_photo_while_sleeping(coordinator, monkeypatch) -> None:
+    """A photo wakes a sleeping P2, so the camera keeps its last one."""
+    from custom_components.xtool.const import XtoolStatus
+    from custom_components.xtool.protocols.rest import entities
+
+    camera = next(e for e in coordinator.build_cameras() if isinstance(e, entities.XtoolCamera))
+    camera._last_image = b"old"
+    camera._last_fetch = camera._last_fetch.replace(year=2000)
+    coordinator.data.status = XtoolStatus.SLEEPING
+
+    def no_session(*args, **kwargs):
+        raise AssertionError("a photo was requested while asleep")
+
+    monkeypatch.setattr(entities.aiohttp, "ClientSession", no_session)
+    assert await camera.async_camera_image() == b"old"
