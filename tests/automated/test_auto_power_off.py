@@ -2,7 +2,8 @@
 
 The count starts when the laser becomes Idle or Sleeping and keeps going
 while it goes between the two. Any other state, the laser going offline,
-or the Power switch turning off, stops it. 0 means never.
+or the Power switch turning off, stops it. Changing the minutes starts
+the count again. 0 means never.
 """
 
 from __future__ import annotations
@@ -99,13 +100,26 @@ async def test_zero_is_never(hass, freezer, setup) -> None:
     assert not calls
 
 
-async def test_changing_the_minutes_counts_from_idle(hass, freezer, setup) -> None:
+async def test_changing_the_minutes_counts_from_the_change(hass, freezer, setup) -> None:
     number, status, calls, S = setup
     await number.async_set_native_value(30)
     status(S.IDLE)
     await _after(hass, freezer, 20)
     await number.async_set_native_value(15)
-    await _after(hass, freezer, 0.1)
+    await _after(hass, freezer, 14)
+    assert not calls
+    await _after(hass, freezer, 1.1)
+    assert len(calls) == 1
+
+
+async def test_changing_the_minutes_while_not_idle_waits_for_idle(hass, freezer, setup) -> None:
+    number, status, calls, S = setup
+    status(S.PROCESSING)
+    await number.async_set_native_value(5)
+    await _after(hass, freezer, 10)
+    assert not calls
+    status(S.IDLE)
+    await _after(hass, freezer, 5.1)
     assert len(calls) == 1
 
 
