@@ -454,7 +454,7 @@
       "camera_fire_record": { "name": "Flame record" }
     },
     "light": {
-      "fill_light_1": { "name": "Close-view fill light" },
+      "fill_light_1": { "name": "Fill light (close)" },
       "fill_light_2": { "name": "Fill light (right)" },
       "fill_light_3": { "name": "Fill light (left)" },
       "fill_light": { "name": "Fill light" },
@@ -500,7 +500,6 @@
       "camera_main_crop_height": { "name": "Main camera crop height" },
       "camera_main_crop_center_x": { "name": "Main camera crop center X" },
       "camera_main_crop_center_y": { "name": "Main camera crop center Y" },
-      "fill_light_brightness": { "name": "Fill light brightness" },
       "lowest_output_power": { "name": "Lowest output power" },
       "air_assist_close_delay": { "name": "Air assist delay" },
       "smoking_fan_duration": { "name": "Exhaust time after processing" },
