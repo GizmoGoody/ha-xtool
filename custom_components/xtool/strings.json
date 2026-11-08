@@ -419,7 +419,7 @@
     },
     "binary_sensor": {
       "lid": { "name": "Lid" },
-      "baseplate": { "name": "Baseplate" },
+      "baseplate": { "name": "Baseplate", "state": { "on": "Installed", "off": "Removed" } },
       "accessories": { "name": "Accessories" },
       "cover_open": { "name": "Cover" },
       "front_door": { "name": "Front door" },
@@ -464,8 +464,10 @@
     "fan": {
       "accessory_ductfanv3_fan": { "name": "Fan" }
     },
+    "lock": {
+      "safety_lock": { "name": "Safety lock" }
+    },
     "switch": {
-      "safety_lock": { "name": "Safety lock" },
       "aimed_measure_light": { "name": "Red dot (close)" },
       "quick_measure_light": { "name": "Red dot (quick)" },
       "flame_alarm": { "name": "Flame alarm" },
@@ -474,6 +476,7 @@
       "tilt_stop": { "name": "Tilt stop" },
       "limit_stop": { "name": "Limit stop" },
       "smoking_fan": { "name": "Exhaust fan" },
+      "exhaust_fan_setting": { "name": "Exhaust fan" },
       "power_switch": { "name": "Power" },
       "ir_led_close": { "name": "IR LED (close-up)" },
       "ir_led_global": { "name": "Red dot" },

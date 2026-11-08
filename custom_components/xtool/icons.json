@@ -102,10 +102,6 @@
       }
     },
     "switch": {
-      "safety_lock": {
-        "default": "mdi:lock",
-        "state": { "off": "mdi:lock-open-variant" }
-      },
       "aimed_measure_light": {
         "default": "mdi:led-on",
         "state": { "off": "mdi:led-off" }
@@ -212,6 +208,10 @@
         "state": { "off": "mdi:autorenew-off" }
       },
       "smoking_fan": {
+        "default": "mdi:fan-chevron-up",
+        "state": { "off": "mdi:fan-off" }
+      },
+      "exhaust_fan_setting": {
         "default": "mdi:fan-chevron-up",
         "state": { "off": "mdi:fan-off" }
       },
