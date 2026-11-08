@@ -458,7 +458,7 @@
     },
     "light": {
       "fill_light_1": {
-        "name": "Arbeitslicht Nahbereichskamera"
+        "name": "Arbeitslicht (nah)"
       },
       "fill_light_2": {
         "name": "Arbeitslicht (rechts)"
@@ -580,9 +580,6 @@
       }
     },
     "number": {
-      "fill_light_brightness": {
-        "name": "Helligkeit Arbeitslicht"
-      },
       "lowest_output_power": {
         "name": "Niedrigste Ausgangsleistung"
       },
