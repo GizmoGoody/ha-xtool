@@ -765,7 +765,11 @@
         "name": "Lid"
       },
       "baseplate": {
-        "name": "Baseplate"
+        "name": "Baseplate",
+        "state": {
+          "on": "Installed",
+          "off": "Removed"
+        }
       }
     },
     "camera": {
@@ -909,9 +913,6 @@
       },
       "accessory_largepurifierv3_auto_continue": {
         "name": "Auto continue"
-      },
-      "safety_lock": {
-        "name": "Safety lock"
       },
       "aimed_measure_light": {
         "name": "Red dot (close)"
@@ -1315,6 +1316,11 @@
             }
           }
         }
+      }
+    },
+    "lock": {
+      "safety_lock": {
+        "name": "Safety lock"
       }
     }
   },

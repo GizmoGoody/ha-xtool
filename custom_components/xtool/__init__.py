@@ -46,6 +46,7 @@ PLATFORMS = [
     Platform.IMAGE,
     Platform.SENSOR,
     Platform.LIGHT,
+    Platform.LOCK,
     Platform.SWITCH,
     Platform.NUMBER,
     Platform.SELECT,
@@ -425,6 +426,11 @@ async def _async_options_updated(
     hass: HomeAssistant, entry: XtoolConfigEntry
 ) -> None:
     """Reload integration when options change."""
+    coordinator = getattr(entry, "runtime_data", None)
+    made_update = getattr(coordinator, "made_entry_update", None)
+    if made_update is not None and made_update(entry):
+        # The coordinator saved its new address; it already uses it
+        return
     await hass.config_entries.async_reload(entry.entry_id)
 
 
