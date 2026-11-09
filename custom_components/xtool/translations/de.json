@@ -429,11 +429,8 @@
       "working_mode": {
         "name": "Betriebsmodus"
       },
-      "measured_thickness": {
-        "name": "Gemessene Materialstärke"
-      },
-      "measured_distance": {
-        "name": "Gemessene Distanz"
+      "measured_thickness_or_distance": {
+        "name": "Gemessene Stärke oder Distanz"
       },
       "last_distance": {
         "name": "Letzte Distanz"
@@ -856,14 +853,8 @@
       }
     },
     "number": {
-      "thickness_on_slats": {
-        "name": "Stärke auf Lamellen"
-      },
-      "distance_honeycomb_panel": {
-        "name": "Distanz mit Wabenplatte"
-      },
-      "distance_slats_removed": {
-        "name": "Distanz ohne Lamellen"
+      "thickness_or_distance": {
+        "name": "Stärke oder Distanz"
       },
       "auto_power_off": {
         "name": "Automatisch ausschalten"
