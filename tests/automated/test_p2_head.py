@@ -152,6 +152,14 @@ async def test_no_move_unless_idle(coordinator) -> None:
     assert _numbers(coordinator)["laser_position_x"].native_value == 5.0
 
 
+async def test_the_head_moves_while_the_laser_sleeps(coordinator) -> None:
+    from custom_components.xtool.const import XtoolStatus
+
+    coordinator.data.status = XtoolStatus.SLEEPING
+    await _move(coordinator, x=300.0, y=225.0)
+    coordinator.protocol.move_laser_head.assert_awaited_once_with(300.0, 225.0)
+
+
 async def test_the_action_takes_a_p2_device(coordinator, monkeypatch) -> None:
     from homeassistant.config_entries import ConfigEntryState
     from homeassistant.helpers import device_registry as dr
@@ -205,6 +213,7 @@ def test_the_action_is_described() -> None:
             "Measured thickness or distance"
         )
         assert data["services"]["move"]["name"] == "Move"
+        assert data["entity"]["button"]["home_laser_head"]["name"] == "Home laser"
 
 
 def test_measure_offset_reads_the_p2_setting() -> None:
@@ -244,6 +253,30 @@ async def test_measure_gives_the_thickness_and_where(coordinator) -> None:
     }
     coordinator._p2_view["processing_mode"] = "slats_removed"
     assert measured.native_value == 19.0  # Studio's distance
+
+
+async def test_measure_asks_again_until_the_sensor_has_read(coordinator, monkeypatch) -> None:
+    from custom_components.xtool.protocols.rest import p2_entities
+
+    monkeypatch.setattr(p2_entities, "P2_MEASURE_RETRY_SECONDS", 0)
+    # Just after the red dot turns on, the reply is Z: no reading yet
+    coordinator.protocol.measure_material = AsyncMock(side_effect=[
+        {"distance": 136.7}, {"distance": 1.5, "coord_x": 0.0, "coord_y": 0.0},
+    ])
+    coordinator.protocol.measure_offset = MagicMock(return_value={"x": 64.3, "y": 0.9, "z": 136.7})
+    coordinator.protocol.set_ir_led = AsyncMock()
+    coordinator.data.ir_led_close = False
+    buttons = {e.translation_key: e for e in coordinator.build_buttons()}
+    await buttons["measure_thickness_or_distance"].async_press()
+    assert coordinator.data.measured_thickness_mm == 1.5
+    assert coordinator.protocol.measure_material.await_count == 2
+    # A sensor that never reads says so, and the dot is turned off again
+    coordinator.protocol.measure_material = AsyncMock(return_value={"distance": 136.7})
+    coordinator.protocol.set_ir_led.reset_mock()
+    with pytest.raises(HomeAssistantError, match="did not read"):
+        await buttons["measure_thickness_or_distance"].async_press()
+    assert coordinator.protocol.measure_material.await_count == p2_entities.P2_MEASURE_TRIES
+    assert [c.args for c in coordinator.protocol.set_ir_led.await_args_list] == [(1, True), (1, False)]
 
 
 async def test_a_measure_without_a_reply_says_so(coordinator) -> None:

@@ -166,13 +166,15 @@ def test_any_number_of_overlays(coordinator) -> None:
     assert [a[:4] for a in overlay.areas] == [(-20.5, -40.5, 684.0, 376.0), (50.0, 0.0, 500.0, 250.0)]
     assert overlay.areas[0][4] != overlay.areas[1][4]  # each area its own colour
     assert overlay.markers == () and overlay.lines == () and overlay.spots == ()
+    assert overlay.rings == ()
     view["overlay_laser_target"] = view["overlay_slat_lines"] = True
     view["overlay_red_dot_close"] = view["overlay_red_dot_quick"] = True
     overlay = _correction(coordinator)["overlay"]
     assert overlay.markers == ((100.0, 50.0),)  # where the laser fires
     assert len(overlay.lines) == 47
-    close, quick = overlay.spots
-    assert close[:2] == pytest.approx((164.4, 49.2)) and close[2] == close[3]
+    (quick,) = overlay.spots
+    # The close dot: a ring it sits just inside
+    assert overlay.rings == (pytest.approx((164.8, 50.7, 0.9)),)
     assert quick[:2] == (343.2, 81.9) and quick[2] > quick[3]  # long toward its source
     assert 90 < quick[4] < 180  # from the back right: toward the left and front
     assert g.quick_red_dot_angle() == quick[4]
@@ -200,8 +202,8 @@ def test_close_camera_overlays_move_with_the_head(coordinator) -> None:
     overlay = _correction(coordinator, "closeup")["overlay"]
     assert overlay.markers == ((-55.0, 30.0),)
     view["overlay_red_dot_close_closeup"] = True
-    spot = _correction(coordinator, "closeup")["overlay"].spots[0]
-    assert spot[:2] == pytest.approx((9.4, 29.2))
+    ring = _correction(coordinator, "closeup")["overlay"].rings[0]
+    assert ring == pytest.approx((9.8, 30.7, 0.9))
     view["overlay_slat_lines_closeup"] = True
     lines = _correction(coordinator, "closeup")["overlay"].lines
     assert len(lines) == 47 and lines[23][0] == pytest.approx(327.5 - 6.6 - 255)
@@ -255,7 +257,7 @@ def test_correct_image_draws_and_lifts() -> None:
     drawn = correct_image(
         _photo(), calibration, CameraView(200, 200, 0, 0),
         overlay=Overlay(areas=((50, 50, 100, 100, (255, 214, 0)),), lines=((10, 0, 10, 200, "1"),),
-                        markers=((100, 100),), spots=((60, 60, 5, 2, 150), (80, 80, 2, 2, 0))),
+                        markers=((100, 100),), spots=((60, 60, 5, 2, 150),), rings=((80, 80, 2),)),
     )
     lifted = correct_image(
         _photo(), calibration, CameraView(200, 200, 0, 0), lift=SurfaceLift(100, 100, 200, 50),
