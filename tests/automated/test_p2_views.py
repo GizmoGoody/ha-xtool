@@ -189,7 +189,32 @@ def test_names_and_states() -> None:
     for name in ("strings.json", "translations/en.json"):
         data = json.loads((COMPONENT / name).read_text(encoding="utf-8"))["entity"]
         assert data["select"]["crop_preset"]["name"] == "Crop"
-        assert data["select"]["overlay"]["state"]["close_camera"] == "Close camera image"
+        assert data["select"]["processing_mode"]["name"] == "Mode"
+        assert data["select"]["overlay"]["state"]["work_bed"] == "Work bed"
+        assert data["select"]["overlay"]["state"]["close_camera"] == "Close camera"
         assert data["select"]["processing_mode"]["state"]["slats_removed"] == "Slats removed"
         assert data["switch"]["slat_overlay"]["name"] == "Slat overlay"
         assert data["number"]["distance_slats_removed"]["name"] == "Distance with slats removed"
+
+
+async def test_while_asleep_the_last_photo_shows_new_settings(coordinator) -> None:
+    from custom_components.xtool.const import XtoolStatus
+
+    camera = next(c for c in coordinator.build_cameras() if c._camera_name == "overview")
+    camera.hass = coordinator.hass
+    camera._calibration = _calibration()
+    camera._last_photo = _photo()
+    camera._last_snapshot = b"old"
+    coordinator.data.status = XtoolStatus.SLEEPING
+    coordinator.protocol.camera_snap = AsyncMock(side_effect=AssertionError("a photo wakes the P2"))
+    first = await camera.async_camera_image()
+    assert first and first != b"old"
+    _view(coordinator)["slat_overlay"] = True
+    camera._last_snapshot_time = camera._last_snapshot_time.replace(year=2000)
+    assert await camera.async_camera_image() != first
+
+
+def test_red_dot_and_head_icons() -> None:
+    icons = json.loads((COMPONENT / "icons.json").read_text(encoding="utf-8"))["entity"]["switch"]
+    assert icons["quick_measure_light"] == {"default": "mdi:laser-pointer"}
+    assert icons["aimed_measure_light"] == {"default": "mdi:spotlight-beam"}
