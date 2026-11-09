@@ -54,6 +54,24 @@
           "stats_poll_interval": "Abfrageintervall Lebensdauer-Statistik",
           "dongle_poll_interval": "Abfrageintervall Bluetooth-Dongle"
         },
+        "sections": {
+          "overlay_colors": {
+            "name": "Overlay-Farben",
+            "description": "Farben der Overlays der P2-Kameras.",
+            "data": {
+              "work_bed": "Arbeitsbett",
+              "process_on_slats": "Auf Lamellen bearbeiten",
+              "honeycomb_panel": "Wabenplatte",
+              "slats_removed": "Lamellen entfernt",
+              "uncropped": "Unbeschnitten (Nahkamera)",
+              "studio": "Studio (Nahkamera)",
+              "custom": "Benutzerdefiniert (Nahkamera)",
+              "laser_target": "Laserziel",
+              "slat_lines": "Lamellenlinien",
+              "red_dots": "Rote Punkte"
+            }
+          }
+        },
         "data_description": {
           "power_switch_entity_id": "Wähle einen Schalter, der die Stromversorgung des Lasers steuert (z.B. eine Funksteckdose). Leer lassen, wenn nicht vorhanden.",
           "enable_firmware_updates": "Wenn aktiviert, kann die Firmware-Update-Entität neue Firmware installieren. Wenn deaktiviert, zeigt sie nur an, dass ein Update verfügbar ist.",
@@ -770,6 +788,9 @@
       "overlay_close_camera_custom": {
         "name": "Overlay Nahkamera (benutzerdefiniert)"
       },
+      "overlay_close_camera_image": {
+        "name": "Overlay Nahkamera (Bild)"
+      },
       "overlay_studio": {
         "name": "Overlay Studio"
       },
@@ -1048,6 +1069,7 @@
         "name": "Zuschnitt",
         "state": {
           "uncropped": "Unbeschnitten",
+          "sync_to_mode": "Mit Modus abgleichen",
           "work_bed": "Arbeitsbett",
           "process_on_slats": "Auf Lamellen bearbeiten",
           "honeycomb_panel": "Wabenplatte",
