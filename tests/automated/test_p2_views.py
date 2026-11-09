@@ -218,3 +218,29 @@ def test_red_dot_and_head_icons() -> None:
     icons = json.loads((COMPONENT / "icons.json").read_text(encoding="utf-8"))["entity"]["switch"]
     assert icons["quick_measure_light"] == {"default": "mdi:laser-pointer"}
     assert icons["aimed_measure_light"] == {"default": "mdi:spotlight-beam"}
+
+
+def test_beyond_the_grid_the_lens_continues_the_picture() -> None:
+    """A grid made by a known lens: beyond it, points follow that lens."""
+    import numpy as np
+
+    from custom_components.xtool.protocols.rest import p2_geometry as g
+    from custom_components.xtool.protocols.ws_v2.camera_correction import (
+        _lens_project, _surface_map, parse_calibration,
+    )
+
+    mm = np.array([(c * 10.0, r * 10.0) for r in range(32) for c in range(62)])
+    true_lens = np.array(g.OVERVIEW_LENS) * (1 + 0.002 * np.arange(14) / 14)
+    pixels = _lens_project(true_lens, mm)
+    raw = {"grid_num_w": 62, "grid_num_h": 32, "image_src_w": 4656, "image_src_h": 3496,
+           "image_dst_w": 2440, "image_dst_h": 1220, "thick0": 3.0,
+           "data0": "".join(f"[{x:.4f},{y:.4f}]" for x, y in pixels)}
+    calibration = parse_calibration(raw, 4.0)
+    surface = _surface_map(calibration, g.OVERVIEW_LENS)
+    assert surface._lens is not None
+    for point in ((-20.5, -40.5), (663.5, 335.5), (300.0, -30.0), (650.0, 150.0)):
+        expected = _lens_project(true_lens, np.array([point]))[0]
+        assert surface.photo_point(*point) == pytest.approx(tuple(expected), abs=1.0)
+        assert surface.photo_points([point])[0] == pytest.approx(tuple(expected), abs=1.0)
+    # Without a lens guess the cubic fit is used, as for the F2 Ultra UV
+    assert _surface_map(calibration)._lens is None
