@@ -94,17 +94,64 @@ def test_a_crop_preset_shows_that_area(coordinator) -> None:
     )
 
 
-def test_each_mode_uses_its_own_setting(coordinator) -> None:
+def test_one_setting_whose_meaning_follows_the_mode(coordinator) -> None:
     view = _view(coordinator)
-    view["thickness_on_slats"] = 25.0
-    lift = _correction(coordinator)["lift"]
-    assert lift.surface_mm == 22.0
+    view["thickness_or_distance"] = 25.0
+    assert _correction(coordinator)["lift"].surface_mm == 22.0  # a thickness
     view["processing_mode"] = "slats_removed"
-    view["distance_slats_removed"] = 75.0
-    assert _correction(coordinator)["lift"].surface_mm == 25 - 75 - 3
+    view["thickness_or_distance"] = 75.0
+    assert _correction(coordinator)["lift"].surface_mm == 25 - 75 - 3  # a distance
     view["processing_mode"] = "honeycomb_panel"
-    view["distance_honeycomb_panel"] = 22.0
+    view["thickness_or_distance"] = 22.0
     assert _correction(coordinator)["lift"] is None
+    view["thickness_or_distance"] = 75.0  # beyond the mode's range: its end
+    assert _correction(coordinator)["lift"].surface_mm == 25 - 28 - 3
+
+
+async def test_the_mode_sets_the_range_and_the_measured_meaning(coordinator) -> None:
+    from custom_components.xtool.protocols.rest.p2_entities import P2Measured
+
+    number = next(e for e in coordinator.build_numbers() if e.translation_key == "thickness_or_distance")
+    assert (number.native_min_value, number.native_max_value) == (0.0, 25.0)
+    select = next(e for e in coordinator.build_selects() if e.translation_key == "processing_mode")
+    select.async_write_ha_state = MagicMock()
+    coordinator.async_update_listeners = MagicMock()
+    _view(coordinator)["thickness_or_distance"] = 60.0
+    await select.async_select_option("honeycomb_panel")
+    assert (number.native_max_value, number.native_value) == (28.0, 28.0)
+    coordinator.async_update_listeners.assert_called()
+    coordinator.data.measured_thickness_mm = 6.0
+    measured = P2Measured(coordinator)
+    assert measured.native_value == 19.0
+    await select.async_select_option("process_on_slats")
+    assert measured.native_value == 6.0
+
+
+async def test_a_preset_fills_in_the_crop_and_editing_it_makes_it_custom(coordinator) -> None:
+    from custom_components.xtool.protocols.ws_v2.entities import _camera_view, _crop_numbers
+
+    _view(coordinator)["crop_preset"] = "slats_removed"
+    _correction(coordinator)
+    view = _camera_view(coordinator, "overview")
+    assert (view.width_mm, view.height_mm, view.center_x_mm, view.center_y_mm) == (
+        500, 250, -5, -27.5,
+    )
+    width = next(
+        e for e in coordinator.build_numbers()
+        if e.translation_key == "crop_width" and e._camera_name == "overview"
+    )
+    width.async_write_ha_state = MagicMock()
+    coordinator.async_update_listeners = MagicMock()
+    _crop_numbers(coordinator, "overview")["width"] = width
+    await width.async_set_native_value(400)
+    assert _view(coordinator)["crop_preset"] == "custom"
+    coordinator.async_update_listeners.assert_called()
+    view = _camera_view(coordinator, "overview")
+    assert (view.width_mm, view.height_mm) == (400, 250)
+    # A preset written in later shows in the number
+    _view(coordinator)["crop_preset"] = "work_bed"
+    _correction(coordinator)
+    assert width.native_value == 684
 
 
 def test_overlays_and_the_measuring_spot(coordinator) -> None:
@@ -166,7 +213,8 @@ def test_view_entities_are_on_the_camera_devices(coordinator) -> None:
     keys = {e.translation_key for e in coordinator.build_selects()}
     assert {"crop_preset", "overlay", "processing_mode"} <= keys
     assert {"slat_overlay", "overlay"} <= switches
-    assert {"thickness_on_slats", "distance_honeycomb_panel", "distance_slats_removed"} <= numbers
+    assert "thickness_or_distance" in numbers
+    assert not {"thickness_on_slats", "distance_honeycomb_panel", "distance_slats_removed"} & numbers
     crop = next(e for e in coordinator.build_selects() if e.translation_key == "crop_preset")
     assert crop.unique_id.endswith("camera_overview_crop_preset")
     assert crop.device_info != coordinator.build_selects()[0].device_info
@@ -194,7 +242,7 @@ def test_names_and_states() -> None:
         assert data["select"]["overlay"]["state"]["close_camera"] == "Close camera"
         assert data["select"]["processing_mode"]["state"]["slats_removed"] == "Slats removed"
         assert data["switch"]["slat_overlay"]["name"] == "Slat overlay"
-        assert data["number"]["distance_slats_removed"]["name"] == "Distance with slats removed"
+        assert data["number"]["thickness_or_distance"]["name"] == "Thickness or distance"
 
 
 async def test_while_asleep_the_last_photo_shows_new_settings(coordinator) -> None:

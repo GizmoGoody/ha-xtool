@@ -44,7 +44,7 @@ def test_positions_are_numbers_not_sensors(coordinator) -> None:
     assert numbers["laser_position_x"].mode == "box"
     sensors = {e.translation_key for e in coordinator.build_sensors()}
     assert not {"laser_position_x", "laser_position_y"} & sensors
-    assert {"measured_thickness", "measured_distance"} <= sensors
+    assert "measured_thickness_or_distance" in sensors
     exposure = numbers["exposure"]
     assert (exposure.mode, exposure.native_step, exposure.native_max_value) == ("slider", 10, 1000)
 
@@ -142,8 +142,9 @@ def test_the_action_is_described() -> None:
         data = json.loads((COMPONENT / name).read_text(encoding="utf-8"))
         assert set(data["services"]["move"]["fields"]) == {"x", "y", "step_x", "step_y", "steps"}
         assert data["entity"]["number"]["laser_position_x"]["name"] == "Laser position X"
-        assert data["entity"]["sensor"]["measured_thickness"]["name"] == "Measured thickness"
-        assert data["entity"]["sensor"]["measured_distance"]["name"] == "Measured distance"
+        assert data["entity"]["sensor"]["measured_thickness_or_distance"]["name"] == (
+            "Measured thickness or distance"
+        )
         assert data["services"]["move"]["name"] == "Move"
 
 
@@ -169,12 +170,14 @@ async def test_measure_gives_the_thickness_and_where(coordinator) -> None:
     await buttons["measure_distance"].async_press()
     assert coordinator.data.last_distance_mm == 130.7
     assert coordinator.data.measured_thickness_mm == 6.0
-    thickness = P2Measured(coordinator, "measured_thickness")
-    distance = P2Measured(coordinator, "measured_distance")
-    thickness._seen_live_data = distance._seen_live_data = True
-    assert thickness.native_value == 6.0
-    assert distance.native_value == 19.0
-    assert thickness.extra_state_attributes == {"sensor_distance": 130.7, "x": 74.3, "y": 20.9}
+    measured = P2Measured(coordinator)
+    measured._seen_live_data = True
+    assert measured.native_value == 6.0  # Process on slats: the thickness
+    assert measured.extra_state_attributes == {
+        "thickness": 6.0, "sensor_distance": 130.7, "x": 74.3, "y": 20.9,
+    }
+    coordinator._p2_view["processing_mode"] = "slats_removed"
+    assert measured.native_value == 19.0  # Studio's distance
 
 
 async def test_a_measure_without_a_reply_says_so(coordinator) -> None:
