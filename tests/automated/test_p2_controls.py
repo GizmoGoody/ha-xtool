@@ -109,7 +109,7 @@ async def test_a_move_waits_and_the_next_poll_reads_the_position(monkeypatch) ->
     assert coords and (state.position_x, state.position_y) == (100.0, 50.0)
     coords.clear()
     await proto.poll_state(state)
-    assert coords == []
+    assert coords == (["/peripheral/laser_head"] if has("p2_position_every_poll") else [])
 
 
 def test_position_icons_are_straight_arrows(coordinator) -> None:
