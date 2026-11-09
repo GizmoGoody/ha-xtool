@@ -50,6 +50,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     # A photo just taken answers the picture request after a refresh
     "picture_reuse": lambda: "PICTURE_REUSE_SECONDS" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     "p2_views": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "def p2_correction" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
+    # P2: the head's position is read on every poll
+    "p2_position_every_poll": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists() and "Where the head is, on every poll" in (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8"),
     "p2_move_without_reload": lambda: "def made_entry_update" in (COMPONENT / "protocols" / "rest" / "coordinator.py").read_text(encoding="utf-8"),
     # P2: the right and left fill lights follow Studio's Fill light brightness and write it
     "p2_studio_brightness": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists() and "def _follow_studio_brightness" in (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8"),

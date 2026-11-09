@@ -467,4 +467,4 @@ def test_the_whole_photo_follows_the_lens() -> None:
     calibration = _calibration()
     first = photo_size_mm(calibration)
     assert first == photo_size_mm(calibration)
-    assert _surface_map(calibration)._photo_size == first
+    assert _surface_map(calibration, None)._photo_size == first

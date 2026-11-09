@@ -91,7 +91,12 @@ async def test_a_move_waits_and_the_next_poll_reads_the_position(monkeypatch) ->
     await proto.poll_state(state)
     coords.clear()
     await proto.poll_state(state)
-    assert coords == []  # the position waits a minute
+    from .features import has
+
+    if has("p2_position_every_poll"):
+        assert coords == ["/peripheral/laser_head"]  # it moves while the P2 homes
+    else:
+        assert coords == []  # the position waits a minute
 
     await proto.move_laser_head(100.0, 50.0)
     path, data, timeout = sent[-1]
