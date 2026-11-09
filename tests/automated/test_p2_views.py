@@ -267,7 +267,7 @@ def test_view_entities_are_on_the_camera_devices(coordinator) -> None:
     switches = {e.translation_key for e in coordinator.build_switches()}
     numbers = {e.translation_key for e in coordinator.build_numbers()}
     keys = {e.translation_key for e in coordinator.build_selects()}
-    assert {"crop_preset", "overlay", "processing_mode"} <= keys
+    assert {"crop_preset", "processing_mode"} <= keys
     assert {"overlay_laser_target", "overlay_red_dot_quick", "overlay_work_bed"} <= switches
     assert not {"slat_overlay", "overlay", "laser_target", "slat_lines"} & switches
     assert "overlay" not in keys
