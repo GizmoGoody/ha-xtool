@@ -54,6 +54,24 @@
           "stats_poll_interval": "Lifetime-stats polling interval",
           "dongle_poll_interval": "Bluetooth-dongle polling interval"
         },
+        "sections": {
+          "overlay_colors": {
+            "name": "Overlay colors",
+            "description": "Colors of the P2 camera overlays.",
+            "data": {
+              "work_bed": "Work bed",
+              "process_on_slats": "Process on slats",
+              "honeycomb_panel": "Honeycomb panel",
+              "slats_removed": "Slats removed",
+              "uncropped": "Uncropped (close camera)",
+              "studio": "Studio (close camera)",
+              "custom": "Custom (close camera)",
+              "laser_target": "Laser target",
+              "slat_lines": "Slat lines",
+              "red_dots": "Red dots"
+            }
+          }
+        },
         "data_description": {
           "power_switch_entity_id": "Select a switch that controls the laser's power supply (e.g. a smart plug). Leave empty if not applicable.",
           "enable_firmware_updates": "When enabled, the firmware update entity can install new firmware. When disabled, it only shows that an update is available.",
@@ -848,6 +866,9 @@
       "overlay_close_camera_custom": {
         "name": "Overlay close camera (custom)"
       },
+      "overlay_close_camera_image": {
+        "name": "Overlay close camera (image)"
+      },
       "overlay_studio": {
         "name": "Overlay studio"
       },
@@ -1129,6 +1150,7 @@
         "name": "Crop",
         "state": {
           "uncropped": "Uncropped",
+          "sync_to_mode": "Sync to Mode",
           "work_bed": "Work bed",
           "process_on_slats": "Process on slats",
           "honeycomb_panel": "Honeycomb panel",
