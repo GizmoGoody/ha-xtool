@@ -133,8 +133,9 @@ async def test_a_preset_fills_in_the_crop_and_editing_it_makes_it_custom(coordin
     _view(coordinator)["crop_preset"] = "slats_removed"
     _correction(coordinator)
     view = _camera_view(coordinator, "overview")
+    # The overview's centre numbers are in the laser's mm
     assert (view.width_mm, view.height_mm, view.center_x_mm, view.center_y_mm) == (
-        500, 250, -5, -27.5,
+        500, 250, 300, 125,
     )
     width = next(
         e for e in coordinator.build_numbers()
@@ -154,25 +155,33 @@ async def test_a_preset_fills_in_the_crop_and_editing_it_makes_it_custom(coordin
     assert width.native_value == 684
 
 
-def test_overlays_target_and_home(coordinator) -> None:
+def test_any_number_of_overlays(coordinator) -> None:
+    from custom_components.xtool.protocols.rest import p2_geometry as g
+
     view = _view(coordinator)
     coordinator.data.position_x, coordinator.data.position_y = 100.0, 50.0
-    view["overlay"] = "process_on_slats"
+    assert _correction(coordinator)["overlay"] is None
+    view["overlay_work_bed"] = view["overlay_slats_removed"] = True
     overlay = _correction(coordinator)["overlay"]
-    assert overlay.rects == ((0.0, 0.0, 600.0, 305.0),)
-    assert overlay.markers == () and overlay.lines == ()
-    assert overlay.dots == ((0.0, 0.0),)  # home, in blue
-    # An area, the laser target and the slats together
-    view["laser_target"] = True
-    view["slat_lines"] = True
+    assert [a[:4] for a in overlay.areas] == [(-20.5, -40.5, 684.0, 376.0), (50.0, 0.0, 500.0, 250.0)]
+    assert overlay.areas[0][4] != overlay.areas[1][4]  # each area its own colour
+    assert overlay.markers == () and overlay.lines == () and overlay.spots == ()
+    view["overlay_laser_target"] = view["overlay_slat_lines"] = True
+    view["overlay_red_dot_close"] = view["overlay_red_dot_quick"] = True
     overlay = _correction(coordinator)["overlay"]
     assert overlay.markers == ((100.0, 50.0),)  # where the laser fires
-    assert len(overlay.lines) == 47 and len(overlay.rects) == 1
-    view["overlay"] = "close_camera_studio"
-    assert _correction(coordinator)["overlay"].rects == ((155.0, 20.0, 140.0, 100.0),)
-    view["overlay"] = "none"
-    view["laser_target"] = view["slat_lines"] = False
-    assert _correction(coordinator)["overlay"] is None
+    assert len(overlay.lines) == 47
+    close, quick = overlay.spots
+    assert close[:2] == pytest.approx((164.4, 49.2)) and close[2] == close[3]
+    assert quick[:2] == (343.2, 81.9) and quick[2] > quick[3]  # long toward its source
+    assert 90 < quick[4] < 180  # from the back right: toward the left and front
+    assert g.quick_red_dot_angle() == quick[4]
+    view["overlay_close_camera_studio"] = True
+    assert overlay_rects(_correction(coordinator))[-1] == (155.0, 20.0, 140.0, 100.0)
+
+
+def overlay_rects(correction):
+    return [a[:4] for a in correction["overlay"].areas]
 
 
 def test_close_camera_overlays_move_with_the_head(coordinator) -> None:
@@ -180,20 +189,35 @@ def test_close_camera_overlays_move_with_the_head(coordinator) -> None:
 
     view = _view(coordinator)
     assert _correction(coordinator, "closeup")["overlay"] is None
+    assert not p2_view_needs_head(coordinator, "closeup")
     coordinator.data.position_x, coordinator.data.position_y = 200.0, 100.0
     # The close camera's area starts at the head plus (55, -30): (255, 70)
-    view["laser_target_closeup"] = True
+    view["overlay_laser_target_closeup"] = True
     overlay = _correction(coordinator, "closeup")["overlay"]
     assert overlay.markers == ((-55.0, 30.0),)
-    assert overlay.dots == ((-255.0, -70.0),)
-    view["slat_lines_closeup"] = True
+    view["overlay_red_dot_close_closeup"] = True
+    spot = _correction(coordinator, "closeup")["overlay"].spots[0]
+    assert spot[:2] == pytest.approx((9.4, 29.2))
+    view["overlay_slat_lines_closeup"] = True
     lines = _correction(coordinator, "closeup")["overlay"].lines
     assert len(lines) == 47 and lines[23][0] == pytest.approx(327.5 - 6.6 - 255)
-    view["overlay_closeup"] = "overview_process_on_slats"
-    assert _correction(coordinator, "closeup")["overlay"].rects == ((-255.0, -70.0, 600.0, 305.0),)
-    view["overlay_closeup"] = "studio"
-    assert _correction(coordinator, "closeup")["overlay"].rects == ((0.0, 0.0, 140.0, 100.0),)
+    view["overlay_overview_process_on_slats_closeup"] = True
+    view["overlay_studio_closeup"] = True
+    assert overlay_rects(_correction(coordinator, "closeup")) == [
+        (0.0, 0.0, 140.0, 100.0), (-255.0, -70.0, 600.0, 305.0),
+    ]
     assert p2_view_needs_head(coordinator, "closeup")
+
+
+def test_overview_crop_centre_is_in_laser_coordinates(coordinator) -> None:
+    from custom_components.xtool.protocols.ws_v2.entities import _crop_settings
+
+    rows = {key: spec for key, *spec in _crop_settings(coordinator, "overview")}
+    assert rows["center_x"][:3] == [305.0, 0, 610.0]
+    assert rows["center_y"][:3] == [152.5, 0, 305.0]
+    assert rows["width"][:3] == [610.0, 0, 915]
+    close = {key: spec for key, *spec in _crop_settings(coordinator, "closeup")}
+    assert close["center_x"][:3] == [0, -70, 70]
 
 
 def test_close_camera_crop_presets(coordinator) -> None:
@@ -226,8 +250,8 @@ def test_correct_image_draws_and_lifts() -> None:
     plain = correct_image(_photo(), calibration, CameraView(200, 200, 0, 0))
     drawn = correct_image(
         _photo(), calibration, CameraView(200, 200, 0, 0),
-        overlay=Overlay(rects=((50, 50, 100, 100),), lines=((10, 0, 10, 200, "1"),),
-                        markers=((100, 100),), dots=((0, 0),)),
+        overlay=Overlay(areas=((50, 50, 100, 100, (255, 214, 0)),), lines=((10, 0, 10, 200, "1"),),
+                        markers=((100, 100),), spots=((60, 60, 5, 2, 150), (80, 80, 2, 2, 0))),
     )
     lifted = correct_image(
         _photo(), calibration, CameraView(200, 200, 0, 0), lift=SurfaceLift(100, 100, 200, 50),
@@ -244,8 +268,9 @@ def test_view_entities_are_on_the_camera_devices(coordinator) -> None:
     numbers = {e.translation_key for e in coordinator.build_numbers()}
     keys = {e.translation_key for e in coordinator.build_selects()}
     assert {"crop_preset", "overlay", "processing_mode"} <= keys
-    assert {"laser_target", "slat_lines"} <= switches
-    assert not {"slat_overlay", "overlay"} & switches
+    assert {"overlay_laser_target", "overlay_red_dot_quick", "overlay_work_bed"} <= switches
+    assert not {"slat_overlay", "overlay", "laser_target", "slat_lines"} & switches
+    assert "overlay" not in keys
     assert "thickness_or_distance" in numbers
     assert not {"thickness_on_slats", "distance_honeycomb_panel", "distance_slats_removed"} & numbers
     crop = next(e for e in coordinator.build_selects() if e.translation_key == "crop_preset")
@@ -255,12 +280,11 @@ def test_view_entities_are_on_the_camera_devices(coordinator) -> None:
                if "camera_" in e.unique_id}
     assert selects["closeup_crop_preset_closeup"].options == ["uncropped", "studio", "custom"]
     assert selects["overview_crop_preset"].options[0] == "uncropped"
-    assert "custom" not in selects["overview_overlay"].options
-    assert selects["closeup_overlay_closeup"].options[-1] == "overview_slats_removed"
     # Controls: Crop, its numbers, Mode, and Thickness or distance
     assert crop.entity_category is None
     assert selects["overview_processing_mode"].entity_category is None
-    assert selects["overview_overlay"].entity_category == "config"
+    overlay = next(e for e in coordinator.build_switches() if e.translation_key == "overlay_work_bed")
+    assert overlay.entity_category == "config"
     for number in coordinator.build_numbers():
         if number.translation_key in ("thickness_or_distance", "crop_width", "crop_center_y"):
             assert number.entity_category is None, number.translation_key
@@ -272,10 +296,10 @@ async def test_a_setting_change_refreshes_the_picture(coordinator) -> None:
     camera = MagicMock()
     camera.refresh_picture = AsyncMock()
     _thumbnail_registry(coordinator).cameras["overview"] = camera
-    select = next(e for e in coordinator.build_selects() if e.translation_key == "overlay")
-    select.async_write_ha_state = MagicMock()
-    await select.async_select_option("slats_removed")
-    assert _view(coordinator)["overlay"] == "slats_removed"
+    switch = next(e for e in coordinator.build_switches() if e.translation_key == "overlay_slats_removed")
+    switch.async_write_ha_state = MagicMock()
+    await switch.async_turn_on()
+    assert _view(coordinator)["overlay_slats_removed"] is True
     camera.refresh_picture.assert_awaited_once()
 
 
@@ -284,13 +308,18 @@ def test_names_and_states() -> None:
         data = json.loads((COMPONENT / name).read_text(encoding="utf-8"))["entity"]
         assert data["select"]["crop_preset"]["name"] == "Crop"
         assert data["select"]["processing_mode"]["name"] == "Mode"
-        assert data["select"]["overlay"]["state"]["work_bed"] == "Work bed"
-        assert data["select"]["overlay"]["state"]["close_camera_studio"] == "Close camera (studio)"
-        assert data["select"]["overlay"]["state"]["overview_work_bed"] == "Overview (work bed)"
+        assert data["select"]["crop_preset"]["state"]["work_bed"] == "Work bed"
+        assert data["select"]["crop_preset"]["state"]["close_camera_studio"] == "Close camera (studio)"
         assert data["select"]["crop_preset"]["state"]["uncropped"] == "Uncropped"
-        assert data["switch"]["laser_target"]["name"] == "Laser target"
+        assert "overlay" not in data["select"]
+        assert data["switch"]["overlay_laser_target"]["name"] == "Overlay laser target"
+        assert data["switch"]["overlay_overview_work_bed"]["name"] == "Overlay overview (work bed)"
+        assert data["switch"]["overlay_red_dot_quick"]["name"] == "Overlay red dot (quick)"
+        assert data["button"]["measure_thickness_or_distance"]["name"] == (
+            "Measure thickness or distance"
+        )
         assert data["select"]["processing_mode"]["state"]["slats_removed"] == "Slats removed"
-        assert data["switch"]["slat_lines"]["name"] == "Slat lines"
+        assert data["switch"]["overlay_slat_lines"]["name"] == "Overlay slat lines"
         assert data["number"]["thickness_or_distance"]["name"] == "Thickness or distance"
 
 
@@ -308,7 +337,7 @@ async def test_while_asleep_the_last_photo_shows_new_settings(coordinator) -> No
     assert first and first != b"old"
     # Without a change the picture is not drawn again
     assert await camera.async_camera_image() is first
-    _view(coordinator)["slat_lines"] = True
+    _view(coordinator)["overlay_slat_lines"] = True
     camera._redraw = True  # what a setting's refresh_picture does
     assert await camera.async_camera_image() != first
 

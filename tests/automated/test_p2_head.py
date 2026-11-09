@@ -167,8 +167,10 @@ async def test_measure_gives_the_thickness_and_where(coordinator) -> None:
     )
     coordinator.protocol.measure_offset = MagicMock(return_value={"x": 64.3, "y": 0.9, "z": 136.7})
     buttons = {e.translation_key: e for e in coordinator.build_buttons()}
-    await buttons["measure_distance"].async_press()
+    await buttons["measure_thickness_or_distance"].async_press()
     assert coordinator.data.last_distance_mm == 130.7
+    # The result goes into Thickness or distance, as the Mode takes it
+    assert coordinator._p2_view["thickness_or_distance"] == 6.0
     assert coordinator.data.measured_thickness_mm == 6.0
     measured = P2Measured(coordinator)
     measured._seen_live_data = True
@@ -184,7 +186,7 @@ async def test_a_measure_without_a_reply_says_so(coordinator) -> None:
     coordinator.protocol.measure_material = AsyncMock(return_value=None)
     buttons = {e.translation_key: e for e in coordinator.build_buttons()}
     with pytest.raises(HomeAssistantError):
-        await buttons["measure_distance"].async_press()
+        await buttons["measure_thickness_or_distance"].async_press()
 
 
 async def test_the_protocol_reads_the_position_and_the_measurement(monkeypatch) -> None:

@@ -58,14 +58,22 @@ def test_p2_entities_use_studio_names(coordinator) -> None:
         expected.add("safety_lock")
     views = has("p2_views")  # the cameras' view settings
     if views:
-        expected |= {"laser_target", "slat_lines"}
+        expected |= {
+            "overlay_work_bed", "overlay_process_on_slats", "overlay_honeycomb_panel",
+            "overlay_slats_removed", "overlay_close_camera_uncropped",
+            "overlay_close_camera_studio", "overlay_close_camera_custom", "overlay_studio",
+            "overlay_custom", "overlay_overview_work_bed", "overlay_overview_process_on_slats",
+            "overlay_overview_honeycomb_panel", "overlay_overview_slats_removed",
+            "overlay_laser_target", "overlay_slat_lines", "overlay_red_dot_close",
+            "overlay_red_dot_quick",
+        }
     assert set(switches) == expected
     numbers = by_key(coordinator.build_numbers())
     assert {"smoking_fan_duration", "lowest_output_power"} <= set(numbers)
     assert ("fill_light_brightness" in numbers) is not LIGHT_BRIGHTNESS
     selects = {"flame_alarm_level"}
     if views:
-        selects |= {"crop_preset", "overlay", "processing_mode"}
+        selects |= {"crop_preset", "processing_mode"}
     assert set(by_key(coordinator.build_selects())) == selects
     assert set(by_key(coordinator.build_lights())) == {"fill_light_1", "fill_light_2", "fill_light_3"}
     assert {"lid", "baseplate"} <= set(by_key(coordinator.build_binary_sensors()))
