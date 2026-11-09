@@ -176,6 +176,10 @@ def test_any_number_of_overlays(coordinator) -> None:
     assert quick[:2] == (343.2, 81.9) and quick[2] > quick[3]  # long toward its source
     assert 90 < quick[4] < 180  # from the back right: toward the left and front
     assert g.quick_red_dot_angle() == quick[4]
+    # Every slat's line, the odd numbers written
+    labels = [line[4] for line in overlay.lines]
+    assert labels[:3] == ["", "23", ""] and labels[23:25] == ["1", "1"]
+    assert all(label == "" or int(label) % 2 for label in labels)
     view["overlay_close_camera_studio"] = True
     assert overlay_rects(_correction(coordinator))[-1] == (155.0, 20.0, 140.0, 100.0)
 
@@ -372,3 +376,95 @@ def test_beyond_the_grid_the_lens_continues_the_picture() -> None:
         assert surface.photo_points([point])[0] == pytest.approx(tuple(expected), abs=1.0)
     # Without a lens guess the cubic fit is used, as for the F2 Ultra UV
     assert _surface_map(calibration)._lens is None
+
+
+def test_sync_to_mode_shows_the_modes_area(coordinator) -> None:
+    from custom_components.xtool.protocols.rest.p2_entities import P2_CROP_OPTIONS
+
+    assert P2_CROP_OPTIONS["overview"][:2] == ["uncropped", "sync_to_mode"]
+    assert "sync_to_mode" not in P2_CROP_OPTIONS["closeup"]
+    view = _view(coordinator)
+    view["crop_preset"] = "sync_to_mode"
+    assert _correction(coordinator)["view"] == CameraViewOf(600, 305, 300 - 305, 0)
+    view["processing_mode"] = "slats_removed"
+    assert _correction(coordinator)["view"] == CameraViewOf(500, 250, 300 - 305, 125 - 152.5)
+
+
+def test_the_close_cameras_picture_on_the_overview(coordinator) -> None:
+    from custom_components.xtool.protocols.ws_v2.entities import _thumbnail_registry
+
+    close = MagicMock()
+    close._last_snapshot = b"close-jpeg"
+    close._calibration = None
+    _thumbnail_registry(coordinator).cameras["closeup"] = close
+    coordinator.data.position_x, coordinator.data.position_y = 200.0, 100.0
+    _view(coordinator)["overlay_close_camera_image"] = True
+    overlay = _correction(coordinator)["overlay"]
+    # At the close camera's crop (Custom: as Studio shows it), where it is
+    assert overlay.images == ((255.0, 70.0, 140.0, 100.0, b"close-jpeg"),)
+
+
+def test_overlay_colours_come_from_the_options(coordinator, hass) -> None:
+    from custom_components.xtool.const import CONF_OVERLAY_COLORS
+
+    hass.config_entries.async_update_entry(
+        coordinator.config_entry,
+        options={CONF_OVERLAY_COLORS: {"work_bed": [1, 2, 3], "slat_lines": [4, 5, 6]}},
+    )
+    view = _view(coordinator)
+    view["overlay_work_bed"] = view["overlay_slat_lines"] = view["overlay_process_on_slats"] = True
+    overlay = _correction(coordinator)["overlay"]
+    assert overlay.areas[0][4] == (1, 2, 3)
+    assert overlay.areas[1][4] == (60, 220, 90)  # not chosen: the default
+    assert overlay.line_color == (4, 5, 6)
+
+
+def test_the_options_offer_a_colour_picker_per_overlay() -> None:
+    for name in ("strings.json", "translations/en.json"):
+        data = json.loads((COMPONENT / name).read_text(encoding="utf-8"))
+        section = data["options"]["step"]["init"]["sections"]["overlay_colors"]
+        assert section["name"] == "Overlay colors"
+        assert set(section["data"]) == {
+            "work_bed", "process_on_slats", "honeycomb_panel", "slats_removed", "uncropped",
+            "studio", "custom", "laser_target", "slat_lines", "red_dots",
+        }
+        assert data["entity"]["select"]["crop_preset"]["state"]["sync_to_mode"] == "Sync to Mode"
+        assert data["entity"]["switch"]["overlay_close_camera_image"]["name"] == (
+            "Overlay close camera (image)"
+        )
+
+
+async def test_a_colour_change_redraws_without_a_reload(coordinator, monkeypatch) -> None:
+    from custom_components.xtool import _async_options_updated
+    from custom_components.xtool.const import CONF_OVERLAY_COLORS
+    from custom_components.xtool.protocols.ws_v2.entities import _thumbnail_registry
+
+    reload = AsyncMock()
+    monkeypatch.setattr(coordinator.hass.config_entries, "async_reload", reload)
+    entry = coordinator.config_entry
+    entry.runtime_data = coordinator
+    coordinator.options_at_setup = dict(entry.options)
+    camera = MagicMock()
+    camera.refresh_picture = AsyncMock()
+    _thumbnail_registry(coordinator).cameras["overview"] = camera
+    coordinator.hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_OVERLAY_COLORS: {"work_bed": [1, 2, 3]}},
+    )
+    await _async_options_updated(coordinator.hass, entry)
+    reload.assert_not_awaited()
+    camera.refresh_picture.assert_awaited_once()
+    coordinator.hass.config_entries.async_update_entry(entry, options={**entry.options, "x": 1})
+    await _async_options_updated(coordinator.hass, entry)
+    reload.assert_awaited_once()
+
+
+def test_the_whole_photo_follows_the_lens() -> None:
+    """A side of 0 is as far as the photo reaches, worked out once."""
+    from custom_components.xtool.protocols.ws_v2.camera_correction import (
+        _surface_map, photo_size_mm,
+    )
+
+    calibration = _calibration()
+    first = photo_size_mm(calibration)
+    assert first == photo_size_mm(calibration)
+    assert _surface_map(calibration)._photo_size == first

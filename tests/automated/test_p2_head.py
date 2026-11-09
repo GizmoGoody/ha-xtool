@@ -162,12 +162,17 @@ def test_measure_offset_reads_the_p2_setting() -> None:
 async def test_measure_gives_the_thickness_and_where(coordinator) -> None:
     from custom_components.xtool.protocols.rest.p2_entities import P2Measured
 
+    # The P2 replies with the thickness (Z minus what the sensor read), and
+    # reads only while the close red dot is on
     coordinator.protocol.measure_material = AsyncMock(
-        return_value={"distance": 130.7, "coord_x": 10.0, "coord_y": 20.0}
+        return_value={"distance": 6.0, "coord_x": 10.0, "coord_y": 20.0}
     )
     coordinator.protocol.measure_offset = MagicMock(return_value={"x": 64.3, "y": 0.9, "z": 136.7})
+    coordinator.protocol.set_ir_led = AsyncMock()
+    coordinator.data.ir_led_close = False
     buttons = {e.translation_key: e for e in coordinator.build_buttons()}
     await buttons["measure_thickness_or_distance"].async_press()
+    assert [c.args for c in coordinator.protocol.set_ir_led.await_args_list] == [(1, True), (1, False)]
     assert coordinator.data.last_distance_mm == 130.7
     # The result goes into Thickness or distance, as the Mode takes it
     assert coordinator._p2_view["thickness_or_distance"] == 6.0
@@ -184,9 +189,12 @@ async def test_measure_gives_the_thickness_and_where(coordinator) -> None:
 
 async def test_a_measure_without_a_reply_says_so(coordinator) -> None:
     coordinator.protocol.measure_material = AsyncMock(return_value=None)
+    coordinator.protocol.set_ir_led = AsyncMock()
+    coordinator.data.ir_led_close = True  # left on: not turned off
     buttons = {e.translation_key: e for e in coordinator.build_buttons()}
     with pytest.raises(HomeAssistantError):
         await buttons["measure_thickness_or_distance"].async_press()
+    coordinator.protocol.set_ir_led.assert_not_awaited()
 
 
 async def test_the_protocol_reads_the_position_and_the_measurement(monkeypatch) -> None:

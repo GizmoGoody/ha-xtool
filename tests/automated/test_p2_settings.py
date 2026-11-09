@@ -61,7 +61,8 @@ def test_p2_entities_use_studio_names(coordinator) -> None:
         expected |= {
             "overlay_work_bed", "overlay_process_on_slats", "overlay_honeycomb_panel",
             "overlay_slats_removed", "overlay_close_camera_uncropped",
-            "overlay_close_camera_studio", "overlay_close_camera_custom", "overlay_studio",
+            "overlay_close_camera_studio", "overlay_close_camera_custom",
+            "overlay_close_camera_image", "overlay_studio",
             "overlay_custom", "overlay_overview_work_bed", "overlay_overview_process_on_slats",
             "overlay_overview_honeycomb_panel", "overlay_overview_slats_removed",
             "overlay_laser_target", "overlay_slat_lines", "overlay_red_dot_close",
