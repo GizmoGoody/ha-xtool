@@ -468,11 +468,8 @@
       "working_mode": {
         "name": "Working mode"
       },
-      "measured_thickness": {
-        "name": "Measured thickness"
-      },
-      "measured_distance": {
-        "name": "Measured distance"
+      "measured_thickness_or_distance": {
+        "name": "Measured thickness or distance"
       },
       "last_distance": {
         "name": "Last distance"
@@ -937,14 +934,8 @@
       }
     },
     "number": {
-      "thickness_on_slats": {
-        "name": "Thickness on slats"
-      },
-      "distance_honeycomb_panel": {
-        "name": "Distance with honeycomb panel"
-      },
-      "distance_slats_removed": {
-        "name": "Distance with slats removed"
+      "thickness_or_distance": {
+        "name": "Thickness or distance"
       },
       "auto_power_off": {
         "name": "Auto power-off"
