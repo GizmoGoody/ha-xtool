@@ -58,7 +58,7 @@ def test_p2_entities_use_studio_names(coordinator) -> None:
         expected.add("safety_lock")
     views = has("p2_views")  # the cameras' view settings
     if views:
-        expected |= {"slat_overlay", "overlay"}
+        expected |= {"laser_target", "slat_lines"}
     assert set(switches) == expected
     numbers = by_key(coordinator.build_numbers())
     assert {"smoking_fan_duration", "lowest_output_power"} <= set(numbers)

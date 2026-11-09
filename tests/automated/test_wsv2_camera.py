@@ -52,6 +52,23 @@ async def test_recent_photo_is_shared(hass: HomeAssistant) -> None:
     assert protocol.camera_snap.await_count == 1
 
 
+async def test_a_photo_just_taken_answers_the_next_picture(hass: HomeAssistant) -> None:
+    """A slow photo (older than MIN_SNAPSHOT_INTERVAL when it arrives) still
+    answers the picture request that follows a refresh: no black thumbnail."""
+    from .features import has
+
+    if not has("picture_reuse"):
+        pytest.skip("branch lacks picture_reuse")
+    camera, protocol = _main_camera(hass)
+    await camera.async_camera_image()
+    camera._last_snapshot_time -= timedelta(seconds=5)
+    assert await camera.async_camera_image() == b"jpeg-1"
+    assert protocol.camera_snap.await_count == 1
+    camera._snapshot_done -= 60  # later requests take a new photo
+    await camera.async_camera_image()
+    assert protocol.camera_snap.await_count == 2
+
+
 async def test_thumbnail_is_not_older_than_a_few_seconds(hass: HomeAssistant) -> None:
     from custom_components.xtool.protocols.ws_v2.entities import MIN_SNAPSHOT_INTERVAL
 
@@ -62,6 +79,7 @@ async def test_failed_photo_keeps_a_recent_image(hass: HomeAssistant) -> None:
     camera, protocol = _main_camera(hass)
     await camera.async_camera_image()
     camera._last_snapshot_time -= timedelta(seconds=5)
+    camera._snapshot_done = float("-inf")
     protocol.camera_snap.return_value = None
     assert await camera.async_camera_image() == b"jpeg-1"
 
@@ -70,6 +88,7 @@ async def test_failed_photo_drops_a_stale_image(hass: HomeAssistant) -> None:
     camera, protocol = _main_camera(hass)
     await camera.async_camera_image()
     camera._last_snapshot_time -= timedelta(minutes=5)
+    camera._snapshot_done = float("-inf")
     protocol.camera_snap.side_effect = RuntimeError("offline")
     assert await camera.async_camera_image() is None
 

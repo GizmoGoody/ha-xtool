@@ -47,6 +47,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "p2_exposure_1000": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "P2_EXPOSURE_MAX = 1000" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     "p2_controls": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "class P2SafetyLock" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     "p2_head_controls": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "def _head_lock" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
+    # A photo just taken answers the picture request after a refresh
+    "picture_reuse": lambda: "PICTURE_REUSE_SECONDS" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     "p2_views": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists() and "def p2_correction" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     "p2_move_without_reload": lambda: "def made_entry_update" in (COMPONENT / "protocols" / "rest" / "coordinator.py").read_text(encoding="utf-8"),
     # P2: the right and left fill lights follow Studio's Fill light brightness and write it
