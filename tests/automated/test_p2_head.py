@@ -65,7 +65,9 @@ async def test_x_and_y_wait_for_move_laser(coordinator) -> None:
     await numbers["laser_position_x"].async_set_native_value(200.0)
     coordinator.protocol.move_laser_head.assert_not_awaited()
     assert numbers["laser_position_x"].native_value == 200.0  # shows the value set
-    assert numbers["laser_position_x"].extra_state_attributes == {"waiting": True, "position": None}
+    attributes = numbers["laser_position_x"].extra_state_attributes
+    assert attributes["waiting"] is True
+    assert attributes["position"] == coordinator.data.position_x  # where the head is
     await numbers["laser_position_y"].async_set_native_value(80.0)
     await _button(coordinator).async_press()
     coordinator.protocol.move_laser_head.assert_awaited_once_with(200.0, 80.0)
