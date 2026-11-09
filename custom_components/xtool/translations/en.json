@@ -827,11 +827,11 @@
       }
     },
     "switch": {
-      "slat_overlay": {
-        "name": "Slat overlay"
+      "laser_target": {
+        "name": "Laser target"
       },
-      "overlay": {
-        "name": "Overlay"
+      "slat_lines": {
+        "name": "Slat lines"
       },
       "buzzer": {
         "name": "Buzzer"
@@ -1083,12 +1083,16 @@
       "crop_preset": {
         "name": "Crop",
         "state": {
-          "custom": "Custom",
+          "uncropped": "Uncropped",
           "work_bed": "Work bed",
           "process_on_slats": "Process on slats",
           "honeycomb_panel": "Honeycomb panel",
           "slats_removed": "Slats removed",
-          "close_camera": "Close camera"
+          "close_camera_uncropped": "Close camera (uncropped)",
+          "close_camera_studio": "Close camera (studio)",
+          "close_camera_custom": "Close camera (custom)",
+          "studio": "Studio",
+          "custom": "Custom"
         }
       },
       "overlay": {
@@ -1099,8 +1103,15 @@
           "process_on_slats": "Process on slats",
           "honeycomb_panel": "Honeycomb panel",
           "slats_removed": "Slats removed",
-          "close_camera": "Close camera",
-          "custom": "Custom"
+          "close_camera_uncropped": "Close camera (uncropped)",
+          "close_camera_studio": "Close camera (studio)",
+          "close_camera_custom": "Close camera (custom)",
+          "studio": "Studio",
+          "custom": "Custom",
+          "overview_work_bed": "Overview (work bed)",
+          "overview_process_on_slats": "Overview (process on slats)",
+          "overview_honeycomb_panel": "Overview (honeycomb panel)",
+          "overview_slats_removed": "Overview (slats removed)"
         }
       },
       "processing_mode": {

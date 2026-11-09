@@ -749,11 +749,11 @@
       }
     },
     "switch": {
-      "slat_overlay": {
-        "name": "Lamellen-Overlay"
+      "laser_target": {
+        "name": "Laserziel"
       },
-      "overlay": {
-        "name": "Overlay"
+      "slat_lines": {
+        "name": "Lamellenlinien"
       },
       "buzzer": {
         "name": "Signalton"
@@ -1002,12 +1002,16 @@
       "crop_preset": {
         "name": "Zuschnitt",
         "state": {
-          "custom": "Benutzerdefiniert",
+          "uncropped": "Unbeschnitten",
           "work_bed": "Arbeitsbett",
           "process_on_slats": "Auf Lamellen bearbeiten",
           "honeycomb_panel": "Wabenplatte",
           "slats_removed": "Lamellen entfernt",
-          "close_camera": "Nahkamera"
+          "close_camera_uncropped": "Nahkamera (unbeschnitten)",
+          "close_camera_studio": "Nahkamera (Studio)",
+          "close_camera_custom": "Nahkamera (benutzerdefiniert)",
+          "studio": "Studio",
+          "custom": "Benutzerdefiniert"
         }
       },
       "overlay": {
@@ -1018,8 +1022,15 @@
           "process_on_slats": "Auf Lamellen bearbeiten",
           "honeycomb_panel": "Wabenplatte",
           "slats_removed": "Lamellen entfernt",
-          "close_camera": "Nahkamera",
-          "custom": "Benutzerdefiniert"
+          "close_camera_uncropped": "Nahkamera (unbeschnitten)",
+          "close_camera_studio": "Nahkamera (Studio)",
+          "close_camera_custom": "Nahkamera (benutzerdefiniert)",
+          "studio": "Studio",
+          "custom": "Benutzerdefiniert",
+          "overview_work_bed": "Übersicht (Arbeitsbett)",
+          "overview_process_on_slats": "Übersicht (auf Lamellen bearbeiten)",
+          "overview_honeycomb_panel": "Übersicht (Wabenplatte)",
+          "overview_slats_removed": "Übersicht (Lamellen entfernt)"
         }
       },
       "processing_mode": {
