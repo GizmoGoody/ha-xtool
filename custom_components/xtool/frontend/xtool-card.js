@@ -12,6 +12,8 @@
  * - custom:xtool-camera       a camera, shown by Home Assistant's own image element, with buttons to switch;
  *                             tap two corners on the main camera's picture to crop it; a key for the deep camera's perspective
  * - custom:xtool-if2-fan      the SafetyPro IF2 inline fan: Off, A (Auto) and a speed key that steps 1 to 4
+ * - custom:xtool-laser        the laser's X and Y (Home Assistant's numeric input), Move and Home keys
+ * - custom:xtool-measure      the Mode select and the height number, and a Measure key showing the last reading
  * - custom:xtool-focus        Autofocus, then - and + around the thickness to focus on, which can be typed
  * Each finds its entities on the same device as the card's entity, or on
  * the devices connected to it (the cameras' devices, the IF2's).
@@ -62,13 +64,29 @@ const ROLES = {
   fill_light_front: [["fill_light_front"], ["light"]],
   fill_light_back: [["fill_light_back"], ["light"]],
   red_dot: [["ir_led", "ir_led_global"], ["switch"]],
-  cover_lock: [["digital_lock"], ["switch"]],
+  cover_lock: [["digital_lock", "safety_lock"], ["switch", "lock"]],
+  // The P2's own red dots and lights
+  red_dot_close: [["aimed_measure_light"], ["switch"]],
+  red_dot_quick: [["quick_measure_light"], ["switch"]],
+  exhaust_setting: [["exhaust_fan_setting"], ["switch"]],
+  fill_light_left: [["fill_light_3"], ["light"]],
+  fill_light_right: [["fill_light_2"], ["light"]],
+  // Moving the laser and measuring
+  laser_x: [["laser_position_x"], ["number"]],
+  laser_y: [["laser_position_y"], ["number"]],
+  move_laser: [["move_laser"], ["button"]],
+  home_laser: [["home_laser_head"], ["button"]],
+  measure: [["measure_thickness_or_distance"], ["button"]],
+  measure_mode: [["processing_mode"], ["select"]],
+  measure_height: [["thickness_or_distance"], ["number"]],
+  measured: [["measured_thickness_or_distance"], ["sensor"]],
+  baseplate: [["baseplate"], ["binary_sensor"]],
   flame_alarm: [["flame_alarm_v2", "flame_alarm"], ["switch"]],
   enclosure_stop: [["gap_check"], ["switch"]],
   moved_stop: [["stops_when_moved", "move_stop"], ["switch"]],
   access_control: [["md_mode"], ["switch"]],
   alarm: [["alarm"], ["binary_sensor"]],
-  cover_open: [["cover_open"], ["binary_sensor"]],
+  cover_open: [["cover_open", "lid"], ["binary_sensor"]],
   safety_key: [["machine_lock"], ["binary_sensor"]],
   firmware: [["firmware"], ["update"]],
   power: [["power_switch"], ["switch"]],
@@ -94,6 +112,8 @@ const CAMERA_ROLES = {
   crop_center_x: [["crop_center_x", "camera_main_crop_center_x"], ["number"]],
   crop_center_y: [["crop_center_y", "camera_main_crop_center_y"], ["number"]],
   perspective: [["perspective", "camera_deep_perspective"], ["select"]],
+  // The P2's crop presets, one select for each camera
+  crop_preset: [["crop_preset"], ["select"]],
 };
 const CROP_ROLES = ["crop_width", "crop_height", "crop_center_x", "crop_center_y"];
 // Reset crop: the calibrated 200 x 200 mm area, centered
@@ -939,7 +959,12 @@ const PERIPHERALS = [
   { role: "fill_light_front", label: "Fill light (front)", icon: "mdi:dome-light", color: DAYLIGHT },
   { role: "fill_light_back", label: "Fill light (back)", icon: "mdi:dome-light", color: DAYLIGHT },
   { role: "fill_light", label: "Fill light", icon: "mdi:dome-light", color: DAYLIGHT },
+  { role: "exhaust_setting", label: "Exhaust fan", icon: "mdi:fan", color: "blue", fan: true },
+  { role: "fill_light_left", label: "Fill light (left)", icon: "mdi:dome-light", color: DAYLIGHT },
+  { role: "fill_light_right", label: "Fill light (right)", icon: "mdi:dome-light", color: DAYLIGHT },
   { role: "red_dot", label: "Red dot", icon: "mdi:laser-pointer", color: "red" },
+  { role: "red_dot_close", label: "Red dot (close)", icon: "mdi:laser-pointer", color: "red" },
+  { role: "red_dot_quick", label: "Red dot (quick)", icon: "mdi:laser-pointer", color: "red" },
   { role: "cooling_fan", label: "Cooling fan", icon: "mdi:fan-chevron-up", color: "cyan", fan: true },
   { role: "cover_lock", label: "Cover lock", icon: "mdi:lock", color: "indigo" },
   // A button: a tap starts it (off while the laser is busy)
@@ -948,9 +973,16 @@ const PERIPHERALS = [
 // The phases in which the laser takes no Autofocus, as in Studio
 const BUSY_PHASES = ["processing", "paused", "framing", "focusing", "off", "firmware"];
 
+/** Whether a switch, light or fan is on, or a lock is locked. */
+const isOn = (stateObj) => stateObj?.state === "on" || stateObj?.state === "locked";
+
+/** The item with its name, where the laser has more fill lights than the camera's (the P2): the camera's is the close view's. */
+const relabeled = (hass, entityId, item) =>
+  item.role === "fill_light" && sibling(hass, entityId, "fill_light_left") ? { ...item, label: "Fill light (close view)" } : item;
+
 /** The controls of a list the device has, in the order chosen (all by default). */
 function chosen(hass, entityId, list, roles) {
-  const present = list.filter((item) => sibling(hass, entityId, item.role));
+  const present = list.filter((item) => sibling(hass, entityId, item.role)).map((item) => relabeled(hass, entityId, item));
   if (!Array.isArray(roles)) return present;
   return roles.map((role) => present.find((item) => item.role === role)).filter(Boolean);
 }
@@ -976,7 +1008,7 @@ class XtoolToggles extends XtoolFeature {
     const busy = BUSY_PHASES.includes(phaseOf(status ? hass.states[status]?.state : undefined));
     return chosen(hass, id, this.constructor.list, this._config.controls).map((item) => {
       const entityId = sibling(hass, id, item.role);
-      const on = hass.states[entityId]?.state === "on";
+      const on = isOn(hass.states[entityId]);
       return {
         key: item.role, label: item.label, icon: item.icon, text: item.label,
         color: item.color, pressed: item.press ? false : on,
@@ -1001,7 +1033,9 @@ class XtoolToggles extends XtoolFeature {
         confirmation = { title: `Turn off ${item.label.toLowerCase()}?`, text: item.warning, confirm_text: "Turn off", dismiss_text: "Keep on" };
       }
     }
-    performAction(this, `${domainOf(entityId)}.${on ? "turn_off" : "turn_on"}`, entityId, confirmation);
+    // A lock locks and unlocks; every other control turns on and off
+    const locks = domainOf(entityId) === "lock";
+    performAction(this, locks ? `lock.${on ? "unlock" : "lock"}` : `${domainOf(entityId)}.${on ? "turn_off" : "turn_on"}`, entityId, confirmation);
   }
 }
 
@@ -1159,6 +1193,17 @@ class XtoolCamera extends XtoolFeature {
     }
     const perspective = this._perspectiveButton();
     if (perspective) buttons.push(perspective);
+    // A camera with crop presets (the P2's): the key shows the preset, and a
+    // tap opens Home Assistant's own dialog for the select to choose another
+    const preset = cameraSetting(this._hass, this._camera, "crop_preset");
+    if (preset && this._config.show_crop_preset !== false) {
+      const stateObj = this._hass.states[preset];
+      buttons.push({
+        key: "crop_preset", label: `Crop: ${stateObj?.state}. Tap to choose`, text: stateObj?.state ?? "Crop", icon: "mdi:crop",
+        color: "primary", pressed: false, disabled: !this._usable(preset), alwaysText: true,
+        action: () => fire(this, "hass-more-info", { entityId: preset }),
+      });
+    }
     return buttons;
   }
 
@@ -1434,6 +1479,8 @@ class XtoolCamera extends XtoolFeature {
 // lights on and off is in the peripherals feature.
 // ---------------------------------------------------------------------------
 const FILL_LIGHTS = [
+  { role: "fill_light_left", label: "Fill light (left)" },
+  { role: "fill_light_right", label: "Fill light (right)" },
   { role: "fill_light_front", label: "Fill light (front)" },
   { role: "fill_light_back", label: "Fill light (back)" },
   { role: "fill_light", label: "Fill light" },
@@ -1441,7 +1488,7 @@ const FILL_LIGHTS = [
 
 /** The laser's fill lights that have a brightness: [{ role, label, entityId }]. */
 function dimmableLights(hass, entityId) {
-  return FILL_LIGHTS.map((item) => ({ ...item, entityId: sibling(hass, entityId, item.role) }))
+  return FILL_LIGHTS.map((item) => ({ ...relabeled(hass, entityId, item), entityId: sibling(hass, entityId, item.role) }))
     .filter(({ entityId: light }) => (hass?.states[light]?.attributes.supported_color_modes ?? []).some((mode) => mode !== "onoff"));
 }
 
@@ -1530,6 +1577,132 @@ class XtoolFillLight extends HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
+// Features that embed Home Assistant's own features (numeric input, select
+// options) above a row of keys: moving the laser, and measuring the material.
+// Each embedded feature is shown by hui-card-feature, the element the tile
+// card shows every feature with.
+// ---------------------------------------------------------------------------
+class XtoolEmbedding extends XtoolFeature {
+  constructor() {
+    super();
+    const style = document.createElement("style");
+    style.textContent = `
+      .embeds { display: flex; gap: var(--feature-button-spacing, 12px); margin-bottom: var(--feature-button-spacing, 12px); }
+      .embeds:empty { display: none; }
+      .slide { display: block; flex: 1 1 0; min-width: 0; border-radius: var(--feature-border-radius, 12px); }`;
+    this.shadowRoot.prepend(style);
+    this._embeds = document.createElement("div");
+    this._embeds.className = "embeds";
+    this._slides = new Map();
+    this._row.before(this._embeds);
+  }
+
+  /** Subclasses list what is embedded: [{ entityId, feature: { type, ... } }]. */
+  _features() {
+    return [];
+  }
+
+  _render() {
+    super._render();
+    if (!this._hass || !this._config || !this._context) return;
+    const slides = this._features().map(({ entityId, feature: config }) => {
+      const id = `${entityId}|${config.type}`;
+      let slide = this._slides.get(id);
+      if (!slide) {
+        slide = document.createElement("div");
+        slide.className = "slide";
+        const feature = document.createElement("hui-card-feature");
+        feature.feature = config;
+        feature.context = { entity_id: entityId };
+        slide.append(feature);
+        this._slides.set(id, slide);
+      }
+      slide.firstChild.hass = this._hass;
+      return slide;
+    });
+    if (slides.length !== this._embeds.children.length || slides.some((slide, i) => this._embeds.children[i] !== slide)) {
+      this._embeds.replaceChildren(...slides);
+    }
+  }
+
+  /** The laser can take this command now: its entity is usable, and no job runs. */
+  _idle(role) {
+    const status = statusOf(this._hass, this._entityId);
+    const phase = phaseOf(status ? this._hass.states[status]?.state : undefined);
+    return this._usable(sibling(this._hass, this._entityId, role)) && !BUSY_PHASES.includes(phase);
+  }
+
+  _press(role) {
+    this._hass.callService("button", "press", { entity_id: sibling(this._hass, this._entityId, role) });
+  }
+}
+
+// Feature: moving the laser. The two numbers only choose where; Move goes there
+class XtoolLaser extends XtoolEmbedding {
+  static label = "Laser position";
+  static display = "names";
+
+  static getStubConfig() {
+    return { type: "custom:xtool-laser" };
+  }
+
+  static getConfigElement() {
+    return document.createElement("xtool-feature-editor");
+  }
+
+  _features() {
+    return ["laser_x", "laser_y"].map((role) => ({ entityId: sibling(this._hass, this._entityId, role), feature: { type: "numeric-input", style: "buttons" } }))
+      .filter((f) => f.entityId);
+  }
+
+  _buttons() {
+    const hass = this._hass, id = this._entityId;
+    // A move works while the laser sleeps, but not while it works or is off
+    const buttons = [
+      { key: "move_laser", label: "Move the laser to the position above", text: "Move", icon: "mdi:crosshairs-gps", role: "move_laser" },
+      { key: "home_laser", label: "Home the laser", text: "Home", icon: "mdi:home-import-outline", role: "home_laser" },
+    ];
+    return buttons.filter((b) => sibling(hass, id, b.role)).map((b) => ({
+      key: b.key, label: b.label, text: b.text, icon: b.icon, color: "primary", pressed: false,
+      disabled: !this._idle(b.role), action: () => this._press(b.role),
+    }));
+  }
+}
+
+// Feature: measuring the material's thickness or the distance to it
+class XtoolMeasure extends XtoolEmbedding {
+  static label = "Measure";
+  static display = "names";
+
+  static getStubConfig() {
+    return { type: "custom:xtool-measure" };
+  }
+
+  static getConfigElement() {
+    return document.createElement("xtool-feature-editor");
+  }
+
+  _features() {
+    return [
+      { role: "measure_mode", feature: { type: "select-options" } },
+      { role: "measure_height", feature: { type: "numeric-input", style: "buttons" } },
+    ].map(({ role, feature }) => ({ entityId: sibling(this._hass, this._entityId, role), feature })).filter((f) => f.entityId);
+  }
+
+  _buttons() {
+    const hass = this._hass, id = this._entityId;
+    if (!sibling(hass, id, "measure")) return [];
+    const measured = hass.states[sibling(hass, id, "measured")];
+    const value = measured && !["unknown", "unavailable"].includes(measured.state)
+      ? `${measured.state} ${measured.attributes.unit_of_measurement ?? ""}`.trim() : undefined;
+    return [{
+      key: "measure", label: value ? `Measure. Last reading: ${value}` : "Measure", text: value ? `Measure: ${value}` : "Measure",
+      icon: "mdi:ruler", color: "primary", pressed: false, disabled: !this._idle("measure"), action: () => this._press("measure"),
+    }];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Feature: safety. The safety checks (switches: turning one off asks first),
 // and the safety key, which can only be shown (a tap opens it)
 // ---------------------------------------------------------------------------
@@ -1547,6 +1720,9 @@ const SAFETY = [
     warning: "The laser keeps working if the machine is moved or tilted during a job.",
   },
   { role: "safety_key", label: "Safety key", icon: "mdi:key", indicator: true },
+  // The P2's lid (on: open, a problem) and baseplate (on: in place)
+  { role: "cover_open", label: "Lid", icon: "mdi:window-closed-variant", indicator: true, problemOn: true, words: ["open", "closed"] },
+  { role: "baseplate", label: "Baseplate", icon: "mdi:layers-triple", indicator: true, words: ["in", "out"] },
   {
     role: "access_control", label: "Access control", icon: "mdi:shield-key", optional: true,
     warning: "Jobs no longer need the access control check before they start.",
@@ -1580,15 +1756,16 @@ class XtoolSafety extends XtoolFeature {
       const entityId = sibling(hass, id, item.role);
       const state = hass.states[entityId]?.state;
       const on = state === "on";
+      const [onWord, offWord] = item.words ?? ["in", "removed"];
       return {
         key: item.role, icon: item.icon,
         label: item.indicator
-          ? `${item.label}: ${on ? "in" : state === "off" ? "removed" : "unknown"}`
+          ? `${item.label}: ${on ? onWord : state === "off" ? offWord : "unknown"}`
           : `${item.label}: ${on ? "on" : state === "off" ? "off" : "unknown"}`,
         // On (the key in): green. Off (the key removed): red, so it stands out.
         // Access control is optional: off is not a warning
-        text: item.label, color: item.optional ? "green" : state === "off" ? "red" : "green", pressed: on,
-        fill: !item.optional && state === "off", disabled: !this._usable(entityId),
+        text: item.label, color: item.optional ? "green" : (item.problemOn ? on : state === "off") ? "red" : "green", pressed: on,
+        fill: !item.optional && (item.problemOn ? on : state === "off"), disabled: !this._usable(entityId),
         action: () => this._toggle(item, entityId, on),
       };
     });
@@ -1828,6 +2005,8 @@ const FEATURES = {
   "xtool-camera": XtoolCamera,
   "xtool-if2-fan": XtoolIf2Fan,
   "xtool-focus": XtoolFocus,
+  "xtool-laser": XtoolLaser,
+  "xtool-measure": XtoolMeasure,
 };
 const FEATURE_TAGS = Object.keys(FEATURES);
 
@@ -1835,7 +2014,7 @@ const FEATURE_TAGS = Object.keys(FEATURES);
 // Feature editors (one element; the form follows the feature's type)
 // ---------------------------------------------------------------------------
 const controlOptions = (hass, entityId, list) =>
-  list.filter((item) => sibling(hass, entityId, item.role)).map((item) => ({ value: item.role, label: item.label }));
+  list.filter((item) => sibling(hass, entityId, item.role)).map((item) => ({ value: item.role, label: relabeled(hass, entityId, item).label }));
 
 const FEATURE_FORMS = {
   "custom:xtool-job": () => ({
@@ -1886,6 +2065,8 @@ const FEATURE_FORMS = {
       data: (c) => ({ lights: Array.isArray(c.lights) ? c.lights.filter((role) => roles.includes(role)) : roles }),
     };
   },
+  "custom:xtool-laser": () => ({ schema: [displayField()], data: (c) => ({ display: displayOf(c, "names") }) }),
+  "custom:xtool-measure": () => ({ schema: [displayField()], data: (c) => ({ display: displayOf(c, "names") }) }),
   "custom:xtool-settings": (hass, entityId) => ({
     schema: [
       { name: "controls", label: "Configuration", selector: { select: { multiple: true, reorder: true, mode: "dropdown", options: controlOptions(hass, entityId, SETTINGS) } } },
@@ -1921,6 +2102,11 @@ const FEATURE_FORMS = {
           helper: "Adds a Crop key for the main camera. Tap it, then tap two opposite corners on the picture to show only that part. The key stays on while the crop is in effect; tap it again to show the whole 200 x 200 mm area.",
           selector: { boolean: {} },
         }] : []),
+        ...(cameras.some(([id]) => cameraSetting(hass, id, "crop_preset")) ? [{
+          name: "show_crop_preset", label: "Crop preset",
+          helper: "A key that shows the camera's crop preset; a tap opens Home Assistant's dialog to choose another.",
+          selector: { boolean: {} },
+        }] : []),
         ...(perspective ? [{
           name: "show_perspective", label: "Deep camera perspective",
           helper: "A key beside the camera buttons for the deep camera: it shows Uncorrected, Rotated or Straightened, and a tap steps to the next.",
@@ -1931,6 +2117,7 @@ const FEATURE_FORMS = {
         camera: labels.includes(c.camera) ? c.camera : labels[0], camera_view: c.camera_view === "live" ? "live" : "auto",
         show_switch: c.show_switch !== false, display: displayOf(c, "names"), show_time: !!c.show_time,
         ...(crops.length === CROP_ROLES.length ? { crop: c.crop !== false } : {}),
+        ...(cameras.some(([id]) => cameraSetting(hass, id, "crop_preset")) ? { show_crop_preset: c.show_crop_preset !== false } : {}),
         ...(perspective ? { show_perspective: c.show_perspective !== false } : {}),
       }),
     };
@@ -3145,7 +3332,9 @@ class XtoolCardEditor extends HTMLElement {
     if (!this._hass) return;
     const hass = withJobAttributes(this._hass, entity);
     this._statesProvider.states = hass.states;
-    if (this._tileEditor) this._tileEditor.hass = hass;
+    // The tile editor gets Home Assistant's own hass (its action editors need all of it);
+    // only the states context, which its State content picker reads, carries the card's attributes
+    if (this._tileEditor) this._tileEditor.hass = this._hass;
   }
 
   set lovelace(lovelace) {
@@ -3348,6 +3537,8 @@ if (!customElements.get(CARD_TYPE)) {
       isSupported: (hass, context) => isXtool(hass, context?.entity_id) && !!if2Control(hass, context.entity_id), configurable: true,
     },
     { type: "xtool-focus", name: "xTool focus", isSupported: has(["focus_height"]) },
+    { type: "xtool-laser", name: "xTool laser position", isSupported: has(["move_laser", "home_laser"]), configurable: true },
+    { type: "xtool-measure", name: "xTool measure", isSupported: has(["measure"]), configurable: true },
   );
 
   window.customCards = window.customCards || [];
