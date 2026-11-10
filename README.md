@@ -386,9 +386,9 @@ Transient-event entities — fire once on edge transitions (rather than holding 
 | Error | `limit`, `laser_control`, `laser_module`, `tilt`, `moving`, `emergency_stop`, `temperature`, `gyro`, `laser_head_fault`, `z_axis_fault`, `u_axis_fault`, `conveyor_fault`, `board_fault`, `camera_fault`, `dongle_fault`, `udisk_fault`, `machine_lock_md_fault` | Error-state transitions. `tilt` / `moving` are D-series only; `emergency_stop` plus the `*_fault` and hardware-alarm types are V2 only (driven by per-subsystem `/.../alarm` pushes — `/emergency/status` on MetalFab and `/emergency_stop/status` on the F-series are both routed to `emergency_stop`) |
 | Fire warning | `triggered`, `cleared` | Flame-detector edge — separate entity so safety automations can target it directly. Source: `M340` push (S1), `ERROR_FIRE_WARNING` status edge (REST + D-series), or `state.alarm_present` / `/v1/device/alarms` / `/fire/alarm` push (WS-V2) |
 
-## Dashboard card
+## Standalone dashboard card
 
-The dashboard card is maintained separately in [GizmoGoody/xtool-card](https://github.com/GizmoGoody/xtool-card). Install **xTool Card** from the Home Assistant Marketplace before using the features below. It is Home Assistant's tile card with additions, so every tile card option works the same way.
+The integration does not install or serve a dashboard card. The separate [GizmoGoody/xtool-card](https://github.com/GizmoGoody/xtool-card) project provides the optional dashboard card and tile features. Install **xTool Card** from the Home Assistant Marketplace before using the features below. It is Home Assistant's tile card with additions, so every tile card option works the same way.
 
 - **Laser**: in the editor you choose the laser (its device), and the card uses its Status sensor.
 - **State picture** in place of the icon: an engraving trail while the laser works (random strokes on galvo machines such as the F-series, a raster on the others), burned-in pause bars when paused, a burned-in check when finished, drifting Zs when asleep, the head closing in while it focuses, rising heat while the UV laser warms up, a thermometer when the laser overheats, and so on. Animations stop when the device asks for reduced motion.
