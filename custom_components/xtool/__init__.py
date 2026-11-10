@@ -28,6 +28,8 @@ from .const import (
     DOMAIN,
     FIRMWARE_CHECK_INTERVAL,
 )
+from .card import async_register_card, async_remove_card_resource
+
 # .protocols must be imported before .coordinator. Each protocol family
 # subclasses XtoolCoordinator, and coordinator.py imports protocols.base.
 # Imported the other way round, the family modules ask for XtoolCoordinator
@@ -61,7 +63,8 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the xTool integration."""
+    """Set up the xTool integration: serve its dashboard card and tile features."""
+    await async_register_card(hass)
     async_setup_services(hass)
     return True
 
@@ -409,6 +412,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: XtoolConfigEntry) -> bo
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.async_shutdown()
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: XtoolConfigEntry) -> None:
+    """Remove the dashboard card's resource when the last laser is removed."""
+    others = [
+        other
+        for other in hass.config_entries.async_entries(DOMAIN)
+        if other.entry_id != entry.entry_id
+    ]
+    if not others:
+        await async_remove_card_resource(hass)
 
 
 async def _async_options_updated(
