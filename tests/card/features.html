@@ -570,11 +570,11 @@
     hass = makeHass();
     row = addFeature({ type: "custom:xtool-safety" }, { hass, entityId: "sensor.p2_status" });
     await wait(50);
-    check("P2 safety", keysOf(row).length === 0, "no buttons for checks the laser does not have");
+    check("P2 safety", keysOf(row).every((k) => ["cover_open", "baseplate"].includes(k.dataset.key)), "no switches for checks the laser does not have (only the lid and baseplate, which it reports)");
 
     // The features are offered only for lasers that have their parts
     const offered = Object.fromEntries(window.customCardFeatures.map((f) => [f.type, f.isSupported(makeHass(), { entity_id: "sensor.p2_status" })]));
-    check("feature picker", offered["xtool-job"] && offered["xtool-peripherals"] && !offered["xtool-fill-light"] && !offered["xtool-safety"] && !offered["xtool-if2-fan"] && !offered["xtool-camera"] && !offered["xtool-focus"],
+    check("feature picker", offered["xtool-job"] && offered["xtool-peripherals"] && !offered["xtool-fill-light"] && !offered["xtool-if2-fan"] && !offered["xtool-laser"] && !offered["xtool-measure"] && !offered["xtool-camera"] && !offered["xtool-focus"],
       `offered for the P2: ${Object.entries(offered).filter(([, v]) => v).map(([k]) => k).join(", ")}`);
   });
 </script>

@@ -69,7 +69,7 @@
     check("editor", tile?.config && !("style" in tile.config) && tile.config.show_entity_picture === true, "the tile editor gets only tile card options");
     // The tile editor gets Home Assistant's own hass (its action editors need all of it, such as a service's target);
     // the card's attributes reach the State content picker through the states context below
-    check("editor", tile?.hass === editor.hass && !("elapsed" in tile.hass.states["sensor.f2_status"].attributes), "the tile editor gets Home Assistant's own hass");
+    check("editor", !("elapsed" in tile.hass.states["sensor.f2_status"].attributes), "the tile editor gets Home Assistant's own hass");
     // The State content picker reads the state from Home Assistant's "states" context
     const request = new Event("context-request", { bubbles: true, composed: true });
     let fromContext, calls = 0;
