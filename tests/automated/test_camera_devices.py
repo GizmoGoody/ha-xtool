@@ -275,10 +275,27 @@ def test_action_schema() -> None:
 
     schema = vol.Schema(CAMERA_SCHEMA)
     assert schema({"crop_width": 0, "crop_center_y": -12}) == {"crop_width": 0.0, "crop_center_y": -12.0}
+    # The schema only converts: each camera's own limits are checked by the action
+    assert schema({"crop_width": "684"}) == {"crop_width": 684.0}
     with pytest.raises(vol.Invalid):
-        schema({"crop_width": 461})
-    with pytest.raises(vol.Invalid):
-        schema({"crop_center_x": 201})
+        schema({"crop_width": "wide"})
+
+
+async def test_action_refuses_values_outside_the_f2uv_limits(hass: HomeAssistant) -> None:
+    from custom_components.xtool.services import _async_camera
+
+    coordinator = _f2uv(hass)
+    camera = _camera(coordinator, "main")
+    camera.refresh_picture = AsyncMock()
+    for key, value in (("crop_width", 461), ("crop_center_x", 201), ("crop_center_y", -201)):
+        call = MagicMock()
+        call.data = {key: float(value)}
+        with pytest.raises(ServiceValidationError) as error:
+            await _async_camera(camera, call)
+        assert error.value.translation_key == "camera_value_out_of_range"
+        assert error.value.translation_placeholders["field"] == key
+        assert error.value.translation_placeholders["value"] == str(value)
+    camera.refresh_picture.assert_not_awaited()
 
 
 async def test_action_is_registered(hass: HomeAssistant) -> None:

@@ -149,3 +149,42 @@ async def test_exposure_change_takes_a_new_photo(hass, config_entry, monkeypatch
     await number.async_set_native_value(1000)
     coord.protocol.set_camera_exposure.assert_awaited_once_with(0, 1000)
     camera.refresh_picture.assert_awaited_once()
+
+
+async def test_camera_action_takes_p2_sized_crops(coordinator) -> None:
+    from custom_components.xtool.protocols.ws_v2.entities import _camera_view_values
+    from custom_components.xtool.services import _async_camera
+
+    camera = next(c for c in coordinator.build_cameras() if c._camera_name == "overview")
+    camera.refresh_picture = AsyncMock()
+    call = MagicMock()
+    # The largest crop presets: wider than the F2 Ultra UV limits
+    call.data = {
+        "crop_width": 684.0, "crop_height": 376.0,
+        "crop_center_x": 321.5, "crop_center_y": 147.5,
+    }
+    await _async_camera(camera, call)
+    values = _camera_view_values(coordinator, "overview")
+    assert values["width"] == 684
+    assert values["height"] == 376
+    assert values["center_x"] == 321.5
+    assert values["center_y"] == 147.5
+    camera.refresh_picture.assert_awaited_once()
+
+
+async def test_camera_action_refuses_values_outside_the_p2_limits(coordinator) -> None:
+    from homeassistant.exceptions import ServiceValidationError
+
+    from custom_components.xtool.services import _async_camera
+
+    camera = next(c for c in coordinator.build_cameras() if c._camera_name == "overview")
+    camera.refresh_picture = AsyncMock()
+    maximum = camera.crop_limits["width"][1]
+    call = MagicMock()
+    call.data = {"crop_width": maximum + 1}
+    with pytest.raises(ServiceValidationError) as error:
+        await _async_camera(camera, call)
+    assert error.value.translation_key == "camera_value_out_of_range"
+    assert error.value.translation_placeholders["maximum"] == f"{maximum:g}"
+    camera.refresh_picture.assert_not_awaited()
+
