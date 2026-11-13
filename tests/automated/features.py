@@ -139,6 +139,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "p2_overlays_v2": lambda: 'CLOSE_CAMERA_IMAGE = "close_camera"' in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     # Crop center numbers use the align-center icons
     "crop_center_icons": lambda: "mdi:format-horizontal-align-center" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
+    # Status Initializing while the laser starts after the Power switch turns on
+    "power_on_starting": lambda: "POWER_ON_STARTUP_SECONDS" in (COMPONENT / "coordinator.py").read_text(encoding="utf-8"),
     "sleep_no_slow_reads": lambda: "slow = not asleep" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
 }
 
