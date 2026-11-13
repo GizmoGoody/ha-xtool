@@ -368,7 +368,8 @@ async def test_while_asleep_the_last_photo_shows_new_settings(coordinator) -> No
 def test_red_dot_and_head_icons() -> None:
     icons = json.loads((COMPONENT / "icons.json").read_text(encoding="utf-8"))["entity"]["switch"]
     assert icons["quick_measure_light"] == {"default": "mdi:laser-pointer"}
-    assert icons["aimed_measure_light"] == {"default": "mdi:target"}
+    # Red dot (close): the dot below the head
+    assert icons["aimed_measure_light"] == {"default": "mdi:pan-down" if V2 else "mdi:target"}
 
 
 def test_beyond_the_grid_the_lens_continues_the_picture() -> None:

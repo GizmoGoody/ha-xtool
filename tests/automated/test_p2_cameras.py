@@ -191,25 +191,36 @@ async def test_camera_action_refuses_values_outside_the_p2_limits(coordinator) -
 
 
 
+def _p2_protocol():
+    from custom_components.xtool.protocols.rest.p2 import P2Protocol
+
+    return P2Protocol("192.0.2.10")
+
+
 @requires("p2_overlays_v2")
-async def test_exposure_is_read_back(coordinator, monkeypatch) -> None:
+async def test_exposure_is_read_back(monkeypatch) -> None:
     """Each camera's exposure comes from the P2, except while it sleeps."""
     from custom_components.xtool.const import XtoolStatus
     from custom_components.xtool.protocols.base import XtoolDeviceState
 
-    protocol = coordinator.protocol
+    protocol = _p2_protocol()
     asked = []
 
-    async def read(camera_name):
-        asked.append(camera_name)
-        return {"overview": 760, "closeup": 150}[camera_name]
+    async def get_json(path, timeout=5.0):
+        if "/camera/exposure" in path:
+            asked.append(path)
+            return {"mode": "manual", "value": 760 if path.endswith("stream=0") else 150}
+        return None
 
-    monkeypatch.setattr(protocol, "read_camera_exposure", read)
-    monkeypatch.setattr(protocol, "_get_json", AsyncMock(return_value=None))
+    monkeypatch.setattr(protocol, "_get_json", get_json)
     state = XtoolDeviceState()
     state.status = XtoolStatus.IDLE
     await protocol._read_slow(state)
     assert (state.camera_exposure_overview, state.camera_exposure_closeup) == (760, 150)
+    assert asked == [
+        "http://192.0.2.10:8329/camera/exposure?stream=0",
+        "http://192.0.2.10:8329/camera/exposure?stream=1",
+    ]
     asked.clear()
     state.status = XtoolStatus.SLEEPING
     await protocol._read_slow(state)
@@ -217,31 +228,16 @@ async def test_exposure_is_read_back(coordinator, monkeypatch) -> None:
 
 
 @requires("p2_overlays_v2")
-async def test_exposure_reply_is_parsed(coordinator, monkeypatch) -> None:
-    protocol = coordinator.protocol
-
-    class Reply:
-        def __init__(self, text):
-            self._text = text
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return False
-
-        async def text(self):
-            return self._text
-
-    for text, value in (
-        ('{"mode":"auto","value":760}', 760),
-        ('{"code":0,"data":{"mode":"manual","value":"150"}}', 150),
+async def test_exposure_reply_is_parsed(monkeypatch) -> None:
+    protocol = _p2_protocol()
+    for reply, value in (
+        ({"mode": "auto", "value": 760}, 760),
+        ({"mode": "manual", "value": "150"}, 150),
         ("camera disabled", None),
+        (None, None),
     ):
-        session = MagicMock(get=MagicMock(return_value=Reply(text)))
-        monkeypatch.setattr(protocol, "_session", lambda s=session: s)
+        monkeypatch.setattr(protocol, "_get_json", AsyncMock(return_value=reply))
         assert await protocol.read_camera_exposure("closeup") == value
-    assert "stream=1" in session.get.call_args.args[0]
 
 
 @requires("p2_overlays_v2")
