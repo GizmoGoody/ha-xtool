@@ -510,3 +510,71 @@ def test_the_quick_red_dot_is_an_outline() -> None:
     assert image.getpixel((100 + 21, 100))[0] > 200  # 3 px outside the 40 px length
     assert image.getpixel((100, 100 + 9))[0] > 200  # and outside the 16 px width
     assert image.getpixel((100 + 30, 100)) == (0, 0, 0)
+
+
+def _lens_grid(continued: bool):
+    """A 62 x 32 grid made by a known lens; its outer points optionally continued on straight lines."""
+    import numpy as np
+
+    from custom_components.xtool.protocols.rest import p2_geometry as g
+    from custom_components.xtool.protocols.ws_v2.camera_correction import (
+        _lens_project, parse_calibration,
+    )
+
+    mm = np.array([(c * 10.0, r * 10.0) for r in range(32) for c in range(62)])
+    true_lens = np.array(g.OVERVIEW_LENS) * (1 + 0.002 * np.arange(14) / 14)
+    pixels = _lens_project(true_lens, mm).reshape(32, 62, 2)
+    if continued:
+        # As the P2's file: 6 columns each side and 2 rows at the front, evenly spaced on a line
+        for c in range(5, -1, -1):
+            pixels[:, c] = 2 * pixels[:, c + 1] - pixels[:, c + 2]
+        for c in range(56, 62):
+            pixels[:, c] = 2 * pixels[:, c - 1] - pixels[:, c - 2]
+        for r in range(30, 32):
+            pixels[r] = 2 * pixels[r - 1] - pixels[r - 2]
+    raw = {"grid_num_w": 62, "grid_num_h": 32, "image_src_w": 4656, "image_src_h": 3496,
+           "image_dst_w": 2440, "image_dst_h": 1220, "thick0": 3.0,
+           "data0": "".join(f"[{x:.4f},{y:.4f}]" for x, y in pixels.reshape(-1, 2))}
+    return parse_calibration(raw, 4.0), true_lens
+
+
+@requires("measured_bounds")
+def test_continued_grid_points_are_found_and_replaced_by_the_lens() -> None:
+    """The P2's grid is measured only in its middle; the lens takes over outside that."""
+    import numpy as np
+
+    from custom_components.xtool.protocols.rest import p2_geometry as g
+    from custom_components.xtool.protocols.ws_v2.camera_correction import (
+        _lens_project, _measured_bounds, _SurfaceMap,
+    )
+
+    calibration, true_lens = _lens_grid(continued=True)
+    assert _measured_bounds(calibration) == (7, 54, 0, 28)
+    surface = _SurfaceMap(calibration, g.OVERVIEW_LENS)
+    assert surface._bounds == (70.0, 540.0, 0.0, 280.0)
+    # Inside the grid's continued part and beyond the grid: as the lens sees
+    for point in ((0.0, 150.0), (30.0, 20.0), (600.0, 150.0), (640.0, 100.0), (300.0, 310.0), (-15.0, 250.0)):
+        expected = _lens_project(true_lens, np.array([point]))[0]
+        assert surface.photo_point(*point) == pytest.approx(tuple(expected), abs=1.5)
+        assert surface.photo_points([point])[0] == pytest.approx(tuple(expected), abs=1.5)
+    # The grid itself says otherwise there (it was continued straight)
+    straight = surface._grid(600.0, 150.0)
+    lens = _lens_project(true_lens, np.array([[600.0, 150.0]]))[0]
+    assert abs(straight[0] - lens[0]) > 5
+    # In the measured part the grid is used as it is
+    assert surface.photo_point(300.0, 150.0) == pytest.approx(surface._grid(300.0, 150.0))
+
+
+@requires("measured_bounds")
+def test_a_fully_measured_grid_is_used_whole() -> None:
+    from custom_components.xtool.protocols.rest import p2_geometry as g
+    from custom_components.xtool.protocols.ws_v2.camera_correction import (
+        _measured_bounds, _SurfaceMap,
+    )
+
+    calibration, _ = _lens_grid(continued=False)
+    assert _measured_bounds(calibration) == (0, 61, 0, 31)
+    assert _SurfaceMap(calibration, g.OVERVIEW_LENS)._bounds == (0.0, 610.0, 0.0, 310.0)
+    # Without a lens the whole grid is used, whatever its points (the F2 Ultra UV's way)
+    continued, _ = _lens_grid(continued=True)
+    assert _SurfaceMap(continued)._bounds == (0.0, 610.0, 0.0, 310.0)

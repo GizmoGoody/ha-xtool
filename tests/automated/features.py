@@ -144,6 +144,9 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "power_on_starting": lambda: "POWER_ON_STARTUP_SECONDS" in (COMPONENT / "coordinator.py").read_text(encoding="utf-8"),
     # Readings unavailable while the laser is off; lifetime totals keep their last value
     "sensors_unavailable_when_off": lambda: "LIFETIME_TOTAL_KEYS" in (COMPONENT / "entity.py").read_text(encoding="utf-8"),
+    # The lens is fitted to the measured part of a calibration grid and replaces its continued points
+    "measured_bounds": lambda: (COMPONENT / "protocols" / "ws_v2" / "camera_correction.py").exists()
+    and "def _measured_bounds" in (COMPONENT / "protocols" / "ws_v2" / "camera_correction.py").read_text(encoding="utf-8"),
     "sleep_no_slow_reads": lambda: "slow = not asleep" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
 }
 
