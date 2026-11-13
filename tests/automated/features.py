@@ -136,7 +136,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     # The WS-V2 poll does not read the settings of a sleeping laser (the read wakes it)
     # P2: one Overlay close camera, Mode overlays, Fill light (close) on the
     # Close camera, exposure read back, Wake button
-    "p2_overlays_v2": lambda: 'CLOSE_CAMERA_IMAGE = "close_camera"' in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
+    "p2_overlays_v2": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists()
+    and 'CLOSE_CAMERA_IMAGE = "close_camera"' in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     # Crop center numbers use the align-center icons
     "crop_center_icons": lambda: "mdi:format-horizontal-align-center" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     # Status Initializing while the laser starts after the Power switch turns on
