@@ -165,9 +165,11 @@ def test_any_number_of_overlays(coordinator) -> None:
     view = _view(coordinator)
     coordinator.data.position_x, coordinator.data.position_y = 100.0, 50.0
     assert _correction(coordinator)["overlay"] is None
-    view["overlay_work_bed"] = view[f"overlay_{MODE}slats_removed"] = True
+    # The Work bed is a crop, not an overlay
+    assert "overlay_work_bed" not in view
+    view[f"overlay_{MODE}honeycomb_panel"] = view[f"overlay_{MODE}slats_removed"] = True
     overlay = _correction(coordinator)["overlay"]
-    assert [a[:4] for a in overlay.areas] == [(-20.5, -40.5, 684.0, 376.0), (50.0, 0.0, 500.0, 250.0)]
+    assert [a[:4] for a in overlay.areas] == [(0.0, 0.0, 600.0, 305.0), (50.0, 0.0, 500.0, 250.0)]
     assert overlay.areas[0][4] != overlay.areas[1][4]  # each area its own colour
     assert overlay.markers == () and overlay.lines == () and overlay.spots == ()
     assert overlay.rings == ()
@@ -203,9 +205,8 @@ def test_close_camera_overlays_move_with_the_head(coordinator) -> None:
     assert not p2_view_needs_head(coordinator, "closeup")
     coordinator.data.position_x, coordinator.data.position_y = 200.0, 100.0
     # The close camera's area starts at the head plus (55, -30): (255, 70)
-    view["overlay_laser_target_closeup"] = True
-    overlay = _correction(coordinator, "closeup")["overlay"]
-    assert overlay.markers == ((-55.0, 30.0),)
+    # Where the laser fires is never in the close camera's picture: no overlay
+    assert "overlay_laser_target_closeup" not in view
     view["overlay_red_dot_close_closeup"] = True
     ring = _correction(coordinator, "closeup")["overlay"].rings[0]
     assert ring == pytest.approx((9.8, 30.7, 0.9))
@@ -284,7 +285,10 @@ def test_view_entities_are_on_the_camera_devices(coordinator) -> None:
     numbers = {e.translation_key for e in coordinator.build_numbers()}
     keys = {e.translation_key for e in coordinator.build_selects()}
     assert {"crop_preset", "processing_mode"} <= keys
-    assert {"overlay_laser_target", "overlay_red_dot_quick", "overlay_work_bed"} <= switches
+    assert {"overlay_laser_target", "overlay_red_dot_quick", "overlay_close_camera"} <= switches
+    assert "overlay_work_bed" not in switches
+    targets = [e for e in coordinator.build_switches() if e.translation_key == "overlay_laser_target"]
+    assert [e.unique_id.split("camera_", 1)[1] for e in targets] == ["overview_overlay_laser_target"]
     assert not {"slat_overlay", "overlay", "laser_target", "slat_lines"} & switches
     assert "overlay" not in keys
     assert "thickness_or_distance" in numbers
@@ -299,7 +303,7 @@ def test_view_entities_are_on_the_camera_devices(coordinator) -> None:
     # Controls: Crop, its numbers, Mode, and Thickness or distance
     assert crop.entity_category is None
     assert selects["overview_processing_mode"].entity_category is None
-    overlay = next(e for e in coordinator.build_switches() if e.translation_key == "overlay_work_bed")
+    overlay = next(e for e in coordinator.build_switches() if e.translation_key == "overlay_slat_lines")
     assert overlay.entity_category == "config"
     for number in coordinator.build_numbers():
         if number.translation_key in ("thickness_or_distance", "crop_width", "crop_center_y"):
@@ -429,13 +433,14 @@ def test_overlay_colours_come_from_the_options(coordinator, hass) -> None:
 
     hass.config_entries.async_update_entry(
         coordinator.config_entry,
-        options={CONF_OVERLAY_COLORS: {"work_bed": [1, 2, 3], "slat_lines": [4, 5, 6]}},
+        options={CONF_OVERLAY_COLORS: {"slats_removed": [1, 2, 3], "slat_lines": [4, 5, 6]}},
     )
     view = _view(coordinator)
-    view["overlay_work_bed"] = view["overlay_slat_lines"] = view[f"overlay_{MODE}process_on_slats"] = True
+    view[f"overlay_{MODE}slats_removed"] = view["overlay_slat_lines"] = True
+    view[f"overlay_{MODE}process_on_slats"] = True
     overlay = _correction(coordinator)["overlay"]
-    assert overlay.areas[0][4] == (1, 2, 3)
-    assert overlay.areas[1][4] == (60, 220, 90)  # not chosen: the default
+    assert overlay.areas[1][4] == (1, 2, 3)
+    assert overlay.areas[0][4] == (60, 220, 90)  # not chosen: the default
     assert overlay.line_color == (4, 5, 6)
 
 
@@ -445,9 +450,9 @@ def test_the_options_offer_a_colour_picker_per_overlay() -> None:
         section = data["options"]["step"]["init"]["sections"]["overlay_colors"]
         assert section["name"] == "Overlay colors"
         assert set(section["data"]) == {
-            "work_bed", "process_on_slats", "honeycomb_panel", "slats_removed",
+            "process_on_slats", "honeycomb_panel", "slats_removed",
             "studio", "custom", "laser_target", "slat_lines", "red_dots",
-        } | (set() if V2 else {"uncropped"})
+        }
         assert data["entity"]["select"]["crop_preset"]["state"]["sync_to_mode"] == "Sync to Mode"
         if V2:
             assert data["entity"]["switch"]["overlay_close_camera"]["name"] == "Overlay close camera"
@@ -471,7 +476,7 @@ async def test_a_colour_change_redraws_without_a_reload(coordinator, monkeypatch
     camera.refresh_picture = AsyncMock()
     _thumbnail_registry(coordinator).cameras["overview"] = camera
     coordinator.hass.config_entries.async_update_entry(
-        entry, options={**entry.options, CONF_OVERLAY_COLORS: {"work_bed": [1, 2, 3]}},
+        entry, options={**entry.options, CONF_OVERLAY_COLORS: {"slat_lines": [1, 2, 3]}},
     )
     await _async_options_updated(coordinator.hass, entry)
     reload.assert_not_awaited()
@@ -491,3 +496,17 @@ def test_the_whole_photo_follows_the_lens() -> None:
     first = photo_size_mm(calibration)
     assert first == photo_size_mm(calibration)
     assert _surface_map(calibration, None)._photo_size == first
+
+
+def test_the_quick_red_dot_is_an_outline() -> None:
+    """Like the close dot's ring: the spot's inside is left as the camera sees it."""
+    from PIL import Image
+
+    from custom_components.xtool.protocols.ws_v2.camera_correction import Overlay, _draw_overlay
+
+    image = Image.new("RGB", (200, 200), (0, 0, 0))
+    _draw_overlay(image, Overlay(spots=((50, 50, 20, 8, 0),), spot_color=(255, 0, 0)), 0, 0, 2.0)
+    assert image.getpixel((100, 100)) == (0, 0, 0)  # the middle is not painted
+    assert image.getpixel((100 + 21, 100))[0] > 200  # 3 px outside the 40 px length
+    assert image.getpixel((100, 100 + 9))[0] > 200  # and outside the 16 px width
+    assert image.getpixel((100 + 30, 100)) == (0, 0, 0)
