@@ -19,7 +19,7 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 
 from .conftest import SERIAL, build_coordinator
-from .features import requires
+from .features import has, requires
 from .test_camera_correction import GRID, _photo
 
 pytestmark = requires("camera_devices")
@@ -175,8 +175,12 @@ def test_crop_numbers(hass: HomeAssistant) -> None:
     height = _number(coordinator, "camera_main_view_height")
     center_x = _number(coordinator, "camera_main_view_center_x")
     center_y = _number(coordinator, "camera_main_view_center_y")
-    assert center_x.icon == "mdi:arrow-left-right"
-    assert center_y.icon == "mdi:arrow-up-down"
+    if has("crop_center_icons"):
+        assert center_x.icon == "mdi:format-horizontal-align-center"
+        assert center_y.icon == "mdi:format-vertical-align-center"
+    else:
+        assert center_x.icon == "mdi:arrow-left-right"
+        assert center_y.icon == "mdi:arrow-up-down"
     for number in (width, height, center_x, center_y):
         # Not a distance: the xtool.focus picker lists only Focus height.
         assert number.device_class is None

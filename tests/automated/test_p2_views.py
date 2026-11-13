@@ -11,7 +11,11 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .conftest import build_coordinator
-from .features import COMPONENT, requires
+from .features import COMPONENT, has, requires
+
+# The Mode areas' overlays are "overlay_mode_<mode>" since one Overlay close camera
+V2 = has("p2_overlays_v2")
+MODE = "mode_" if V2 else ""
 from .test_camera_correction import GRID, _photo
 
 pytestmark = requires("p2_views")
@@ -161,7 +165,7 @@ def test_any_number_of_overlays(coordinator) -> None:
     view = _view(coordinator)
     coordinator.data.position_x, coordinator.data.position_y = 100.0, 50.0
     assert _correction(coordinator)["overlay"] is None
-    view["overlay_work_bed"] = view["overlay_slats_removed"] = True
+    view["overlay_work_bed"] = view[f"overlay_{MODE}slats_removed"] = True
     overlay = _correction(coordinator)["overlay"]
     assert [a[:4] for a in overlay.areas] == [(-20.5, -40.5, 684.0, 376.0), (50.0, 0.0, 500.0, 250.0)]
     assert overlay.areas[0][4] != overlay.areas[1][4]  # each area its own colour
@@ -182,8 +186,9 @@ def test_any_number_of_overlays(coordinator) -> None:
     labels = [line[4] for line in overlay.lines]
     assert labels[:3] == ["", "23", ""] and labels[23:25] == ["1", "1"]
     assert all(label == "" or int(label) % 2 for label in labels)
-    view["overlay_close_camera_studio"] = True
-    assert overlay_rects(_correction(coordinator))[-1] == (155.0, 20.0, 140.0, 100.0)
+    if not V2:
+        view["overlay_close_camera_studio"] = True
+        assert overlay_rects(_correction(coordinator))[-1] == (155.0, 20.0, 140.0, 100.0)
 
 
 def overlay_rects(correction):
@@ -207,11 +212,16 @@ def test_close_camera_overlays_move_with_the_head(coordinator) -> None:
     view["overlay_slat_lines_closeup"] = True
     lines = _correction(coordinator, "closeup")["overlay"].lines
     assert len(lines) == 47 and lines[23][0] == pytest.approx(327.5 - 6.6 - 255)
-    view["overlay_overview_process_on_slats_closeup"] = True
     view["overlay_studio_closeup"] = True
-    assert overlay_rects(_correction(coordinator, "closeup")) == [
-        (0.0, 0.0, 140.0, 100.0), (-255.0, -70.0, 600.0, 305.0),
-    ]
+    if V2:
+        # The overview's areas are no longer drawn on the close camera
+        assert "overlay_overview_process_on_slats_closeup" not in view
+        assert overlay_rects(_correction(coordinator, "closeup")) == [(0.0, 0.0, 140.0, 100.0)]
+    else:
+        view["overlay_overview_process_on_slats_closeup"] = True
+        assert overlay_rects(_correction(coordinator, "closeup")) == [
+            (0.0, 0.0, 140.0, 100.0), (-255.0, -70.0, 600.0, 305.0),
+        ]
     assert p2_view_needs_head(coordinator, "closeup")
 
 
@@ -302,10 +312,11 @@ async def test_a_setting_change_refreshes_the_picture(coordinator) -> None:
     camera = MagicMock()
     camera.refresh_picture = AsyncMock()
     _thumbnail_registry(coordinator).cameras["overview"] = camera
-    switch = next(e for e in coordinator.build_switches() if e.translation_key == "overlay_slats_removed")
+    key = f"overlay_{MODE}slats_removed"
+    switch = next(e for e in coordinator.build_switches() if e.translation_key == key)
     switch.async_write_ha_state = MagicMock()
     await switch.async_turn_on()
-    assert _view(coordinator)["overlay_slats_removed"] is True
+    assert _view(coordinator)[key] is True
     camera.refresh_picture.assert_awaited_once()
 
 
@@ -319,7 +330,13 @@ def test_names_and_states() -> None:
         assert data["select"]["crop_preset"]["state"]["uncropped"] == "Uncropped"
         assert "overlay" not in data["select"]
         assert data["switch"]["overlay_laser_target"]["name"] == "Overlay laser target"
-        assert data["switch"]["overlay_overview_work_bed"]["name"] == "Overlay overview (work bed)"
+        if V2:
+            assert data["switch"]["overlay_mode_slats_removed"]["name"] == "Overlay mode slats removed"
+            assert data["switch"]["overlay_close_camera"]["name"] == "Overlay close camera"
+            assert not [k for k in data["switch"] if k.startswith("overlay_overview_")]
+            assert data["button"]["wake"]["name"] == "Wake"
+        else:
+            assert data["switch"]["overlay_overview_work_bed"]["name"] == "Overlay overview (work bed)"
         assert data["switch"]["overlay_red_dot_quick"]["name"] == "Overlay red dot (quick)"
         assert data["button"]["measure_thickness_or_distance"]["name"] == (
             "Measure thickness or distance"
@@ -400,7 +417,7 @@ def test_the_close_cameras_picture_on_the_overview(coordinator) -> None:
     close._calibration = None
     _thumbnail_registry(coordinator).cameras["closeup"] = close
     coordinator.data.position_x, coordinator.data.position_y = 200.0, 100.0
-    _view(coordinator)["overlay_close_camera_image"] = True
+    _view(coordinator)["overlay_close_camera" if V2 else "overlay_close_camera_image"] = True
     overlay = _correction(coordinator)["overlay"]
     # At the close camera's crop (Custom: as Studio shows it), where it is
     assert overlay.images == ((255.0, 70.0, 140.0, 100.0, b"close-jpeg"),)
@@ -414,7 +431,7 @@ def test_overlay_colours_come_from_the_options(coordinator, hass) -> None:
         options={CONF_OVERLAY_COLORS: {"work_bed": [1, 2, 3], "slat_lines": [4, 5, 6]}},
     )
     view = _view(coordinator)
-    view["overlay_work_bed"] = view["overlay_slat_lines"] = view["overlay_process_on_slats"] = True
+    view["overlay_work_bed"] = view["overlay_slat_lines"] = view[f"overlay_{MODE}process_on_slats"] = True
     overlay = _correction(coordinator)["overlay"]
     assert overlay.areas[0][4] == (1, 2, 3)
     assert overlay.areas[1][4] == (60, 220, 90)  # not chosen: the default
@@ -427,13 +444,16 @@ def test_the_options_offer_a_colour_picker_per_overlay() -> None:
         section = data["options"]["step"]["init"]["sections"]["overlay_colors"]
         assert section["name"] == "Overlay colors"
         assert set(section["data"]) == {
-            "work_bed", "process_on_slats", "honeycomb_panel", "slats_removed", "uncropped",
+            "work_bed", "process_on_slats", "honeycomb_panel", "slats_removed",
             "studio", "custom", "laser_target", "slat_lines", "red_dots",
-        }
+        } | (set() if V2 else {"uncropped"})
         assert data["entity"]["select"]["crop_preset"]["state"]["sync_to_mode"] == "Sync to Mode"
-        assert data["entity"]["switch"]["overlay_close_camera_image"]["name"] == (
-            "Overlay close camera (image)"
-        )
+        if V2:
+            assert data["entity"]["switch"]["overlay_close_camera"]["name"] == "Overlay close camera"
+        else:
+            assert data["entity"]["switch"]["overlay_close_camera_image"]["name"] == (
+                "Overlay close camera (image)"
+            )
 
 
 async def test_a_colour_change_redraws_without_a_reload(coordinator, monkeypatch) -> None:

@@ -57,7 +57,14 @@ def test_p2_entities_use_studio_names(coordinator) -> None:
     else:
         expected.add("safety_lock")
     views = has("p2_views")  # the cameras' view settings
-    if views:
+    if views and has("p2_overlays_v2"):
+        expected |= {
+            "overlay_work_bed", "overlay_mode_process_on_slats", "overlay_mode_honeycomb_panel",
+            "overlay_mode_slats_removed", "overlay_close_camera", "overlay_studio",
+            "overlay_custom", "overlay_laser_target", "overlay_slat_lines",
+            "overlay_red_dot_close", "overlay_red_dot_quick",
+        }
+    elif views:
         expected |= {
             "overlay_work_bed", "overlay_process_on_slats", "overlay_honeycomb_panel",
             "overlay_slats_removed", "overlay_close_camera_uncropped",

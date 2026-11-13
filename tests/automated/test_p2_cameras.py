@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .conftest import SERIAL, build_coordinator
-from .features import requires
+from .features import has, requires
 from .test_camera_correction import GRID, _photo
 
 pytestmark = requires("p2_cameras")
@@ -70,7 +70,8 @@ def test_close_fill_light_is_on_the_close_camera(coordinator) -> None:
     lights = {e.unique_id.removeprefix(f"{SERIAL}_"): e for e in coordinator.build_lights()}
     close = lights["fill_light_1"]
     assert _ids(close) == {(DOMAIN, f"{SERIAL}:camera_closeup")}
-    assert close.translation_key == "fill_light"
+    # Fill light (close), also on the Close camera's device
+    assert close.translation_key == ("fill_light_1" if has("p2_overlays_v2") else "fill_light")
     assert (DOMAIN, SERIAL) in _ids(lights["fill_light_2"])
 
 
@@ -188,3 +189,85 @@ async def test_camera_action_refuses_values_outside_the_p2_limits(coordinator) -
     assert error.value.translation_placeholders["maximum"] == f"{maximum:g}"
     camera.refresh_picture.assert_not_awaited()
 
+
+
+@requires("p2_overlays_v2")
+async def test_exposure_is_read_back(coordinator, monkeypatch) -> None:
+    """Each camera's exposure comes from the P2, except while it sleeps."""
+    from custom_components.xtool.const import XtoolStatus
+    from custom_components.xtool.protocols.base import XtoolDeviceState
+
+    protocol = coordinator.protocol
+    asked = []
+
+    async def read(camera_name):
+        asked.append(camera_name)
+        return {"overview": 760, "closeup": 150}[camera_name]
+
+    monkeypatch.setattr(protocol, "read_camera_exposure", read)
+    monkeypatch.setattr(protocol, "_get_json", AsyncMock(return_value=None))
+    state = XtoolDeviceState()
+    state.status = XtoolStatus.IDLE
+    await protocol._read_slow(state)
+    assert (state.camera_exposure_overview, state.camera_exposure_closeup) == (760, 150)
+    asked.clear()
+    state.status = XtoolStatus.SLEEPING
+    await protocol._read_slow(state)
+    assert asked == []  # the cameras' port would wake it
+
+
+@requires("p2_overlays_v2")
+async def test_exposure_reply_is_parsed(coordinator, monkeypatch) -> None:
+    protocol = coordinator.protocol
+
+    class Reply:
+        def __init__(self, text):
+            self._text = text
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def text(self):
+            return self._text
+
+    for text, value in (
+        ('{"mode":"auto","value":760}', 760),
+        ('{"code":0,"data":{"mode":"manual","value":"150"}}', 150),
+        ("camera disabled", None),
+    ):
+        session = MagicMock(get=MagicMock(return_value=Reply(text)))
+        monkeypatch.setattr(protocol, "_session", lambda s=session: s)
+        assert await protocol.read_camera_exposure("closeup") == value
+    assert "stream=1" in session.get.call_args.args[0]
+
+
+@requires("p2_overlays_v2")
+async def test_exposure_refuses_no_number(coordinator) -> None:
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.xtool.protocols.rest import p2_entities
+
+    coordinator.protocol.set_camera_exposure = AsyncMock()
+    number = p2_entities.P2CameraExposure(coordinator, "closeup")
+    with pytest.raises(HomeAssistantError):
+        await number.async_set_native_value(float("nan"))
+    coordinator.protocol.set_camera_exposure.assert_not_awaited()
+
+
+@requires("p2_overlays_v2")
+async def test_wake_takes_one_photo(coordinator) -> None:
+    from homeassistant.exceptions import HomeAssistantError
+
+    buttons = {b.translation_key: b for b in coordinator.build_buttons()}
+    wake = buttons["wake"]
+    coordinator.protocol.camera_snap = AsyncMock(return_value=b"jpeg")
+    coordinator.async_request_refresh = AsyncMock()
+    await wake.async_press()
+    coordinator.protocol.camera_snap.assert_awaited_once_with("overview")
+    coordinator.async_request_refresh.assert_awaited_once()
+    coordinator.protocol.camera_snap = AsyncMock(side_effect=ConnectionError("off"))
+    with pytest.raises(HomeAssistantError):
+        await wake.async_press()
