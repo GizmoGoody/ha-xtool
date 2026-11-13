@@ -578,6 +578,15 @@ class P2Protocol(RestProtocol):
 
     async def _read_slow(self, state: XtoolDeviceState) -> None:
         """Values that change rarely."""
+        if state.status != XtoolStatus.SLEEPING:
+            # The cameras' port is left alone while the P2 sleeps (a photo wakes it)
+            for camera_name, attr in (
+                ("overview", "camera_exposure_overview"),
+                ("closeup", "camera_exposure_closeup"),
+            ):
+                value = await self.read_camera_exposure(camera_name)
+                if value is not None:
+                    setattr(state, attr, value)
         for path, attr in (
             ("/peripheral/cooling_fan?action=get", "cooling_fan_running"),
             ("/peripheral/smoking_fan?action=get", "smoking_fan_running"),
@@ -726,6 +735,21 @@ class P2Protocol(RestProtocol):
                 raise ConnectionError(f"P2 {camera_name} photo: HTTP {resp.status}")
             return await resp.read()
 
+    async def read_camera_exposure(self, camera_name: str) -> int | None:
+        """A camera's exposure (``GET /camera/exposure`` on port 8329)."""
+        stream = self.CAMERA_STREAMS[camera_name]
+        offline = self._offline_until
+        reply = await self._get_json(
+            f"http://{self.host}:{REST_CAMERA_PORT}/camera/exposure?stream={stream}",
+        )
+        # The cameras' port not answering does not make the P2 unreachable
+        self._offline_until = offline
+        value = reply.get("value") if isinstance(reply, dict) else None
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
+
     async def camera_calibration_file(self, file_name: str) -> bytes | None:
         """A camera's calibration, as Studio downloads it (``/file?action=download``)."""
         text = await self._request(
@@ -748,7 +772,8 @@ class P2Protocol(RestProtocol):
     ) -> Any:
         if self._is_offline():
             return None
-        url = f"{self._base_url}{path}"
+        # A path, or a whole URL (the cameras' port)
+        url = path if path.startswith("http") else f"{self._base_url}{path}"
         try:
             async with self._session().request(
                 method, url, json=data, timeout=aiohttp.ClientTimeout(total=timeout),
