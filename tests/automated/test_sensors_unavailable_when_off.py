@@ -28,7 +28,9 @@ def test_only_totals_stay_when_the_laser_cannot_be_reached(hass: HomeAssistant, 
     hass.states.async_set(POWER_SWITCH, "on")
     seen_totals = set()
     for coordinator, entities in _entities(hass):
-        assert all(e.available for e in entities)
+        # Some need more than a reachable laser (an accessory, a reading)
+        entities = [e for e in entities if e.available]
+        assert entities
         coordinator.data.available = False
         for entity in entities:
             assert entity.available is (entity.translation_key in TOTALS), entity.translation_key
