@@ -142,6 +142,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "crop_center_icons": lambda: "mdi:format-horizontal-align-center" in (COMPONENT / "protocols" / "ws_v2" / "entities.py").read_text(encoding="utf-8"),
     # Status Initializing while the laser starts after the Power switch turns on
     "power_on_starting": lambda: "POWER_ON_STARTUP_SECONDS" in (COMPONENT / "coordinator.py").read_text(encoding="utf-8"),
+    # Readings unavailable while the laser is off; lifetime totals keep their last value
+    "sensors_unavailable_when_off": lambda: "LIFETIME_TOTAL_KEYS" in (COMPONENT / "entity.py").read_text(encoding="utf-8"),
     "sleep_no_slow_reads": lambda: "slow = not asleep" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
 }
 
