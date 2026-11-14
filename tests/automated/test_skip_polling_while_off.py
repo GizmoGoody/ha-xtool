@@ -67,5 +67,4 @@ async def test_a_failed_poll_names_its_error(hass: HomeAssistant, config_entry, 
             except Exception:  # noqa: BLE001
                 pass
         # The error with its type, such as TimeoutError()
-        assert re.search(r"(poll|polling)[^
-]*: \w+Error\(", caplog.text), model.model_id
+        assert re.search(r"(poll failed|Error polling).*: \w+Error\(", caplog.text), model.model_id
