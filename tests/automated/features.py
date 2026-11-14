@@ -147,6 +147,9 @@ FEATURES: dict[str, Callable[[], bool]] = {
     # The lens is fitted to the measured part of a calibration grid and replaces its continued points
     "measured_bounds": lambda: (COMPONENT / "protocols" / "ws_v2" / "camera_correction.py").exists()
     and "def _measured_bounds" in (COMPONENT / "protocols" / "ws_v2" / "camera_correction.py").read_text(encoding="utf-8"),
+    # P2 head travel 610 x 305 (where the P2 stops), not Studio's 620 x 308
+    "p2_real_travel": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists()
+    and "P2_HEAD_MAX_X = 610.0" in (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8"),
     "sleep_no_slow_reads": lambda: "slow = not asleep" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
 }
 

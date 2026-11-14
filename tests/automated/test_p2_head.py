@@ -12,7 +12,10 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .conftest import build_coordinator
-from .features import COMPONENT, requires
+from .features import has, COMPONENT, requires
+
+# Where the P2's head stops (Studio's limits were used before)
+MAX_X, MAX_Y = (610, 305) if has("p2_real_travel") else (620, 308)
 
 pytestmark = requires("p2_head_controls")
 
@@ -39,8 +42,8 @@ def _numbers(coordinator):
 
 def test_positions_are_numbers_not_sensors(coordinator) -> None:
     numbers = _numbers(coordinator)
-    assert numbers["laser_position_x"].native_max_value == 620
-    assert numbers["laser_position_y"].native_max_value == 308
+    assert numbers["laser_position_x"].native_max_value == MAX_X
+    assert numbers["laser_position_y"].native_max_value == MAX_Y
     assert numbers["laser_position_x"].mode == "box"
     sensors = {e.translation_key for e in coordinator.build_sensors()}
     assert not {"laser_position_x", "laser_position_y"} & sensors
@@ -102,13 +105,13 @@ async def test_both_positions_need_no_read(coordinator) -> None:
 async def test_a_move_past_the_limit_stops_there_and_says_so(coordinator) -> None:
     with pytest.raises(HomeAssistantError) as err:
         await _move(coordinator, step_x=-40.0, steps=3, y=400.0)
-    coordinator.protocol.move_laser_head.assert_awaited_once_with(0.0, 308.0)
+    coordinator.protocol.move_laser_head.assert_awaited_once_with(0.0, float(MAX_Y))
     assert str(err.value) == (
         "Laser head: X moved to 0.00 mm, the lower limit. 3 steps of -40.00 mm "
-        "from 100.00 mm would have gone to -20.00 mm. Y moved to 308.00 mm, the "
-        "upper limit. 400.00 mm is outside 0-308 mm."
+        f"from 100.00 mm would have gone to -20.00 mm. Y moved to {MAX_Y}.00 mm, the "
+        f"upper limit. 400.00 mm is outside 0-{MAX_Y} mm."
     )
-    assert (coordinator.data.position_x, coordinator.data.position_y) == (0.0, 308.0)
+    assert (coordinator.data.position_x, coordinator.data.position_y) == (0.0, float(MAX_Y))
 
 
 async def test_moves_run_one_at_a_time_from_where_the_last_ended(coordinator) -> None:
