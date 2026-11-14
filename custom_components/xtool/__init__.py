@@ -17,6 +17,7 @@ from homeassistant.helpers import entity_registry as er
 from .const import (
     CONF_DONGLE_POLL_INTERVAL,
     CONF_ENABLE_UPDATES,
+    CONF_PAIRING_TOKEN,
     CONF_FIRMWARE_CHECK_INTERVAL,
     CONF_POWER_SWITCH,
     CONF_SCAN_INTERVAL,
@@ -33,7 +34,7 @@ from .const import (
 # Imported the other way round, the family modules ask for XtoolCoordinator
 # before coordinator.py has defined it, and the first import of the package
 # fails (Home Assistant then retries it inside the event loop).
-from .protocols import DEVICE_MODELS, LaserInfo, detect_model  # isort: skip
+from .protocols import DEVICE_MODELS, LaserInfo, WSV2Protocol, detect_model  # isort: skip
 from .coordinator import XtoolCoordinator  # isort: skip
 from .services import async_setup_services  # isort: skip
 
@@ -191,6 +192,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: XtoolConfigEntry) -> boo
     # V1/V2 switching is needed at runtime — the right entry was picked
     # at config-flow validation time.
     protocol = model.protocol_class(host)
+    if isinstance(protocol, WSV2Protocol):
+        protocol.pairing_token = entry.data.get(CONF_PAIRING_TOKEN, "")
+
+        def _store_pairing_token(token: str) -> None:
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, CONF_PAIRING_TOKEN: token},
+            )
+
+        protocol.on_pairing_token = _store_pairing_token
 
     coordinator = model.coordinator_class(
         hass,
@@ -256,6 +266,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: XtoolConfigEntry) -> boo
 
     if coordinator.power_switch_entity_id:
         entry.async_on_unload(coordinator.async_track_power_switch())
+    coordinator.options_snapshot = dict(entry.options)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     return True
@@ -416,8 +427,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: XtoolConfigEntry) -> bo
 async def _async_options_updated(
     hass: HomeAssistant, entry: XtoolConfigEntry
 ) -> None:
-    """Reload integration when options change."""
+    """Reload integration when options change.
+
+    Also fires on entry.data updates (a new address, a rotated pairing
+    token), which must not reload the running connection.
+    """
     coordinator = getattr(entry, "runtime_data", None)
+    if coordinator is not None and dict(entry.options) == coordinator.options_snapshot:
+        return
     made_update = getattr(coordinator, "made_entry_update", None)
     if made_update is not None and made_update(entry):
         # The coordinator saved its new address; it already uses it
@@ -434,6 +451,7 @@ async def _async_options_updated(
             from .protocols.ws_v2.entities import _thumbnail_registry
 
             coordinator.options_at_setup = dict(entry.options)
+            coordinator.options_snapshot = dict(entry.options)
             for camera in list(_thumbnail_registry(coordinator).cameras.values()):
                 await camera.refresh_picture()
             return
