@@ -139,7 +139,10 @@ async def test_reads_stop_after_the_tries() -> None:
 def test_a_reconnect_forgets_the_old_ready_flag() -> None:
     from custom_components.xtool.protocols.ws_v2.protocol import WSV2Protocol
 
-    source = inspect.getsource(WSV2Protocol._open_instruction_ws)
+    # Split into _open_and_handshake by pairing (#26)
+    source = inspect.getsource(
+        getattr(WSV2Protocol, "_open_and_handshake", WSV2Protocol._open_instruction_ws)
+    )
     assert "self._uv_ready = None" in source
     assert "self._status_read_tries = 0" in source
 

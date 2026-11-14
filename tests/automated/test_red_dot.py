@@ -79,7 +79,11 @@ def test_connect_sets_the_assumption() -> None:
 
     text = (Path(__file__).resolve().parents[2] / "custom_components" / "xtool"
             / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8")
-    body = text[text.index("    async def _open_instruction_ws("):]
+    # The connection is opened in _open_instruction_ws, or in
+    # _open_and_handshake where pairing (#26) split it
+    name = ("    async def _open_and_handshake(" if "    async def _open_and_handshake(" in text
+            else "    async def _open_instruction_ws(")
+    body = text[text.index(name):]
     body = body[: body.find("\n    async def ", 10)]
     assert "self._assume_red_dot_on = True" in body
     assert "self._red_dot_reported = False" in body
