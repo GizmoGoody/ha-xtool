@@ -274,6 +274,7 @@ def test_zero_shows_the_whole_photo() -> None:
         assert pixel[0] > 200 and pixel[1] < 60
 
 
+@requires("camera_limits_per_camera")
 def test_action_schema() -> None:
     from custom_components.xtool.services import CAMERA_SCHEMA
 
@@ -285,6 +286,7 @@ def test_action_schema() -> None:
         schema({"crop_width": "wide"})
 
 
+@requires("camera_limits_per_camera")
 async def test_action_refuses_values_outside_the_f2uv_limits(hass: HomeAssistant) -> None:
     from custom_components.xtool.services import _async_camera
 

@@ -157,6 +157,8 @@ FEATURES: dict[str, Callable[[], bool]] = {
     "skip_polling_while_off": lambda: "async def _async_poll" in (COMPONENT / "coordinator.py").read_text(encoding="utf-8"),
     # A failed poll's error is logged with its type
     "poll_error_type": lambda: '"WS-V2 poll failed: %r"' in (COMPONENT / "protocols" / "ws_v2" / "coordinator.py").read_text(encoding="utf-8"),
+    # xtool.camera checks crop values against each camera's own limits
+    "camera_limits_per_camera": lambda: "camera_value_out_of_range" in (COMPONENT / "services.py").read_text(encoding="utf-8"),
     "sleep_no_slow_reads": lambda: "slow = not asleep" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
 }
 
