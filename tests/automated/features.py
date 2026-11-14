@@ -153,6 +153,10 @@ FEATURES: dict[str, Callable[[], bool]] = {
     # P2 Measure reads the sensor's own distance, after the sensor has started
     "p2_sensor_distance": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists()
     and "P2_SENSOR_START_SECONDS" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
+    # A laser whose Power switch is off is not polled
+    "skip_polling_while_off": lambda: "async def _async_poll" in (COMPONENT / "coordinator.py").read_text(encoding="utf-8"),
+    # A failed poll's error is logged with its type
+    "poll_error_type": lambda: '"WS-V2 poll failed: %r"' in (COMPONENT / "protocols" / "ws_v2" / "coordinator.py").read_text(encoding="utf-8"),
     "sleep_no_slow_reads": lambda: "slow = not asleep" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
 }
 
