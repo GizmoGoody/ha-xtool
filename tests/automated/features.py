@@ -150,6 +150,9 @@ FEATURES: dict[str, Callable[[], bool]] = {
     # P2 head travel 610 x 305 (where the P2 stops), not Studio's 620 x 308
     "p2_real_travel": lambda: (COMPONENT / "protocols" / "rest" / "p2.py").exists()
     and "P2_HEAD_MAX_X = 610.0" in (COMPONENT / "protocols" / "rest" / "p2.py").read_text(encoding="utf-8"),
+    # P2 Measure reads the sensor's own distance, after the sensor has started
+    "p2_sensor_distance": lambda: (COMPONENT / "protocols" / "rest" / "p2_entities.py").exists()
+    and "P2_SENSOR_START_SECONDS" in (COMPONENT / "protocols" / "rest" / "p2_entities.py").read_text(encoding="utf-8"),
     "sleep_no_slow_reads": lambda: "slow = not asleep" in (COMPONENT / "protocols" / "ws_v2" / "protocol.py").read_text(encoding="utf-8"),
 }
 

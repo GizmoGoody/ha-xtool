@@ -230,20 +230,36 @@ def test_measure_offset_reads_the_p2_setting() -> None:
     assert proto.measure_offset(state) == {"x": 64.3, "y": 0.9, "z": 136.7}
 
 
-async def test_measure_gives_the_thickness_and_where(coordinator) -> None:
-    from custom_components.xtool.protocols.rest.p2_entities import P2Measured
+def _measure_setup(coordinator, monkeypatch, readings):
+    from custom_components.xtool.protocols.rest import p2_entities
 
-    # The P2 replies with the thickness (Z minus what the sensor read), and
-    # reads only while the close red dot is on
-    coordinator.protocol.measure_material = AsyncMock(
-        return_value={"distance": 6.0, "coord_x": 10.0, "coord_y": 20.0}
-    )
+    waits = []
+
+    async def sleep(seconds):
+        waits.append(seconds)
+
+    monkeypatch.setattr(p2_entities.asyncio, "sleep", sleep)
+    coordinator.protocol.measure_material = AsyncMock(side_effect=readings)
     coordinator.protocol.measure_offset = MagicMock(return_value={"x": 64.3, "y": 0.9, "z": 136.7})
     coordinator.protocol.set_ir_led = AsyncMock()
     coordinator.data.ir_led_close = False
     buttons = {e.translation_key: e for e in coordinator.build_buttons()}
-    await buttons["measure_thickness_or_distance"].async_press()
+    return buttons["measure_thickness_or_distance"], waits
+
+
+@requires("p2_sensor_distance")
+async def test_measure_gives_the_thickness_and_where(coordinator, monkeypatch) -> None:
+    from custom_components.xtool.protocols.rest import p2_entities
+    from custom_components.xtool.protocols.rest.p2_entities import P2Measured
+
+    # The sensor's own distance; the thickness is Z minus it
+    button, waits = _measure_setup(coordinator, monkeypatch, [
+        {"distance": 130.7, "coord_x": 10.0, "coord_y": 20.0},
+    ])
+    await button.async_press()
     assert [c.args for c in coordinator.protocol.set_ir_led.await_args_list] == [(1, True), (1, False)]
+    # The sensor starts with the red dot: it is not asked before
+    assert waits == [p2_entities.P2_SENSOR_START_SECONDS]
     assert coordinator.data.last_distance_mm == 130.7
     # The result goes into Thickness or distance, as the Mode takes it
     assert coordinator._p2_view["thickness_or_distance"] == 6.0
@@ -258,54 +274,100 @@ async def test_measure_gives_the_thickness_and_where(coordinator) -> None:
     assert measured.native_value == 19.0  # Studio's distance
 
 
+@requires("p2_sensor_distance")
 async def test_measure_asks_again_until_the_sensor_has_read(coordinator, monkeypatch) -> None:
     from custom_components.xtool.protocols.rest import p2_entities
 
-    monkeypatch.setattr(p2_entities, "P2_MEASURE_RETRY_SECONDS", 0)
-    # Just after the red dot turns on, the reply is Z: no reading yet
-    coordinator.protocol.measure_material = AsyncMock(side_effect=[
-        {"distance": 136.7}, {"distance": 1.5, "coord_x": 0.0, "coord_y": 0.0},
+    # 0: no reading yet; -1: the P2 could not talk to the sensor
+    button, waits = _measure_setup(coordinator, monkeypatch, [
+        {"distance": 0.0}, {"distance": -1.0}, {"distance": 135.2, "coord_x": 0.0, "coord_y": 0.0},
     ])
-    coordinator.protocol.measure_offset = MagicMock(return_value={"x": 64.3, "y": 0.9, "z": 136.7})
-    coordinator.protocol.set_ir_led = AsyncMock()
-    coordinator.data.ir_led_close = False
-    buttons = {e.translation_key: e for e in coordinator.build_buttons()}
-    await buttons["measure_thickness_or_distance"].async_press()
+    await button.async_press()
     assert coordinator.data.measured_thickness_mm == 1.5
-    assert coordinator.protocol.measure_material.await_count == 2
+    assert coordinator.protocol.measure_material.await_count == 3
     # A sensor that never reads says so, and the dot is turned off again
-    coordinator.protocol.measure_material = AsyncMock(return_value={"distance": 136.7})
+    coordinator.protocol.measure_material = AsyncMock(return_value={"distance": 0.0})
     coordinator.protocol.set_ir_led.reset_mock()
     with pytest.raises(HomeAssistantError, match="did not read"):
-        await buttons["measure_thickness_or_distance"].async_press()
+        await button.async_press()
     assert coordinator.protocol.measure_material.await_count == p2_entities.P2_MEASURE_TRIES
     assert [c.args for c in coordinator.protocol.set_ir_led.await_args_list] == [(1, True), (1, False)]
+    assert coordinator.data.measured_thickness_mm == 1.5
 
 
-async def test_a_measure_without_a_reply_says_so(coordinator) -> None:
-    coordinator.protocol.measure_material = AsyncMock(return_value=None)
-    coordinator.protocol.set_ir_led = AsyncMock()
-    coordinator.data.ir_led_close = True  # left on: not turned off
-    buttons = {e.translation_key: e for e in coordinator.build_buttons()}
+@requires("p2_sensor_distance")
+async def test_a_measure_the_mode_cannot_take_is_refused(coordinator, monkeypatch) -> None:
+    # Process on slats takes 0 to 25 mm: 177.4 mm read is 40.7 mm below the slats
+    button, _ = _measure_setup(coordinator, monkeypatch, [
+        {"distance": 177.4, "coord_x": 0.0, "coord_y": 0.0},
+        {"distance": 177.4, "coord_x": 0.0, "coord_y": 0.0},
+    ])
+    before = coordinator._p2_view["thickness_or_distance"]
+    with pytest.raises(HomeAssistantError, match="outside this Mode's 0 to 25 mm"):
+        await button.async_press()
+    assert coordinator._p2_view["thickness_or_distance"] == before
+    assert coordinator.data.measured_thickness_mm is None
+    # Slats removed takes it: 65.7 mm down from 25 mm above the slats
+    coordinator._p2_view["processing_mode"] = "slats_removed"
+    await button.async_press()
+    assert coordinator._p2_view["thickness_or_distance"] == 65.7
+
+
+@requires("p2_sensor_distance")
+async def test_a_measure_without_a_reply_says_so(coordinator, monkeypatch) -> None:
+    button, waits = _measure_setup(coordinator, monkeypatch, [None])
+    coordinator.data.ir_led_close = True  # left on: not turned off, no wait
     with pytest.raises(HomeAssistantError):
-        await buttons["measure_thickness_or_distance"].async_press()
+        await button.async_press()
     coordinator.protocol.set_ir_led.assert_not_awaited()
+    assert waits == []
+    # Without the P2's sensor setting there is no thickness
+    coordinator.protocol.measure_offset = MagicMock(return_value={})
+    with pytest.raises(HomeAssistantError, match="laserMeasureOffset"):
+        await button.async_press()
 
 
+@requires("p2_sensor_distance")
 async def test_the_protocol_reads_the_position_and_the_measurement(monkeypatch) -> None:
     from custom_components.xtool.protocols.rest.p2 import P2Protocol
 
     proto = P2Protocol("127.0.0.1")
-    replies = {
-        "/peripheral/laser_head": {"x": 1.5, "y": 2, "z": 0},
-        "/peripheral/ir_measure_distance": {"distance": 136.7, "coord_x": 0, "coord_y": 0},
-    }
+    replies = {"/peripheral/laser_head": {"x": 1.5, "y": 2, "z": 0}}
 
     async def post_json(path, data=None, timeout=5.0):
         return replies.get(path)
 
+    async def get_json(path, timeout=5.0):
+        assert path == "/peripheral/quest/ir_measure_distance"
+        return {"distance": 134.9, "coord_x": 0, "coord_y": 0}
+
     monkeypatch.setattr(proto, "_post_json", post_json)
+    monkeypatch.setattr(proto, "_get_json", get_json)
     assert await proto.read_head_position() == (1.5, 2.0)
-    assert await proto.measure_material() == {"distance": 136.7, "coord_x": 0.0, "coord_y": 0.0}
+    assert await proto.measure_material() == {"distance": 134.9, "coord_x": 0.0, "coord_y": 0.0}
     replies["/peripheral/laser_head"] = {"x": None}
     assert await proto.read_head_position() is None
+
+
+@requires("p2_sensor_distance")
+def test_the_p2s_warnings_go_to_the_log(caplog) -> None:
+    from custom_components.xtool.protocols.base import XtoolDeviceState
+    from custom_components.xtool.protocols.rest.p2 import P2Protocol
+
+    proto = P2Protocol("127.0.0.1")
+    alarm = {"info": "", "level": "warnning", "module": "MEASURE_DISTANCE_SENSOR", "type": "COMMUNI_ABNORMAL"}
+    running = {"curAlarmInfo": {"alarm": [alarm]}}
+    apply = next(
+        getattr(proto, name) for name in ("_apply_running", "_apply_running_status", "_apply_status")
+        if hasattr(proto, name)
+    )
+    with caplog.at_level("WARNING"):
+        apply(XtoolDeviceState(), running)
+        apply(XtoolDeviceState(), running)
+    lines = [r.message for r in caplog.records if "The P2 reports" in r.message]
+    assert lines == ["The P2 reports: warnning MEASURE_DISTANCE_SENSOR COMMUNI_ABNORMAL"]
+    # Gone and back: logged again
+    apply(XtoolDeviceState(), {"curAlarmInfo": {"alarm": None}})
+    with caplog.at_level("WARNING"):
+        apply(XtoolDeviceState(), running)
+    assert len([r for r in caplog.records if "The P2 reports" in r.message]) == 2
