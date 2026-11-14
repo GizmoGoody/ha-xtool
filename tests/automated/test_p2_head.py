@@ -302,10 +302,12 @@ async def test_a_measure_the_mode_cannot_take_is_refused(coordinator, monkeypatc
         {"distance": 177.4, "coord_x": 0.0, "coord_y": 0.0},
         {"distance": 177.4, "coord_x": 0.0, "coord_y": 0.0},
     ])
-    before = coordinator._p2_view["thickness_or_distance"]
+    from custom_components.xtool.protocols.rest.p2_entities import _p2_view
+
+    before = _p2_view(coordinator)["thickness_or_distance"]
     with pytest.raises(HomeAssistantError, match="outside this Mode's 0 to 25 mm"):
         await button.async_press()
-    assert coordinator._p2_view["thickness_or_distance"] == before
+    assert _p2_view(coordinator)["thickness_or_distance"] == before
     assert coordinator.data.measured_thickness_mm is None
     # Slats removed takes it: 65.7 mm down from 25 mm above the slats
     coordinator._p2_view["processing_mode"] = "slats_removed"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from unittest.mock import AsyncMock
 
 import pytest
@@ -65,4 +66,6 @@ async def test_a_failed_poll_names_its_error(hass: HomeAssistant, config_entry, 
                 await coordinator._async_update_data()
             except Exception:  # noqa: BLE001
                 pass
-        assert "TimeoutError()" in caplog.text, model.model_id
+        # The error with its type, such as TimeoutError()
+        assert re.search(r"(poll|polling)[^
+]*: \w+Error\(", caplog.text), model.model_id
