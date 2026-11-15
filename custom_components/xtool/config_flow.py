@@ -100,14 +100,13 @@ class XtoolConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def _entry_with_mac(self, mac: str) -> ConfigEntry | None:
         """The laser already set up whose device has this MAC address."""
-        device = dr.async_get(self.hass).async_get_device(
-            connections={(dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac))},
-        )
-        if device is None:
-            return None
-        for entry_id in device.config_entries:
-            entry = self.hass.config_entries.async_get_entry(entry_id)
-            if entry is not None and entry.domain == DOMAIN and entry.unique_id:
+        connection = (dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac))
+        dev_reg = dr.async_get(self.hass)
+        for entry in self._async_current_entries(include_ignore=False):
+            if entry.unique_id and any(
+                connection in device.connections
+                for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id)
+            ):
                 return entry
         return None
 
@@ -128,7 +127,8 @@ class XtoolConfigFlow(ConfigFlow, domain=DOMAIN):
                 entry.unique_id, host,
             ):
                 return self.async_abort(reason="already_configured")
-        self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+        # The entry's update listener reloads it
+        self._abort_if_unique_id_configured(updates={CONF_HOST: host}, reload_on_update=False)
         return self.async_abort(reason="already_configured")
 
     async def async_step_discovery(
