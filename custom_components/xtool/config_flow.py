@@ -127,8 +127,12 @@ class XtoolConfigFlow(ConfigFlow, domain=DOMAIN):
                 entry.unique_id, host,
             ):
                 return self.async_abort(reason="already_configured")
-        # The entry's update listener reloads it
-        self._abort_if_unique_id_configured(updates={CONF_HOST: host}, reload_on_update=False)
+            move_to = getattr(coordinator, "async_move_to", None)
+            if move_to is not None:
+                # Used at once and saved, without reloading the entry
+                await move_to(host)
+                return self.async_abort(reason="already_configured")
+        self._abort_if_unique_id_configured(updates={CONF_HOST: host})
         return self.async_abort(reason="already_configured")
 
     async def async_step_discovery(

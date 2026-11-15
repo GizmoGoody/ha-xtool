@@ -313,6 +313,10 @@ class P2Coordinator(RestCoordinator):
                      self.device_name, ethernet, self.protocol.host)
         await self._move_to(ethernet)
 
+    async def async_move_to(self, host: str) -> None:
+        """Use the address a DHCP sighting found (see config_flow)."""
+        await self._move_to(host)
+
     async def _move_to(self, host: str) -> None:
         """Use the new address at once and save it, without reloading the entry."""
         entry = self.config_entry
