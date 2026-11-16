@@ -174,7 +174,7 @@ def _maybe_summary() -> None:
             "slowest %.1f s, most waiting at once %d, waiting now %d); "
             "live views opened %d, open now %d; P2 photos %d (shared %d, failed %d, "
             "skipped while offline %d, slowest %.1f s, longest wait for the other camera %.1f s)",
-            camera, minutes, c.requests, c.requests_cached, c.requests_empty,
+            minutes, camera, c.requests, c.requests_cached, c.requests_empty,
             c.requests_slow, c.request_max, c.in_flight_max, c.in_flight,
             c.live_opened, c.live_open, c.photos, c.photos_joined, c.photos_failed,
             c.photos_skipped_offline, c.photo_max, c.lock_wait_max,
