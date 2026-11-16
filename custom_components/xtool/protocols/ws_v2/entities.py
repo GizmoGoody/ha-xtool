@@ -74,6 +74,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
+from ... import camera_diagnostics
 from ...const import BRIGHTNESS_HA_MAX, DOMAIN, task_id_value
 from .protocol import round_focus
 from ...coordinator import XtoolCoordinator
@@ -2365,7 +2366,10 @@ class _WSV2Camera(_CameraDeviceEntity, Camera):
         try:
             image = await self.coordinator.protocol.camera_snap(self._camera_name)
         except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("V2 camera %s snap failed: %s", self._camera_name, err)
+            _LOGGER.warning(
+                "Camera diagnostics: %s photo failed: %r",
+                self.entity_id or self._camera_name, err,
+            )
             image = None
         if image:
             self._last_photo = image
@@ -2390,12 +2394,25 @@ class _WSV2Camera(_CameraDeviceEntity, Camera):
         # refresh just took, even when taking it took longer than
         # MIN_SNAPSHOT_INTERVAL (its age counts from when it was asked
         # for); otherwise the thumbnail goes black while a new one is taken.
+        diag_name = self.entity_id or self._camera_name
+        diag_started = camera_diagnostics.request_started(diag_name)
         if (
             self._last_snapshot is not None
             and time.monotonic() - self._snapshot_done < PICTURE_REUSE_SECONDS
         ):
+            camera_diagnostics.request_finished(
+                diag_name, diag_started, len(self._last_snapshot), cached=True,
+            )
             return self._last_snapshot
-        return await self._image(MIN_SNAPSHOT_INTERVAL)
+        try:
+            image = await self._image(MIN_SNAPSHOT_INTERVAL)
+        except BaseException as err:
+            camera_diagnostics.request_failed(diag_name, diag_started, err)
+            raise
+        camera_diagnostics.request_finished(
+            diag_name, diag_started, len(image) if image else None, cached=False,
+        )
+        return image
 
     async def handle_async_mjpeg_stream(
         self, request: web.Request,
@@ -2422,11 +2439,17 @@ class _WSV2Camera(_CameraDeviceEntity, Camera):
         # this frame's interval.
         interval = timedelta(seconds=frame_interval / 2)
         self._set_live_viewers(1)
+        diag_name = self.entity_id or self._camera_name
+        diag_started = time.monotonic()
+        diag_frames = 0
+        diag_reason = ""
+        camera_diagnostics.live_view(diag_name, opened=True)
         try:
             while True:
                 started = time.monotonic()
                 jpeg = await self._image(interval)
                 if jpeg:
+                    diag_frames += 1
                     # A viewer that stops reading (for example the iOS
                     # app after its view closes) leaves the write
                     # waiting; end the live view instead.
@@ -2444,15 +2467,23 @@ class _WSV2Camera(_CameraDeviceEntity, Camera):
                 await asyncio.sleep(
                     max(0.0, frame_interval - (time.monotonic() - started))
                 )
-        except (asyncio.CancelledError, ConnectionResetError):
-            pass
+        except (asyncio.CancelledError, ConnectionResetError) as err:
+            diag_reason = f"viewer left ({type(err).__name__})"
         except TimeoutError:
+            diag_reason = "viewer stopped reading for 10 s"
             _LOGGER.debug(
                 "V2 camera %s: live viewer stopped reading; ending it",
                 self._camera_name,
             )
+        except BaseException as err:
+            diag_reason = f"error {err!r}"
+            raise
         finally:
             self._set_live_viewers(-1)
+            camera_diagnostics.live_view(
+                diag_name, opened=False, frames=diag_frames, started=diag_started,
+                reason=diag_reason,
+            )
         return response
 
     def _set_live_viewers(self, change: int) -> None:

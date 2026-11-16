@@ -32,6 +32,7 @@ from typing import Any
 
 import aiohttp
 
+from ... import camera_diagnostics
 from ...const import XtoolStatus
 from ..base import DeviceInfo, XtoolDeviceState
 from .protocol import (
@@ -744,9 +745,12 @@ class P2Protocol(RestProtocol):
         # No photo while the P2 does not answer: a request would only wait
         # for its timeout
         if self._is_offline():
+            camera_diagnostics.photo(f"P2 {camera_name}", skipped_offline=True)
             return None
         pending = self._camera_pending
         task = pending.get(camera_name)
+        if task is not None:
+            camera_diagnostics.photo(f"P2 {camera_name}", joined=True, size=0)
         if task is None:
             task = asyncio.ensure_future(self._camera_snap_locked(camera_name))
             pending[camera_name] = task
@@ -759,13 +763,32 @@ class P2Protocol(RestProtocol):
         return await asyncio.shield(task)
 
     async def _camera_snap_locked(self, camera_name: str) -> bytes | None:
+        asked = time.monotonic()
         async with self._camera_lock:
-            stream = self.CAMERA_STREAMS[camera_name]
-            url = f"http://{self.host}:{REST_CAMERA_PORT}/camera/snap?stream={stream}"
-            async with self._session().get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                if resp.status != 200:
-                    raise ConnectionError(f"P2 {camera_name} photo: HTTP {resp.status}")
-                return await resp.read()
+            got_lock = time.monotonic()
+            host = self.host
+            try:
+                data = await self._camera_snap_request(camera_name)
+            except BaseException as err:
+                camera_diagnostics.photo(
+                    f"P2 {camera_name}", lock_wait=got_lock - asked,
+                    transfer=time.monotonic() - got_lock, error=err, host=host,
+                )
+                raise
+            camera_diagnostics.photo(
+                f"P2 {camera_name}", lock_wait=got_lock - asked,
+                transfer=time.monotonic() - got_lock, size=len(data) if data else None,
+                host=host,
+            )
+            return data
+
+    async def _camera_snap_request(self, camera_name: str) -> bytes | None:
+        stream = self.CAMERA_STREAMS[camera_name]
+        url = f"http://{self.host}:{REST_CAMERA_PORT}/camera/snap?stream={stream}"
+        async with self._session().get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            if resp.status != 200:
+                raise ConnectionError(f"P2 {camera_name} photo: HTTP {resp.status}")
+            return await resp.read()
 
     async def set_camera_exposure(self, stream: int, value: int) -> None:
         """Set a camera's exposure (``POST /camera/exposure`` on port 8329).
