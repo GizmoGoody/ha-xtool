@@ -29,7 +29,8 @@ from homeassistant.core import (
     HomeAssistant,
     callback,
 )
-from homeassistant.helpers import discovery_flow
+from homeassistant.helpers import device_registry as dr, discovery_flow
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, format_mac
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -77,13 +78,9 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 # How long one address search listens for discovery replies, and how often
-# it runs: (seconds since the laser stopped answering, interval).
+# it runs while the laser does not answer
 ADDRESS_SEARCH_TIMEOUT = 2.0
-ADDRESS_SEARCH_INTERVALS: tuple[tuple[float, float], ...] = (
-    (180.0, 5.0),
-    (600.0, 30.0),
-    (float("inf"), 900.0),
-)
+ADDRESS_SEARCH_INTERVAL = 30.0
 
 _T = TypeVar("_T")
 
@@ -209,7 +206,6 @@ class XtoolCoordinator(DataUpdateCoordinator[XtoolDeviceState]):
         self.other_mac_addresses: set[str] = set()
         # While the laser does not answer, it is looked for at a new address
         # (see ``async_search_address``)
-        self._unreachable_since: float | None = None
         self._next_address_search = 0.0
         self._address_search: asyncio.Task[None] | None = None
         # Shown as the Model ID on the device page when the model has no SKU
@@ -481,8 +477,6 @@ class XtoolCoordinator(DataUpdateCoordinator[XtoolDeviceState]):
             return False
         await change_host(host)
         self.host = host
-        self._unreachable_since = None
-        self._next_address_search = 0.0
         await self.async_request_refresh()
         return True
 
@@ -505,11 +499,14 @@ class XtoolCoordinator(DataUpdateCoordinator[XtoolDeviceState]):
     def async_search_address(self, reachable: bool) -> None:
         """Look for the laser at a new address while it does not answer.
 
-        A laser can come back at another address: the P2 sometimes starts
-        with a temporary MAC address that Home Assistant's DHCP discovery
-        does not know. It answers xTool's own discovery at any address, as
-        Studio finds it. Every 5 s for the first 3 min, then every 30 s up
-        to 10 min, then every 15 min; never while its Power switch is off.
+        A laser can come back at another address. Home Assistant's DHCP
+        discovery follows it there when it knows the MAC address that asked
+        for it; the P2 sometimes starts with a temporary MAC address it does
+        not report. It answers xTool's own discovery at any address, as
+        Studio finds it. The search runs every 30 s while the laser does not
+        answer, never while its Power switch is off, and teaches Home
+        Assistant the MAC address it was found with (``_async_learn_mac``),
+        so its next start at that MAC address is followed at once.
         """
         if (
             reachable
@@ -517,20 +514,13 @@ class XtoolCoordinator(DataUpdateCoordinator[XtoolDeviceState]):
             or not self.config_entry
             or not self.serial_number
         ):
-            self._unreachable_since = None
-            self._next_address_search = 0.0
             return
         now = time.monotonic()
-        if self._unreachable_since is None:
-            self._unreachable_since = now
         if now < self._next_address_search or (
             self._address_search is not None and not self._address_search.done()
         ):
             return
-        elapsed = now - self._unreachable_since
-        self._next_address_search = now + next(
-            interval for limit, interval in ADDRESS_SEARCH_INTERVALS if elapsed < limit
-        )
+        self._next_address_search = now + ADDRESS_SEARCH_INTERVAL
         self._address_search = self.config_entry.async_create_background_task(
             self.hass, self._async_search_address(), f"{DOMAIN} address search",
         )
@@ -550,8 +540,37 @@ class XtoolCoordinator(DataUpdateCoordinator[XtoolDeviceState]):
                     "%s answers at %s instead of %s",
                     self.device_name, device.ip, self.protocol.host,
                 )
+                self._async_learn_mac(device.ip)
                 self.async_found_at(device.ip)
                 return
+
+    @callback
+    def _async_learn_mac(self, host: str) -> None:
+        """Add the MAC address that asked for ``host`` to the laser's device.
+
+        The laser was just found at ``host``, so it is the device Home
+        Assistant's DHCP watcher last saw asking for that address. Learned
+        only when exactly one MAC address holds it: an address another
+        device had earlier can still be listed for that device.
+        """
+        if "dhcp" not in self.hass.config.components or not self.laser_device_id:
+            return
+        from homeassistant.components.dhcp import async_discovered_service_info
+
+        macs = {
+            format_mac(info.macaddress)
+            for info in async_discovered_service_info(self.hass)
+            if info.ip == host
+        }
+        if len(macs) != 1:
+            return
+        connection = (CONNECTION_NETWORK_MAC, macs.pop())
+        registry = dr.async_get(self.hass)
+        device = registry.async_get(self.laser_device_id)
+        if device is None or connection in device.connections:
+            return
+        _LOGGER.info("%s asked for %s with MAC address %s", self.device_name, host, connection[1])
+        registry.async_update_device(device.id, merge_connections={connection})
 
     def get_status(self) -> XtoolStatus:
         if self.data is None or self.data.status is None:

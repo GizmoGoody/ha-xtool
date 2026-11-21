@@ -64,7 +64,7 @@ Or add manually:
 3. Select a discovered device, or choose **Enter IP address manually**
 4. When the model cannot be detected, pick it from the list
 
-**Address changes.** The integration follows a laser to a new address: when Home Assistant sees it ask the router for one (DHCP), or, when a laser that is on stops answering, by searching for its serial number as xTool Studio does. A P2 uses its Ethernet address when it has one.
+**Address changes.** The integration follows a laser to a new address: when Home Assistant sees it ask the router for one (DHCP), or, while a laser that is not switched off does not answer, by searching for its serial number every 30 s as xTool Studio does. The MAC address the laser asked for that address with is added to its device, so its next start with that MAC address is followed at once (a P2 sometimes starts with a temporary MAC address). A P2 uses its Ethernet address when it has one.
 
 ### Pairing (newer V2 firmware)
 

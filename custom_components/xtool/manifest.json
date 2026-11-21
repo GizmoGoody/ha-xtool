@@ -3,6 +3,7 @@
   "name": "xTool",
   "codeowners": ["@thecodingdad"],
   "config_flow": true,
+  "after_dependencies": ["dhcp"],
   "dhcp": [{ "registered_devices": true }],
   "documentation": "https://github.com/thecodingdad/ha-xtool",
   "integration_type": "device",

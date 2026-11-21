@@ -3,12 +3,14 @@
 The P2 sometimes starts with a temporary MAC address, so Home Assistant's
 DHCP discovery does not know it. It answers xTool's own discovery at any
 address, as Studio finds it. The coordinator looks for it while it does not
-answer and hands the address to the config flow, which updates the entry and
-reloads it, as Home Assistant's discovery does.
+answer and hands the address to the config flow, which updates the entry, as
+Home Assistant's discovery does. The MAC address that asked for the address
+is added to the device, so DHCP discovery follows the next start with it.
 """
 
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -124,11 +126,9 @@ async def test_a_new_address_is_used_without_a_reload(hass, entry) -> None:
 async def test_the_p2_changes_its_address_in_place(hass, coordinator) -> None:
     coordinator.protocol.change_host = AsyncMock()
     coordinator.async_request_refresh = AsyncMock()
-    coordinator._unreachable_since = 5.0
     assert await coordinator.async_use_host(NEW) is True
     coordinator.protocol.change_host.assert_awaited_once_with(NEW)
     assert coordinator.host == NEW
-    assert coordinator._unreachable_since is None
     coordinator.async_request_refresh.assert_awaited_once()
 
 
@@ -160,24 +160,21 @@ def _clock(monkeypatch, start=1000.0):
     return now
 
 
-def test_searches_often_at_first_then_rarely(hass, coordinator, monkeypatch) -> None:
-    now = _clock(monkeypatch)
+def _searches_in(coordinator, now, seconds, step=1.0):
     started = coordinator.config_entry.async_create_background_task
+    before = started.call_count
+    end = now[0] + seconds
+    while now[0] < end:
+        coordinator.async_search_address(False)
+        now[0] += step
+    return started.call_count - before
 
-    def searches_in(seconds, step=1.0):
-        before = started.call_count
-        end = now[0] + seconds
-        while now[0] < end:
-            coordinator.async_search_address(False)
-            now[0] += step
-        return started.call_count - before
 
-    # Every 5 s during the first 3 min after it stopped answering
-    assert searches_in(180) == 36
-    # Every 30 s up to 10 min
-    assert searches_in(420) == 14
-    # Then every 15 min
-    assert searches_in(1800, step=10.0) == 2
+def test_searches_every_30_s(hass, coordinator, monkeypatch) -> None:
+    now = _clock(monkeypatch)
+    assert _searches_in(coordinator, now, 600) == 20
+    # However long it has not answered
+    assert _searches_in(coordinator, now, 7200, step=10.0) == 240
 
 
 def test_no_search_while_it_answers_or_its_power_is_off(hass, coordinator, monkeypatch) -> None:
@@ -193,14 +190,21 @@ def test_no_search_while_it_answers_or_its_power_is_off(hass, coordinator, monke
     started.assert_called_once()
 
 
-def test_answering_again_starts_the_fast_searches_over(hass, coordinator, monkeypatch) -> None:
+def test_power_on_after_hours_searches_at_once(hass, coordinator, monkeypatch) -> None:
+    """2026-11-20: the P2 was not looked for after it was turned on.
+
+    While Home Assistant started, the plug was unavailable for a moment and
+    one poll went unanswered. The laser then stayed off for hours. When it
+    was turned on at a new address, the searches ran every 15 min, as for a
+    laser that had not answered for hours, and it stayed Initializing.
+    """
     now = _clock(monkeypatch)
+    hass.states.async_set(POWER_SWITCH, "unavailable")
     coordinator.async_search_address(False)
-    now[0] += 1000
-    coordinator.async_search_address(True)
-    assert coordinator._unreachable_since is None
-    coordinator.async_search_address(False)
-    assert coordinator._next_address_search == now[0] + 5.0
+    hass.states.async_set(POWER_SWITCH, "off")
+    now[0] += 2 * 3600
+    hass.states.async_set(POWER_SWITCH, "on")
+    assert _searches_in(coordinator, now, 90) == 3
 
 
 async def test_the_search_hands_the_laser_to_the_config_flow(hass, coordinator, monkeypatch) -> None:
@@ -250,3 +254,100 @@ async def test_ethernet_is_handed_to_the_config_flow(hass, coordinator, monkeypa
     monkeypatch.setattr(rest_coordinator, "_serial_at", AsyncMock(return_value=SERIAL))
     await coordinator._prefer_ethernet()
     assert create_flow.call_args.kwargs["data"] == {"host": OLD, "serial_number": SERIAL}
+
+
+# --- the MAC address it was found with ----------------------------------------
+
+
+REAL_MAC = "48:fb:a9:00:00:01"
+TEMP_MAC = "36:c9:e3:00:00:01"
+
+
+@pytest.fixture
+def laser_device(hass, coordinator, config_entry):
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.xtool.const import DOMAIN
+
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, SERIAL)},
+        connections={(dr.CONNECTION_NETWORK_MAC, REAL_MAC)},
+    )
+    coordinator.laser_device_id = device.id
+    return device
+
+
+def _dhcp_saw(hass, monkeypatch, *sightings):
+    """Home Assistant's DHCP watcher saw these (MAC address, IP address)."""
+    from types import ModuleType
+
+    from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
+
+    module = ModuleType("homeassistant.components.dhcp")
+    module.async_discovered_service_info = lambda hass: [
+        DhcpServiceInfo(ip=ip, hostname="", macaddress=mac.replace(":", ""))
+        for mac, ip in sightings
+    ]
+    monkeypatch.setitem(sys.modules, "homeassistant.components.dhcp", module)
+    hass.config.components.add("dhcp")
+
+
+def _macs(hass, device_id):
+    from homeassistant.helpers import device_registry as dr
+
+    device = dr.async_get(hass).async_get(device_id)
+    return {value for kind, value in device.connections if kind == dr.CONNECTION_NETWORK_MAC}
+
+
+async def _search_finds_it_at_new(coordinator, monkeypatch):
+    from custom_components.xtool import coordinator as base
+    from custom_components.xtool import discovery, protocols
+    from custom_components.xtool.discovery import DiscoveredDevice
+    from custom_components.xtool.protocols.base import ConnectionInfo
+
+    monkeypatch.setattr(discovery, "discover_v1", AsyncMock(
+        return_value=[DiscoveredDevice(ip=NEW, name="P2", version="")],
+    ))
+    monkeypatch.setattr(protocols, "validate_connection", AsyncMock(
+        return_value=ConnectionInfo(host=NEW, serial_number=SERIAL),
+    ))
+    monkeypatch.setattr(base.discovery_flow, "async_create_flow", MagicMock())
+    await coordinator._async_search_address()
+
+
+async def test_the_mac_address_it_was_found_with_is_learned(
+    hass, coordinator, laser_device, monkeypatch,
+) -> None:
+    _dhcp_saw(hass, monkeypatch, (REAL_MAC, OLD), (TEMP_MAC, NEW))
+    await _search_finds_it_at_new(coordinator, monkeypatch)
+    assert _macs(hass, laser_device.id) == {REAL_MAC, TEMP_MAC}
+
+
+async def test_the_dhcp_step_then_follows_that_mac_address(
+    hass, coordinator, laser_device, monkeypatch,
+) -> None:
+    from custom_components.xtool import config_flow
+
+    _dhcp_saw(hass, monkeypatch, (TEMP_MAC, NEW))
+    await _search_finds_it_at_new(coordinator, monkeypatch)
+    flow = config_flow.XtoolConfigFlow()
+    flow.hass = hass
+    flow.handler = coordinator.config_entry.domain
+    assert flow._entry_with_mac(TEMP_MAC.replace(":", "")) is coordinator.config_entry
+
+
+async def test_an_address_two_mac_addresses_held_teaches_nothing(
+    hass, coordinator, laser_device, monkeypatch,
+) -> None:
+    """Another device had the address earlier and has not asked again."""
+    _dhcp_saw(hass, monkeypatch, (TEMP_MAC, NEW), ("02:00:00:00:00:09", NEW))
+    await _search_finds_it_at_new(coordinator, monkeypatch)
+    assert _macs(hass, laser_device.id) == {REAL_MAC}
+
+
+async def test_nothing_is_learned_without_dhcp(
+    hass, coordinator, laser_device, monkeypatch,
+) -> None:
+    await _search_finds_it_at_new(coordinator, monkeypatch)
+    assert _macs(hass, laser_device.id) == {REAL_MAC}
