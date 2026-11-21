@@ -1,7 +1,9 @@
 """Device registry lookups use the helpers Home Assistant keeps.
 
 Home Assistant 2026.11 deprecates ``device_registry.devices`` as a
-mapping and ``async_get_device``; both stop working in 2027.
+mapping and ``async_get_device``; both stop working in 2027. Updating a
+device with ``merge_connections`` or ``merge_identifiers`` stops working
+in 2027.9: the full set is passed instead.
 """
 
 from __future__ import annotations
@@ -24,6 +26,8 @@ def test_no_deprecated_lookups(path: str) -> None:
     text = (COMPONENT / path).read_text(encoding="utf-8")
     assert "devices.values()" not in text
     assert ".async_get_device(" not in text
+    assert "merge_connections" not in text
+    assert "merge_identifiers" not in text
 
 
 async def test_orphan_mac_devices_are_removed(hass: HomeAssistant) -> None:

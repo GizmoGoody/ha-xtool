@@ -570,7 +570,7 @@ class XtoolCoordinator(DataUpdateCoordinator[XtoolDeviceState]):
         if device is None or connection in device.connections:
             return
         _LOGGER.info("%s asked for %s with MAC address %s", self.device_name, host, connection[1])
-        registry.async_update_device(device.id, merge_connections={connection})
+        registry.async_update_device(device.id, new_connections=device.connections | {connection})
 
     def get_status(self) -> XtoolStatus:
         if self.data is None or self.data.status is None:
