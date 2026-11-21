@@ -61,6 +61,19 @@ async def test_off_without_a_power_switch(hass: HomeAssistant, config_entry, mod
     assert sensor.native_value == "off"
 
 
+@pytest.mark.parametrize("state", ["unavailable", "unknown"])
+async def test_off_while_the_power_switch_is_unavailable(hass: HomeAssistant, config_entry, state) -> None:
+    """A switch that says nothing about the power counts as no switch.
+
+    On 2026-11-20 the P2's plug was unavailable for a moment while Home
+    Assistant started, and Status showed Not responding for a laser that
+    was off.
+    """
+    hass.states.async_set(POWER_SWITCH, state)
+    _, sensor = _sensor(hass, _models()[0], POWER_SWITCH)
+    assert sensor.native_value == "off"
+
+
 async def test_answering_again_shows_the_laser_status(hass: HomeAssistant, config_entry) -> None:
     from custom_components.xtool.const import XtoolStatus
 

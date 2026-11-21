@@ -87,7 +87,7 @@ class XtoolStatusSensor(XtoolReadOnlyEntity, SensorEntity):
             if self.coordinator.starting:
                 # Just powered on: the laser is starting
                 return XtoolStatus.INITIALIZING
-            if self.coordinator.power_switch_entity_id:
+            if self.coordinator.power_switch_is_on:
                 # Powered, but the laser does not answer
                 return XtoolStatus.NOT_RESPONDING
             return XtoolStatus.OFF

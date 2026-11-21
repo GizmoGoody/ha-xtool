@@ -76,7 +76,7 @@ Some V2 firmware (first seen on the M2 with `40.141.012.01.ht05`) only accepts p
 
 | Option | Description |
 |--------|-------------|
-| Power switch | A switch (e.g. a smart plug) that powers the laser. While it is off, Status shows "Off" and the other entities are unavailable; only the lifetime totals keep their value. After it turns on, Status shows "Initializing" until the laser answers (at most 3 minutes), then "Not responding" while the laser does not answer |
+| Power switch | A switch (e.g. a smart plug) that powers the laser. While it is off, Status shows "Off" and the other entities are unavailable; only the lifetime totals keep their value. After it turns on, Status shows "Initializing" until the laser answers (at most 3 minutes), then "Not responding" while the laser does not answer. While the switch itself is unavailable, the laser is treated as if no switch were linked |
 | Polling interval | How often the laser is read, in seconds (default 5) |
 | Enable firmware updates | Off by default: the update entity only reports new firmware. On: it can install it |
 | Firmware-update check interval | How often xTool's cloud is asked for new firmware (default 6 h) |

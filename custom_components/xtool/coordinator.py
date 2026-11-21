@@ -361,6 +361,19 @@ class XtoolCoordinator(DataUpdateCoordinator[XtoolDeviceState]):
         return state is not None and state.state == "off"
 
     @property
+    def power_switch_is_on(self) -> bool:
+        """Whether the linked Power switch reports on.
+
+        A switch that is unavailable (for example while Home Assistant
+        starts) says nothing about the power: the laser is then treated as
+        if no switch were linked.
+        """
+        if not self.power_switch_entity_id:
+            return False
+        state = self.hass.states.get(self.power_switch_entity_id)
+        return state is not None and state.state == "on"
+
+    @property
     def starting(self) -> bool:
         """Whether the laser may still be starting after the Power switch turned on."""
         return (
